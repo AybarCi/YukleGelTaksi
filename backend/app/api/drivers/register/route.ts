@@ -15,10 +15,17 @@ interface RegisterDriverRequest {
   vehicle_type: string;
   vehicle_plate: string;
   vehicle_model: string;
+  vehicle_color?: string;
   vehicle_year: number;
   driver_photo?: string;
   license_photo?: string;
   eligibility_certificate?: string;
+  // File upload support
+  uploaded_files?: {
+    driver_photo?: string;
+    license_photo?: string;
+    eligibility_certificate?: string;
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -47,11 +54,18 @@ export async function POST(request: NextRequest) {
       vehicle_type,
       vehicle_plate,
       vehicle_model,
+      vehicle_color,
       vehicle_year,
       driver_photo,
       license_photo,
-      eligibility_certificate
+      eligibility_certificate,
+      uploaded_files
     } = body;
+
+    // Use uploaded files if available, otherwise use the string values
+    const finalDriverPhoto = uploaded_files?.driver_photo || driver_photo;
+    const finalLicensePhoto = uploaded_files?.license_photo || license_photo;
+    const finalEligibilityCertificate = uploaded_files?.eligibility_certificate || eligibility_certificate;
 
     // Validation
     if (!tc_number || !first_name || !last_name || !phone_number || !license_number || !vehicle_plate || !vehicle_model) {
@@ -102,11 +116,14 @@ export async function POST(request: NextRequest) {
 
       // If user doesn't exist, create user record
       if (existingUserResult.recordset.length === 0) {
+        // Generate a unique email if not provided to avoid UNIQUE constraint violation
+        const userEmail = email || `driver_${Date.now()}_${Math.random().toString(36).substr(2, 9)}@yuklegeltaksi.com`;
+        
         const userInsertResult = await transaction.request()
           .input('phone_number', phone_number)
           .input('first_name', first_name)
           .input('last_name', last_name)
-          .input('email', email || null)
+          .input('email', userEmail)
           .input('user_type', 'driver')
           .query(`
             INSERT INTO users (phone_number, first_name, last_name, email, user_type, is_active, created_at, updated_at)
@@ -126,6 +143,7 @@ export async function POST(request: NextRequest) {
 
       // Insert driver record
       const driverInsertResult = await transaction.request()
+        .input('user_id', userId)
         .input('tc_number', tc_number)
         .input('first_name', first_name)
         .input('last_name', last_name)
@@ -134,28 +152,19 @@ export async function POST(request: NextRequest) {
         .input('tax_number', tax_number || null)
         .input('tax_office', tax_office || null)
         .input('license_number', license_number)
-        .input('license_expiry_date', license_expiry_date)
+        .input('license_expiry_date', license_expiry_date || null)
         .input('vehicle_type', vehicle_type)
         .input('vehicle_plate', vehicle_plate)
         .input('vehicle_model', vehicle_model)
+        .input('vehicle_color', vehicle_color || null)
         .input('vehicle_year', vehicle_year)
-        .input('driver_photo', driver_photo || null)
-        .input('license_photo', license_photo || null)
-        .input('eligibility_certificate', eligibility_certificate || null)
+        .input('driver_photo', finalDriverPhoto || null)
+        .input('license_photo', finalLicensePhoto || null)
+        .input('eligibility_certificate', finalEligibilityCertificate || null)
         .query(`
-          INSERT INTO drivers (
-            tc_number, first_name, last_name, phone_number, email, tax_number, tax_office,
-            license_number, license_expiry_date, vehicle_type, vehicle_plate, vehicle_model, 
-            vehicle_year, driver_photo, license_photo, eligibility_certificate,
-            is_available, is_active, rating, created_at, updated_at
-          )
+          INSERT INTO drivers (first_name, last_name, phone_number, license_number, vehicle_plate, vehicle_model, vehicle_color)
           OUTPUT INSERTED.id
-          VALUES (
-            @tc_number, @first_name, @last_name, @phone_number, @email, @tax_number, @tax_office,
-            @license_number, @license_expiry_date, @vehicle_type, @vehicle_plate, @vehicle_model,
-            @vehicle_year, @driver_photo, @license_photo, @eligibility_certificate,
-            0, 1, 5.0, GETDATE(), GETDATE()
-          )
+          VALUES (@first_name, @last_name, @phone_number, @license_number, @vehicle_plate, @vehicle_model, 'Beyaz')
         `);
 
       const driverId = driverInsertResult.recordset[0].id;

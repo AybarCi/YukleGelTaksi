@@ -38,6 +38,7 @@ GO
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='drivers' AND xtype='U')
 CREATE TABLE drivers (
     id INT IDENTITY(1,1) PRIMARY KEY,
+    user_id INT,
     tc_number NVARCHAR(11) UNIQUE,
     first_name NVARCHAR(50) NOT NULL,
     last_name NVARCHAR(50) NOT NULL,
@@ -50,7 +51,7 @@ CREATE TABLE drivers (
     vehicle_type NVARCHAR(50),
     vehicle_plate NVARCHAR(20) NOT NULL,
     vehicle_model NVARCHAR(100) NOT NULL,
-    vehicle_color NVARCHAR(30) NOT NULL,
+    vehicle_color NVARCHAR(30),
     vehicle_year INT,
     driver_photo NVARCHAR(255),
     license_photo NVARCHAR(255),
@@ -64,7 +65,8 @@ CREATE TABLE drivers (
     current_trip_id INT,
     last_location_update DATETIME2,
     created_at DATETIME2 DEFAULT GETDATE(),
-    updated_at DATETIME2 DEFAULT GETDATE()
+    updated_at DATETIME2 DEFAULT GETDATE(),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 GO
 

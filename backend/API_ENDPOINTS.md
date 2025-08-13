@@ -154,6 +154,31 @@ Content-Type: application/json
 
 ## Driver Endpoints
 
+### Tüm Sürücüleri Listele
+```
+GET /api/drivers
+```
+
+### Sürücü Kaydet
+```
+POST /api/drivers/register
+Content-Type: application/json
+
+{
+  "tc_number": "12345678901",
+  "first_name": "Ahmet",
+  "last_name": "Yılmaz",
+  "phone_number": "+905551234567",
+  "email": "ahmet@example.com",
+  "license_number": "LIC123456",
+  "vehicle_type": "sedan",
+  "vehicle_plate": "34ABC123",
+  "vehicle_model": "Toyota Corolla",
+  "vehicle_color": "Beyaz",
+  "vehicle_year": 2020
+}
+```
+
 ### Yakındaki Sürücüleri Bul
 ```
 POST /api/drivers/nearby

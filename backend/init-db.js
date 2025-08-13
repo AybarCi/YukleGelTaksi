@@ -19,8 +19,8 @@ async function initializeDatabase() {
       driver: sqlite3.Database
     });
 
-    // Read and execute init.sql
-    const initSqlPath = path.join(__dirname, 'database', 'init.sql');
+    // Read and execute init-sqlite.sql
+    const initSqlPath = path.join(__dirname, 'database', 'init-sqlite.sql');
     const initSql = fs.readFileSync(initSqlPath, 'utf8');
     
     // Split SQL statements and execute them
