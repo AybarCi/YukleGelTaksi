@@ -7,7 +7,6 @@ import {
   Modal,
   ScrollView,
   Image,
-  Alert,
   TextInput,
   Switch,
   KeyboardAvoidingView,
@@ -46,7 +45,7 @@ export default function HomeScreen() {
   const [pickupCoords, setPickupCoords] = useState<{latitude: number, longitude: number} | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<{latitude: number, longitude: number} | null>(null);
   
-  const { logout } = useAuth();
+  const { logout, showModal } = useAuth();
 
   useEffect(() => {
     getCurrentLocation();
@@ -93,18 +92,18 @@ export default function HomeScreen() {
   
   const handleCreateOrder = () => {
      if (!weight || !volume || !pickupCoords || !destinationCoords) {
-       Alert.alert('Eksik Bilgi', 'Lütfen tüm alanları doldurun.');
+       showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
        return;
      }
      
-     Alert.alert('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu.');
+     showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu.', 'success');
    };
 
   const getCurrentLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Konum İzni', 'Konum izni verilmedi.');
+        showModal('Konum İzni', 'Konum izni verilmedi.', 'warning');
         return;
       }
       
@@ -122,7 +121,7 @@ export default function HomeScreen() {
         setPickupLocation('Mevcut Konumum');
       }
     } catch (error) {
-      Alert.alert('Konum Hatası', 'Konum bilgisi alınamadı.');
+      showModal('Konum Hatası', 'Konum bilgisi alınamadı.', 'error');
     }
   };
 
@@ -145,7 +144,7 @@ export default function HomeScreen() {
       iconType: 'Ionicons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert('Destek', 'Destek sayfası yakında eklenecek.');
+        showModal('Destek', 'Destek sayfası yakında eklenecek.', 'info');
       }
     },
     {
@@ -154,7 +153,7 @@ export default function HomeScreen() {
       iconType: 'MaterialIcons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert('Ödeme', 'Ödeme sayfası yakında eklenecek.');
+        showModal('Ödeme', 'Ödeme sayfası yakında eklenecek.', 'info');
       }
     },
     {
@@ -163,7 +162,7 @@ export default function HomeScreen() {
       iconType: 'MaterialIcons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert('Taşımalar', 'Taşımalar sayfası yakında eklenecek.');
+        showModal('Taşımalar', 'Taşımalar sayfası yakında eklenecek.', 'info');
       }
     },
   ];
@@ -175,7 +174,7 @@ export default function HomeScreen() {
       iconType: 'MaterialIcons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert('Kampanyalar', 'Kampanyalar sayfası yakında eklenecek.');
+        showModal('Kampanyalar', 'Kampanyalar sayfası yakında eklenecek.', 'info');
       }
     },
     {
@@ -184,7 +183,7 @@ export default function HomeScreen() {
       iconType: 'MaterialIcons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert('Kampanyalar', 'Kampanyalar sayfası yakında eklenecek.');
+        showModal('Kampanyalar', 'Kampanyalar sayfası yakında eklenecek.', 'info');
       }
     },
     {
@@ -193,7 +192,7 @@ export default function HomeScreen() {
       iconType: 'Ionicons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert('Araç Paylaşımı', 'Araç paylaşımı sayfası yakında eklenecek.');
+        showModal('Araç Paylaşımı', 'Araç paylaşımı sayfası yakında eklenecek.', 'info');
       }
     },
     {
@@ -202,7 +201,7 @@ export default function HomeScreen() {
       iconType: 'Ionicons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert('Ayarlar', 'Ayarlar sayfası yakında eklenecek.');
+        showModal('Ayarlar', 'Ayarlar sayfası yakında eklenecek.', 'info');
       }
     },
     {
@@ -211,13 +210,15 @@ export default function HomeScreen() {
       iconType: 'MaterialIcons',
       onPress: () => {
         setMenuVisible(false);
-        Alert.alert(
+        showModal(
           'Çıkış Yap',
           'Hesabınızdan çıkış yapmak istediğinizden emin misiniz?',
+          'warning',
           [
             {
               text: 'İptal',
-              style: 'cancel'
+              style: 'cancel',
+              onPress: () => {}
             },
             {
               text: 'Çıkış Yap',

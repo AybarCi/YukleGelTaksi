@@ -5,20 +5,21 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import LoadingIndicator from '../components/LoadingIndicator';
 
 export default function VerifyCodeScreen() {
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [timer, setTimer] = useState(60);
   const inputRefs = useRef<TextInput[]>([]);
-  const { phoneNumber } = useLocalSearchParams<{ phoneNumber: string }>();
-  const { verifySMS, sendSMS } = useAuth();
+  const { phoneNumber, userType } = useLocalSearchParams<{ phoneNumber: string; userType: string }>();
+  const { verifySMS, sendSMS, showModal, token } = useAuth();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -60,29 +61,57 @@ export default function VerifyCodeScreen() {
     const codeToVerify = verificationCode || code.join('');
     
     if (codeToVerify.length !== 6) {
-      Alert.alert('Hata', 'Lütfen 6 haneli doğrulama kodunu girin.');
+      showModal('Hata', 'Lütfen 6 haneli doğrulama kodunu girin.', 'error');
       return;
     }
 
     if (!phoneNumber) {
-      Alert.alert('Hata', 'Telefon numarası bulunamadı.');
+      showModal('Hata', 'Telefon numarası bulunamadı.', 'error');
       return;
     }
 
     setIsLoading(true);
     
     try {
-      const success = await verifySMS(phoneNumber, codeToVerify);
+      const result = await verifySMS(phoneNumber, codeToVerify, userType);
       
-      if (success) {
-        // Doğrulama başarılı - direkt home ekranına yönlendir
-        router.replace('/home');
+      if (result.success) {
+        // Telefon numarasını AsyncStorage'a kaydet
+        await AsyncStorage.setItem('phoneNumber', phoneNumber);
+        
+        // Doğrulama başarılı - kullanıcı tipine göre yönlendir
+        if (userType === 'driver') {
+          // Sürücü için önce durumunu kontrol et
+          try {
+            const response = await fetch(`http://192.168.1.134:3001/api/drivers/status`, {
+              headers: {
+                'Authorization': `Bearer ${result.token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (response.ok) {
+              // Sürücü kaydı var, durum ekranına yönlendir
+              router.replace('/driver-status');
+            } else if (response.status === 404) {
+              // Sürücü kaydı yok, kayıt ekranına yönlendir
+              router.replace('/driver-registration');
+            } else {
+              showModal('Hata', 'Durum kontrol edilirken hata oluştu.', 'error');
+            }
+          } catch (error) {
+            // API hatası, kayıt ekranına yönlendir
+            router.replace('/driver-registration');
+          }
+        } else {
+          router.replace('/home');
+        }
       } else {
         setCode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
     } catch (error) {
-      Alert.alert('Hata', 'Doğrulama kodu yanlış. Lütfen tekrar deneyin.');
+      showModal('Hata', 'Doğrulama kodu yanlış. Lütfen tekrar deneyin.', 'error');
       setCode(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
@@ -92,7 +121,7 @@ export default function VerifyCodeScreen() {
 
   const handleResendCode = async () => {
     if (!phoneNumber) {
-      Alert.alert('Hata', 'Telefon numarası bulunamadı.');
+      showModal('Hata', 'Telefon numarası bulunamadı.', 'error');
       return;
     }
 
@@ -100,10 +129,10 @@ export default function VerifyCodeScreen() {
       const success = await sendSMS(phoneNumber);
       if (success) {
         setTimer(60);
-        Alert.alert('Başarılı', 'Doğrulama kodu yeniden gönderildi.');
+        showModal('Başarılı', 'Doğrulama kodu yeniden gönderildi.', 'success');
       }
     } catch (error) {
-      Alert.alert('Hata', 'SMS gönderilirken bir hata oluştu.');
+      showModal('Hata', 'SMS gönderilirken bir hata oluştu.', 'error');
     }
   };
 
@@ -158,7 +187,7 @@ export default function VerifyCodeScreen() {
           disabled={code.join('').length !== 6 || isLoading}
         >
           <Text style={styles.continueButtonText}>
-            {isLoading ? 'Doğrulanıyor...' : 'Doğrula'}
+            Doğrula
           </Text>
         </TouchableOpacity>
 
@@ -174,6 +203,11 @@ export default function VerifyCodeScreen() {
           )}
         </View>
       </View>
+      
+      <LoadingIndicator 
+        visible={isLoading} 
+        text="Doğrulama kodu kontrol ediliyor..." 
+      />
     </View>
   );
 }

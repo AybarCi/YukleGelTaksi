@@ -6,9 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
 } from 'react-native';
-import { X, Truck, Clock, CreditCard, MapPin } from 'lucide-react-native';
+import { useAuth } from '../contexts/AuthContext';
 
 interface BookingModalProps {
   visible: boolean;
@@ -26,6 +25,7 @@ interface BookingModalProps {
 export default function BookingModal({ visible, onClose, bookingDetails }: BookingModalProps) {
   const [selectedPayment, setSelectedPayment] = useState('card');
   const [isBooking, setIsBooking] = useState(false);
+  const { showModal } = useAuth();
 
   const confirmBooking = async () => {
     setIsBooking(true);
@@ -33,9 +33,10 @@ export default function BookingModal({ visible, onClose, bookingDetails }: Booki
     // Simulate booking process
     setTimeout(() => {
       setIsBooking(false);
-      Alert.alert(
+      showModal(
         'Rezervasyon Onaylandı!',
         'Sürücünüz 5-10 dakika içinde size ulaşacak. Telefon numaranıza SMS ile bilgilendirme yapılacaktır.',
+        'success',
         [{ text: 'Tamam', onPress: onClose }]
       );
     }, 2000);
@@ -48,7 +49,7 @@ export default function BookingModal({ visible, onClose, bookingDetails }: Booki
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Rezervasyon Onayı</Text>
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <X size={24} color="#6B7280" />
+            <Text style={styles.closeIcon}>✕</Text>
           </TouchableOpacity>
         </View>
 
@@ -58,12 +59,12 @@ export default function BookingModal({ visible, onClose, bookingDetails }: Booki
             <Text style={styles.sectionTitle}>Seyahat Detayları</Text>
             <View style={styles.tripInfo}>
               <View style={styles.locationRow}>
-                <MapPin size={16} color="#F97316" />
+                <Text style={styles.locationIcon}>📍</Text>
                 <Text style={styles.locationText}>{bookingDetails.pickup}</Text>
               </View>
               <View style={styles.routeLine} />
               <View style={styles.locationRow}>
-                <MapPin size={16} color="#10B981" />
+                <Text style={styles.locationIcon}>🎯</Text>
                 <Text style={styles.locationText}>{bookingDetails.delivery}</Text>
               </View>
             </View>
@@ -93,12 +94,12 @@ export default function BookingModal({ visible, onClose, bookingDetails }: Booki
             <Text style={styles.sectionTitle}>Tahminler</Text>
             <View style={styles.estimatesRow}>
               <View style={styles.estimateItem}>
-                <Clock size={20} color="#3B82F6" />
+                <Text style={styles.estimateIcon}>⏱️</Text>
                 <Text style={styles.estimateLabel}>Varış Süresi</Text>
                 <Text style={styles.estimateValue}>15-20 dk</Text>
               </View>
               <View style={styles.estimateItem}>
-                <Truck size={20} color="#10B981" />
+                <Text style={styles.estimateIcon}>🚛</Text>
                 <Text style={styles.estimateLabel}>Taşıma Süresi</Text>
                 <Text style={styles.estimateValue}>25-35 dk</Text>
               </View>
@@ -109,7 +110,7 @@ export default function BookingModal({ visible, onClose, bookingDetails }: Booki
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Ödeme Yöntemi</Text>
             <TouchableOpacity style={styles.paymentOption}>
-              <CreditCard size={20} color="#6B7280" />
+              <Text style={styles.paymentIcon}>💳</Text>
               <Text style={styles.paymentText}>Kredi Kartı (...1234)</Text>
               <View style={styles.selectedPayment} />
             </TouchableOpacity>
@@ -166,6 +167,24 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 8,
+  },
+  closeIcon: {
+    fontSize: 20,
+    color: '#6B7280',
+    fontWeight: 'bold',
+  },
+  locationIcon: {
+    fontSize: 16,
+    width: 20,
+    textAlign: 'center',
+  },
+  estimateIcon: {
+    fontSize: 20,
+  },
+  paymentIcon: {
+    fontSize: 20,
+    width: 24,
+    textAlign: 'center',
   },
   content: {
     flex: 1,

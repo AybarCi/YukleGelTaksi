@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,10 +12,12 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function EmailInfoScreen() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { showModal } = useAuth();
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -25,12 +26,12 @@ export default function EmailInfoScreen() {
 
   const handleContinue = async () => {
     if (!email.trim()) {
-      Alert.alert('Hata', 'Lütfen e-posta adresinizi girin.');
+      showModal('Hata', 'Lütfen e-posta adresinizi girin.', 'error');
       return;
     }
 
     if (!validateEmail(email)) {
-      Alert.alert('Hata', 'Lütfen geçerli bir e-posta adresi girin.');
+      showModal('Hata', 'Lütfen geçerli bir e-posta adresi girin.', 'error');
       return;
     }
 
@@ -44,7 +45,7 @@ export default function EmailInfoScreen() {
       // Ana ekrana geç
       router.replace('/home');
     } catch (error) {
-      Alert.alert('Hata', 'Bir hata oluştu. Lütfen tekrar deneyin.');
+      showModal('Hata', 'Bir hata oluştu. Lütfen tekrar deneyin.', 'error');
     } finally {
       setIsLoading(false);
     }

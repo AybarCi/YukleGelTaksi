@@ -14,6 +14,9 @@ const verifySchema = Joi.object({
     'string.length': 'Doğrulama kodu 6 haneli olmalıdır',
     'string.pattern.base': 'Doğrulama kodu sadece rakamlardan oluşmalıdır',
     'any.required': 'Doğrulama kodu gereklidir'
+  }),
+  user_type: Joi.string().valid('customer', 'driver').default('customer').messages({
+    'any.only': 'Kullanıcı tipi customer veya driver olmalıdır'
   })
 });
 
@@ -28,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { phone, code } = validation.data;
+    const { phone, code, user_type } = validation.data;
     const db = DatabaseConnection.getInstance();
     const pool = await db.connect();
 
@@ -68,10 +71,11 @@ export async function POST(request: NextRequest) {
         .input('first_name', `Kullanıcı`)
         .input('last_name', phone)
         .input('email', `user_${phone}@yuklegeltaksi.com`)
+        .input('user_type', user_type)
         .input('is_active', 1)
-        .query(`INSERT INTO users (phone_number, first_name, last_name, email, is_active, created_at, updated_at)
+        .query(`INSERT INTO users (phone_number, first_name, last_name, email, user_type, is_active, created_at, updated_at)
                 OUTPUT INSERTED.id
-                VALUES (@phone_number, @first_name, @last_name, @email, @is_active, GETDATE(), GETDATE())`);
+                VALUES (@phone_number, @first_name, @last_name, @email, @user_type, @is_active, GETDATE(), GETDATE())`);
 
       const userId = insertResult.recordset[0].id;
 
@@ -111,7 +115,7 @@ export async function POST(request: NextRequest) {
       phone: user.phone_number,
       full_name: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
       email: user.email,
-      user_type: 'passenger', // Default user type
+      user_type: user.user_type || user_type,
       is_verified: true, // SMS verified users are considered verified
       profile_image: user.profile_picture_url,
       created_at: user.created_at

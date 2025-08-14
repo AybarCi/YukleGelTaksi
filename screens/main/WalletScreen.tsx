@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   RefreshControl,
   Modal,
   TextInput,
@@ -24,7 +23,7 @@ interface Transaction {
 }
 
 const WalletScreen: React.FC = () => {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, showModal } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -83,28 +82,28 @@ const WalletScreen: React.FC = () => {
   const handleAddMoney = async () => {
     const amount = parseFloat(addAmount);
     if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Hata', 'Geçerli bir miktar girin');
+      showModal('Hata', 'Geçerli bir miktar girin', 'error');
       return;
     }
 
     if (amount < 10) {
-      Alert.alert('Hata', 'Minimum yükleme miktarı 10 TL\'dir');
+      showModal('Hata', 'Minimum yükleme miktarı 10 TL\'dir', 'error');
       return;
     }
 
     if (amount > 1000) {
-      Alert.alert('Hata', 'Maksimum yükleme miktarı 1000 TL\'dir');
+      showModal('Hata', 'Maksimum yükleme miktarı 1000 TL\'dir', 'error');
       return;
     }
 
     try {
       // TODO: Implement API call to add money
-      Alert.alert('Başarılı', `${amount.toFixed(2)} TL cüzdanınıza eklenmiştir`);
+      showModal('Başarılı', `${amount.toFixed(2)} TL cüzdanınıza eklenmiştir`, 'success');
       setShowAddMoneyModal(false);
       setAddAmount('');
       await refreshProfile();
     } catch (error) {
-      Alert.alert('Hata', 'Para ekleme işlemi başarısız oldu');
+      showModal('Hata', 'Para ekleme işlemi başarısız oldu', 'error');
     }
   };
 

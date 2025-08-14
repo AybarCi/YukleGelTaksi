@@ -109,9 +109,9 @@ CREATE TABLE trip_ratings (
     rating INT CHECK (rating >= 1 AND rating <= 5) NOT NULL,
     comment NVARCHAR(MAX),
     created_at DATETIME2 DEFAULT GETDATE(),
-    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE
+    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE NO ACTION,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE NO ACTION,
+    FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE NO ACTION
 );
 GO
 
@@ -153,7 +153,7 @@ CREATE TABLE wallet_transactions (
     trip_id INT,
     created_at DATETIME2 DEFAULT GETDATE(),
     FOREIGN KEY (wallet_id) REFERENCES user_wallets(id) ON DELETE CASCADE,
-    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE SET NULL
+    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE NO ACTION
 );
 GO
 
@@ -196,7 +196,7 @@ CREATE TABLE notifications (
     trip_id INT,
     created_at DATETIME2 DEFAULT GETDATE(),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE SET NULL
+    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE NO ACTION
 );
 GO
 
@@ -230,7 +230,7 @@ CREATE TABLE user_promotion_usage (
     used_at DATETIME2 DEFAULT GETDATE(),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (promotion_id) REFERENCES promotion_codes(id) ON DELETE CASCADE,
-    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
+    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE NO ACTION
 );
 GO
 
@@ -344,8 +344,15 @@ CREATE TABLE supervisor_sessions (
 GO
 
 -- Create indexes for supervisor tables
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_supervisors_username')
 CREATE INDEX idx_supervisors_username ON supervisors(username);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_supervisors_email')
 CREATE INDEX idx_supervisors_email ON supervisors(email);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_supervisor_sessions_token')
 CREATE INDEX idx_supervisor_sessions_token ON supervisor_sessions(token_hash);
 GO
 
@@ -365,7 +372,7 @@ GO
 -- Add new columns to existing drivers table if they don't exist
 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'drivers' AND COLUMN_NAME = 'tc_number')
 BEGIN
-    ALTER TABLE drivers ADD tc_number NVARCHAR(11) UNIQUE;
+    ALTER TABLE drivers ADD tc_number NVARCHAR(11);
 END
 GO
 

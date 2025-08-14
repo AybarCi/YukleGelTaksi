@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,15 +12,17 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function UserInfoScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { showModal } = useAuth();
 
   const handleContinue = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert('Hata', 'Lütfen ad ve soyad alanlarını doldurun.');
+      showModal('Hata', 'Lütfen ad ve soyad alanlarını doldurun.', 'error');
       return;
     }
 
@@ -35,7 +36,7 @@ export default function UserInfoScreen() {
       // Email info ekranına geç
       router.push('/email-info');
     } catch (error) {
-      Alert.alert('Hata', 'Bir hata oluştu. Lütfen tekrar deneyin.');
+      showModal('Hata', 'Bir hata oluştu. Lütfen tekrar deneyin.', 'error');
     } finally {
       setIsLoading(false);
     }

@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
     // 6 haneli rastgele kod oluştur
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Kodun geçerlilik süresi (5 dakika)
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    // Kodun geçerlilik süresi (1 dakika)
+    const expiresAt = new Date(Date.now() + 1 * 60 * 1000);
 
     try {
       // Veritabanı bağlantısı

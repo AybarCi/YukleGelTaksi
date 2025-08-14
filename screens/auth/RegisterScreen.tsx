@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -29,31 +28,31 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { register } = useAuth();
+  const { register, showModal } = useAuth();
 
   const handleRegister = async () => {
     if (!phone.trim() || !password.trim() || !fullName.trim()) {
-      Alert.alert('Hata', 'Lütfen zorunlu alanları doldurun');
+      showModal('Hata', 'Lütfen zorunlu alanları doldurun', 'error');
       return;
     }
 
     if (phone.length < 10 || phone.length > 11) {
-      Alert.alert('Hata', 'Geçerli bir telefon numarası girin');
+      showModal('Hata', 'Geçerli bir telefon numarası girin', 'error');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
+      showModal('Hata', 'Şifre en az 6 karakter olmalıdır', 'error');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Hata', 'Şifreler eşleşmiyor');
+      showModal('Hata', 'Şifreler eşleşmiyor', 'error');
       return;
     }
 
     if (email && !isValidEmail(email)) {
-      Alert.alert('Hata', 'Geçerli bir email adresi girin');
+      showModal('Hata', 'Geçerli bir email adresi girin', 'error');
       return;
     }
 

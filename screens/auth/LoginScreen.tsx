@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -26,16 +25,16 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, showModal } = useAuth();
 
   const handleLogin = async () => {
     if (!phone.trim() || !password.trim()) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+      showModal('Hata', 'Lütfen tüm alanları doldurun', 'error');
       return;
     }
 
     if (phone.length < 10 || phone.length > 11) {
-      Alert.alert('Hata', 'Geçerli bir telefon numarası girin');
+      showModal('Hata', 'Geçerli bir telefon numarası girin', 'error');
       return;
     }
 

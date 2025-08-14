@@ -1,0 +1,31 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="256" fill="#FCD34D"/>
+  
+  <!-- Car Body -->
+  <rect x="120" y="280" width="272" height="80" rx="40" fill="#000000"/>
+  
+  <!-- Car Windows -->
+  <rect x="140" y="240" width="80" height="50" rx="25" fill="#4B5563"/>
+  <rect x="292" y="240" width="80" height="50" rx="25" fill="#4B5563"/>
+  
+  <!-- Car Wheels -->
+  <circle cx="170" cy="360" r="30" fill="#1F2937"/>
+  <circle cx="342" cy="360" r="30" fill="#1F2937"/>
+  <circle cx="170" cy="360" r="15" fill="#6B7280"/>
+  <circle cx="342" cy="360" r="15" fill="#6B7280"/>
+  
+  <!-- Car Details -->
+  <rect x="240" y="300" width="32" height="20" rx="10" fill="#FCD34D"/>
+  <rect x="130" y="300" width="20" height="10" rx="5" fill="#FCD34D"/>
+  <rect x="362" y="300" width="20" height="10" rx="5" fill="#FCD34D"/>
+  
+  <!-- Taxi Sign -->
+  <rect x="200" y="200" width="112" height="32" rx="16" fill="#000000"/>
+  <text x="256" y="220" text-anchor="middle" fill="#FCD34D" font-family="Arial, sans-serif" font-size="18" font-weight="bold">TAKSİ</text>
+  
+  <!-- Motion Lines -->
+  <path d="M80 320 L110 320" stroke="#000000" stroke-width="4" stroke-linecap="round" opacity="0.3"/>
+  <path d="M85 335 L110 335" stroke="#000000" stroke-width="4" stroke-linecap="round" opacity="0.2"/>
+  <path d="M90 350 L110 350" stroke="#000000" stroke-width="4" stroke-linecap="round" opacity="0.1"/>
+</svg>

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,33 +12,37 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 
 const HomeScreen: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, showModal } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogout = () => {
-    Alert.alert(
+    showModal(
       'Çıkış Yap',
       'Hesabınızdan çıkmak istediğinizden emin misiniz?',
+      'warning',
       [
         {
           text: 'İptal',
           style: 'cancel',
+          onPress: () => {},
         },
         {
           text: 'Çıkış Yap',
           style: 'destructive',
-          onPress: logout,
+          onPress: async () => {
+            await logout();
+          },
         },
       ]
     );
   };
 
   const handleRequestRide = () => {
-    Alert.alert('Yakında', 'Taksi çağırma özelliği yakında eklenecek!');
+    showModal('Yakında', 'Taksi çağırma özelliği yakında eklenecek!', 'info');
   };
 
   const handleScheduleRide = () => {
-    Alert.alert('Yakında', 'Rezervasyon özelliği yakında eklenecek!');
+    showModal('Yakında', 'Rezervasyon özelliği yakında eklenecek!', 'info');
   };
 
   return (

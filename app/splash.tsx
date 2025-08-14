@@ -80,7 +80,7 @@ export default function SplashScreen() {
           <Ionicons name="car" size={60} color="#000000" />
         </View>
         
-        <Text style={styles.appName}>YükleGel</Text>
+        <Text style={styles.appName}>Yükle Gel</Text>
         <Text style={styles.appSubtitle}>Taksi</Text>
       </Animated.View>
       

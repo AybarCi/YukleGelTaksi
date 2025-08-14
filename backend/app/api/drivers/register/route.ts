@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
+import { authenticateToken } from '../../../../middleware/auth';
 import DatabaseConnection from '../../../../config/database';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 interface RegisterDriverRequest {
   tc_number: string;
@@ -30,8 +33,8 @@ interface RegisterDriverRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate supervisor
-    const authResult = await authenticateSupervisorToken(request);
+    // Authenticate user
+    const authResult = await authenticateToken(request);
     
     if (!authResult.success) {
       return NextResponse.json(
@@ -40,35 +43,70 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body: RegisterDriverRequest = await request.json();
-    const {
-      tc_number,
-      first_name,
-      last_name,
-      phone_number,
-      email,
-      tax_number,
-      tax_office,
-      license_number,
-      license_expiry_date,
-      vehicle_type,
-      vehicle_plate,
-      vehicle_model,
-      vehicle_color,
-      vehicle_year,
-      driver_photo,
-      license_photo,
-      eligibility_certificate,
-      uploaded_files
-    } = body;
+    // Get phone number from authenticated user
+    const userPhoneNumber = authResult.user.phone_number;
 
-    // Use uploaded files if available, otherwise use the string values
-    const finalDriverPhoto = uploaded_files?.driver_photo || driver_photo;
-    const finalLicensePhoto = uploaded_files?.license_photo || license_photo;
-    const finalEligibilityCertificate = uploaded_files?.eligibility_certificate || eligibility_certificate;
-
+    // Parse FormData
+    const formData = await request.formData();
+    
+    // Extract form fields
+    const tc_number = formData.get('tc_number') as string;
+    const first_name = formData.get('first_name') as string;
+    const last_name = formData.get('last_name') as string;
+    const email = formData.get('email') as string;
+    const tax_number = formData.get('tax_number') as string;
+    const tax_office = formData.get('tax_office') as string;
+    const license_number = formData.get('license_number') as string;
+    const license_expiry_date = formData.get('license_expiry_date') as string;
+    const vehicle_type = formData.get('vehicle_type') as string;
+    const vehicle_plate = formData.get('vehicle_plate') as string;
+    const vehicle_model = formData.get('vehicle_model') as string;
+    const vehicle_color = formData.get('vehicle_color') as string;
+    const vehicle_year = parseInt(formData.get('vehicle_year') as string);
+    
+    // Extract files
+    const driverPhotoFile = formData.get('driver_photo') as File;
+    const licensePhotoFile = formData.get('license_photo') as File;
+    const eligibilityCertificateFile = formData.get('eligibility_certificate') as File;
+    
+    // Handle file uploads
+    let finalDriverPhoto = '';
+    let finalLicensePhoto = '';
+    let finalEligibilityCertificate = '';
+    
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    
+    try {
+      await mkdir(uploadsDir, { recursive: true });
+    } catch (error) {
+      // Directory already exists
+    }
+    
+    if (driverPhotoFile && driverPhotoFile.size > 0) {
+      const fileName = `${uuidv4()}.${driverPhotoFile.name.split('.').pop()}`;
+      const filePath = path.join(uploadsDir, fileName);
+      const buffer = Buffer.from(await driverPhotoFile.arrayBuffer());
+      await writeFile(filePath, buffer);
+      finalDriverPhoto = fileName;
+    }
+    
+    if (licensePhotoFile && licensePhotoFile.size > 0) {
+      const fileName = `${uuidv4()}.${licensePhotoFile.name.split('.').pop()}`;
+      const filePath = path.join(uploadsDir, fileName);
+      const buffer = Buffer.from(await licensePhotoFile.arrayBuffer());
+      await writeFile(filePath, buffer);
+      finalLicensePhoto = fileName;
+    }
+    
+    if (eligibilityCertificateFile && eligibilityCertificateFile.size > 0) {
+      const fileName = `${uuidv4()}.${eligibilityCertificateFile.name.split('.').pop()}`;
+      const filePath = path.join(uploadsDir, fileName);
+      const buffer = Buffer.from(await eligibilityCertificateFile.arrayBuffer());
+      await writeFile(filePath, buffer);
+      finalEligibilityCertificate = fileName;
+    }
     // Validation
-    if (!tc_number || !first_name || !last_name || !phone_number || !license_number || !vehicle_plate || !vehicle_model) {
+    if (!tc_number || !first_name || !last_name || !license_number || !vehicle_plate || !vehicle_model) {
       return NextResponse.json(
         { error: 'Zorunlu alanlar eksik' },
         { status: 400 }
@@ -80,12 +118,12 @@ export async function POST(request: NextRequest) {
 
     // Check if phone number already exists in users table
     const existingUserResult = await pool.request()
-      .input('phone_number', phone_number)
+      .input('phone_number', userPhoneNumber)
       .query('SELECT id FROM users WHERE phone_number = @phone_number');
 
     // Check if phone number already exists in drivers table
     const existingDriverResult = await pool.request()
-      .input('phone_number', phone_number)
+      .input('phone_number', userPhoneNumber)
       .query('SELECT id FROM drivers WHERE phone_number = @phone_number');
 
     if (existingDriverResult.recordset.length > 0) {
@@ -120,7 +158,7 @@ export async function POST(request: NextRequest) {
         const userEmail = email || `driver_${Date.now()}_${Math.random().toString(36).substr(2, 9)}@yuklegeltaksi.com`;
         
         const userInsertResult = await transaction.request()
-          .input('phone_number', phone_number)
+          .input('phone_number', userPhoneNumber)
           .input('first_name', first_name)
           .input('last_name', last_name)
           .input('email', userEmail)
@@ -147,7 +185,6 @@ export async function POST(request: NextRequest) {
         .input('tc_number', tc_number)
         .input('first_name', first_name)
         .input('last_name', last_name)
-        .input('phone_number', phone_number)
         .input('email', email || null)
         .input('tax_number', tax_number || null)
         .input('tax_office', tax_office || null)
@@ -162,9 +199,21 @@ export async function POST(request: NextRequest) {
         .input('license_photo', finalLicensePhoto || null)
         .input('eligibility_certificate', finalEligibilityCertificate || null)
         .query(`
-          INSERT INTO drivers (first_name, last_name, phone_number, license_number, vehicle_plate, vehicle_model, vehicle_color)
+          INSERT INTO drivers (
+            user_id, tc_number, first_name, last_name, email,
+            tax_number, tax_office, license_number, license_expiry_date,
+            vehicle_type, vehicle_plate, vehicle_model, vehicle_color, vehicle_year,
+            driver_photo, license_photo, eligibility_certificate,
+            is_approved, is_active, created_at, updated_at
+          )
           OUTPUT INSERTED.id
-          VALUES (@first_name, @last_name, @phone_number, @license_number, @vehicle_plate, @vehicle_model, 'Beyaz')
+          VALUES (
+            @user_id, @tc_number, @first_name, @last_name, @email,
+            @tax_number, @tax_office, @license_number, @license_expiry_date,
+            @vehicle_type, @vehicle_plate, @vehicle_model, @vehicle_color, @vehicle_year,
+            @driver_photo, @license_photo, @eligibility_certificate,
+            0, 1, GETDATE(), GETDATE()
+          )
         `);
 
       const driverId = driverInsertResult.recordset[0].id;
@@ -178,7 +227,7 @@ export async function POST(request: NextRequest) {
         data: {
           driverId,
           userId,
-          phone_number,
+          phone_number: userPhoneNumber,
           first_name,
           last_name
         }

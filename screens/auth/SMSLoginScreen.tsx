@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -25,16 +24,16 @@ interface Props {
 const SMSLoginScreen: React.FC<Props> = ({ navigation }) => {
   const [phone, setPhone] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { sendSMS } = useAuth();
+  const { sendSMS, showModal } = useAuth();
 
   const handleSendSMS = async () => {
     if (!phone.trim()) {
-      Alert.alert('Hata', 'Lütfen telefon numaranızı girin');
+      showModal('Hata', 'Lütfen telefon numaranızı girin', 'error');
       return;
     }
 
     if (phone.length < 10 || phone.length > 11) {
-      Alert.alert('Hata', 'Geçerli bir telefon numarası girin');
+      showModal('Hata', 'Geçerli bir telefon numarası girin', 'error');
       return;
     }
 
@@ -106,7 +105,7 @@ const SMSLoginScreen: React.FC<Props> = ({ navigation }) => {
                 📱 Size SMS ile 6 haneli bir doğrulama kodu göndereceğiz
               </Text>
               <Text style={styles.infoText}>
-                ⏱️ Kod 10 dakika geçerli olacak
+                ⏱️ Kod 1 dakika geçerli olacak
               </Text>
               <Text style={styles.infoText}>
                 🔒 Telefon numaranız güvenli bir şekilde saklanır

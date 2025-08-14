@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
+import CustomModal from '../components/CustomModal';
 
 interface User {
   id: number;
@@ -21,11 +21,12 @@ interface AuthContextType {
   login: (phone: string, password: string) => Promise<boolean>;
   register: (userData: RegisterData) => Promise<boolean>;
   sendSMS: (phone: string) => Promise<boolean>;
-  verifySMS: (phone: string, code: string) => Promise<boolean>;
+  verifySMS: (phone: string, code: string, userType?: string) => Promise<{ success: boolean; token?: string }>;
   logout: () => Promise<void>;
   updateProfile: (userData: Partial<User>) => Promise<boolean>;
   refreshProfile: () => Promise<void>;
   refreshAuthToken: () => Promise<boolean>;
+  showModal: (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => void;
 }
 
 interface RegisterData {
@@ -38,13 +39,18 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'http://192.168.1.134:3001/api';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'success' | 'warning' | 'error' | 'info'>('info');
+  const [modalButtons, setModalButtons] = useState<any[]>([]);
 
 
 
@@ -183,12 +189,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await storeAuthData(authToken, authRefreshToken || '', userData);
         return true;
       } else {
-        Alert.alert('Giriş Hatası', data.message || 'Giriş yapılamadı');
+        showModal('Giriş Hatası', data.message || 'Giriş yapılamadı', 'error');
         return false;
       }
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.');
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
       return false;
     } finally {
       setIsLoading(false);
@@ -216,12 +222,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await storeAuthData(authToken, authRefreshToken || '', newUser);
         return true;
       } else {
-        Alert.alert('Kayıt Hatası', data.message || 'Kayıt oluşturulamadı');
+        showModal('Kayıt Hatası', data.message || 'Kayıt oluşturulamadı', 'error');
         return false;
       }
     } catch (error) {
       console.error('Register error:', error);
-      Alert.alert('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.');
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
       return false;
     } finally {
       setIsLoading(false);
@@ -243,17 +249,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.success) {
         return true;
       } else {
-        Alert.alert('SMS Hatası', data.message || 'SMS gönderilemedi');
+        showModal('SMS Hatası', data.message || 'SMS gönderilemedi', 'error');
         return false;
       }
     } catch (error) {
       console.error('Send SMS error:', error);
-      Alert.alert('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.');
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
       return false;
     }
   };
 
-  const verifySMS = async (phone: string, code: string): Promise<boolean> => {
+  const verifySMS = async (phone: string, code: string, userType?: string): Promise<{ success: boolean; token?: string }> => {
     try {
       setIsLoading(true);
       const response = await fetch(`${API_BASE_URL}/auth/verify-sms`, {
@@ -261,7 +267,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ phone, code }),
+        body: JSON.stringify({ phone, code, user_type: userType || 'customer' }),
       });
 
       const data = await response.json();
@@ -272,15 +278,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(authToken);
         setRefreshToken(authRefreshToken);
         await storeAuthData(authToken, authRefreshToken, userData);
-        return true;
+        return { success: true, token: authToken };
       } else {
-        Alert.alert('Doğrulama Hatası', data.message || 'Kod doğrulanamadı');
-        return false;
+        showModal('Doğrulama Hatası', data.message || 'Kod doğrulanamadı', 'error');
+        return { success: false };
       }
     } catch (error) {
       console.error('Verify SMS error:', error);
-      Alert.alert('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.');
-      return false;
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+      return { success: false };
     } finally {
       setIsLoading(false);
     }
@@ -292,8 +298,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setRefreshToken(null);
       await clearAuthData();
+      // Modal'ı kapat
+      setModalVisible(false);
     } catch (error) {
       console.error('Logout error:', error);
+      // Hata durumunda da modal'ı kapat
+      setModalVisible(false);
     }
   };
 
@@ -311,12 +321,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem('user_data', JSON.stringify(data.data));
         return true;
       } else {
-        Alert.alert('Güncelleme Hatası', data.message || 'Profil güncellenemedi');
+        showModal('Güncelleme Hatası', data.message || 'Profil güncellenemedi', 'error');
         return false;
       }
     } catch (error) {
       console.error('Update profile error:', error);
-      Alert.alert('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.');
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
       return false;
     }
   };
@@ -368,6 +378,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const showModal = (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType(type);
+    
+    // Button'ların onPress fonksiyonlarını wrap et ki modal kapansın
+    const wrappedButtons = buttons ? buttons.map(button => ({
+      ...button,
+      onPress: () => {
+        setModalVisible(false);
+        if (button.onPress) {
+          button.onPress();
+        }
+      }
+    })) : [{ text: 'Tamam', onPress: () => setModalVisible(false) }];
+    
+    setModalButtons(wrappedButtons);
+    setModalVisible(true);
+  };
+
   const value: AuthContextType = {
     user,
     token,
@@ -381,9 +411,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateProfile,
     refreshProfile,
     refreshAuthToken,
+    showModal,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <CustomModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        title={modalTitle}
+        message={modalMessage}
+        type={modalType}
+        buttons={modalButtons}
+      />
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = (): AuthContextType => {

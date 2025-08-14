@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -15,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 
 const ProfileScreen: React.FC = () => {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, showModal } = useAuth();
   const [showEditModal, setShowEditModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -24,18 +23,22 @@ const ProfileScreen: React.FC = () => {
   });
 
   const handleLogout = () => {
-    Alert.alert(
+    showModal(
       'Çıkış Yap',
       'Hesabınızdan çıkmak istediğinizden emin misiniz?',
+      'warning',
       [
         {
           text: 'İptal',
           style: 'cancel',
+          onPress: () => {},
         },
         {
           text: 'Çıkış Yap',
           style: 'destructive',
-          onPress: logout,
+          onPress: async () => {
+            await logout();
+          },
         },
       ]
     );
@@ -43,12 +46,12 @@ const ProfileScreen: React.FC = () => {
 
   const handleSaveProfile = async () => {
     if (!editForm.full_name.trim()) {
-      Alert.alert('Hata', 'Ad Soyad alanı boş bırakılamaz');
+      showModal('Hata', 'Ad Soyad alanı boş bırakılamaz', 'error');
       return;
     }
 
     if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) {
-      Alert.alert('Hata', 'Geçerli bir e-posta adresi girin');
+      showModal('Hata', 'Geçerli bir e-posta adresi girin', 'error');
       return;
     }
 
@@ -61,7 +64,7 @@ const ProfileScreen: React.FC = () => {
 
     if (success) {
       setShowEditModal(false);
-      Alert.alert('Başarılı', 'Profil bilgileriniz güncellendi');
+      showModal('Başarılı', 'Profil bilgileriniz güncellendi', 'success');
     }
   };
 
@@ -84,37 +87,37 @@ const ProfileScreen: React.FC = () => {
       icon: 'location-outline',
       title: 'Adreslerim',
       subtitle: 'Kayıtlı adreslerinizi yönetin',
-      onPress: () => Alert.alert('Yakında', 'Bu özellik yakında eklenecek'),
+      onPress: () => showModal('Yakında', 'Bu özellik yakında eklenecek', 'info'),
     },
     {
       icon: 'card-outline',
       title: 'Ödeme Yöntemleri',
       subtitle: 'Kredi kartı ve diğer ödeme seçenekleri',
-      onPress: () => Alert.alert('Yakında', 'Bu özellik yakında eklenecek'),
+      onPress: () => showModal('Yakında', 'Bu özellik yakında eklenecek', 'info'),
     },
     {
       icon: 'notifications-outline',
       title: 'Bildirimler',
       subtitle: 'Bildirim tercihlerinizi ayarlayın',
-      onPress: () => Alert.alert('Yakında', 'Bu özellik yakında eklenecek'),
+      onPress: () => showModal('Yakında', 'Bu özellik yakında eklenecek', 'info'),
     },
     {
       icon: 'shield-outline',
       title: 'Güvenlik',
       subtitle: 'Şifre değiştirme ve güvenlik ayarları',
-      onPress: () => Alert.alert('Yakında', 'Bu özellik yakında eklenecek'),
+      onPress: () => showModal('Yakında', 'Bu özellik yakında eklenecek', 'info'),
     },
     {
       icon: 'help-circle-outline',
       title: 'Yardım ve Destek',
       subtitle: 'SSS, iletişim ve destek',
-      onPress: () => Alert.alert('Yakında', 'Bu özellik yakında eklenecek'),
+      onPress: () => showModal('Yakında', 'Bu özellik yakında eklenecek', 'info'),
     },
     {
       icon: 'information-circle-outline',
       title: 'Hakkında',
       subtitle: 'Uygulama sürümü ve yasal bilgiler',
-      onPress: () => Alert.alert('YükleGel Taksi', 'Sürüm 1.0.0\n\n© 2024 YükleGel Taksi'),
+      onPress: () => showModal('YükleGel Taksi', 'Sürüm 1.0.0\n\n© 2024 YükleGel Taksi', 'info'),
     },
   ];
 

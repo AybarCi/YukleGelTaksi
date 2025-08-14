@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -32,9 +31,9 @@ const SMSVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
   const { phone } = route.params;
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
-  const [countdown, setCountdown] = useState(600); // 10 minutes
+  const [countdown, setCountdown] = useState(60); // 1 minute
   const [canResend, setCanResend] = useState(false);
-  const { verifySMS, sendSMS } = useAuth();
+  const { verifySMS, sendSMS, showModal } = useAuth();
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   useEffect(() => {
@@ -77,7 +76,7 @@ const SMSVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
     const codeToVerify = verificationCode || code.join('');
     
     if (codeToVerify.length !== 6) {
-      Alert.alert('Hata', 'Lütfen 6 haneli doğrulama kodunu girin');
+      showModal('Hata', 'Lütfen 6 haneli doğrulama kodunu girin', 'error');
       return;
     }
 
@@ -95,11 +94,11 @@ const SMSVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
 
     const success = await sendSMS(phone);
     if (success) {
-      setCountdown(600);
+      setCountdown(60);
       setCanResend(false);
       setCode(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
-      Alert.alert('Başarılı', 'Yeni doğrulama kodu gönderildi');
+      showModal('Başarılı', 'Yeni doğrulama kodu gönderildi', 'success');
     }
   };
 

@@ -7,21 +7,22 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import LoadingIndicator from '../components/LoadingIndicator';
 
 export default function PhoneAuthScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { sendSMS } = useAuth();
+  const [userType, setUserType] = useState<'customer' | 'driver'>('customer');
+  const { sendSMS, showModal } = useAuth();
 
   const handleSendCode = async () => {
     if (phoneNumber.length < 10) {
-      Alert.alert('Hata', 'Lütfen geçerli bir telefon numarası girin.');
+      showModal('Hata', 'Lütfen geçerli bir telefon numarası girin.', 'error');
       return;
     }
 
@@ -35,14 +36,14 @@ export default function PhoneAuthScreen() {
       const success = await sendSMS(cleanedPhone);
       
       if (success) {
-        // Telefon numarasını verify-code ekranına aktar
+        // Telefon numarasını ve kullanıcı tipini verify-code ekranına aktar
         router.push({
           pathname: '/verify-code',
-          params: { phoneNumber: cleanedPhone }
+          params: { phoneNumber: cleanedPhone, userType }
         });
       }
     } catch (error) {
-      Alert.alert('Hata', 'SMS gönderilirken bir hata oluştu.');
+      showModal('Hata', 'SMS gönderilirken bir hata oluştu.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -86,6 +87,37 @@ export default function PhoneAuthScreen() {
           Size SMS ile doğrulama kodu göndereceğiz
         </Text>
 
+        {/* Kullanıcı Tipi Seçimi */}
+        <View style={styles.userTypeContainer}>
+          <TouchableOpacity 
+            style={[styles.userTypeButton, userType === 'customer' && styles.userTypeButtonActive]}
+            onPress={() => setUserType('customer')}
+          >
+            <Ionicons 
+              name="person" 
+              size={24} 
+              color={userType === 'customer' ? '#FCD34D' : '#6B7280'} 
+            />
+            <Text style={[styles.userTypeText, userType === 'customer' && styles.userTypeTextActive]}>
+              Müşteri
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.userTypeButton, userType === 'driver' && styles.userTypeButtonActive]}
+            onPress={() => setUserType('driver')}
+          >
+            <Ionicons 
+              name="car" 
+              size={24} 
+              color={userType === 'driver' ? '#FCD34D' : '#6B7280'} 
+            />
+            <Text style={[styles.userTypeText, userType === 'driver' && styles.userTypeTextActive]}>
+              Sürücü Olmak İstiyorum
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.inputContainer}>
           <Text style={styles.countryCode}>+90</Text>
           <TextInput
@@ -105,7 +137,7 @@ export default function PhoneAuthScreen() {
           disabled={phoneNumber.length < 10 || isLoading}
         >
           <Text style={styles.continueButtonText}>
-            {isLoading ? 'Gönderiliyor...' : 'Devam Et'}
+            Devam Et
           </Text>
         </TouchableOpacity>
 
@@ -113,6 +145,11 @@ export default function PhoneAuthScreen() {
           Devam ederek Kullanım Şartları ve Gizlilik Politikası'nı kabul etmiş olursunuz.
         </Text>
       </View>
+      
+      <LoadingIndicator 
+        visible={isLoading} 
+        text="SMS gönderiliyor..." 
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -204,5 +241,36 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  userTypeContainer: {
+    flexDirection: 'row',
+    marginBottom: 32,
+    gap: 12,
+  },
+  userTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    gap: 8,
+  },
+  userTypeButtonActive: {
+    borderColor: '#FCD34D',
+    backgroundColor: '#FEF3C7',
+  },
+  userTypeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  userTypeTextActive: {
+    color: '#000000',
   },
 });

@@ -27,12 +27,14 @@ export async function authenticateToken(request: NextRequest): Promise<{ success
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret') as any;
     
     // Veritabanından kullanıcı bilgilerini al
-    const db = DatabaseConnection.getInstance();
+    const dbInstance = DatabaseConnection.getInstance();
+    const pool = await dbInstance.connect();
     
-    const user = await db.get(
-      'SELECT * FROM users WHERE id = ? AND is_active = 1',
-      [decoded.userId]
-    );
+    const userResult = await pool.request()
+      .input('userId', decoded.userId)
+      .query('SELECT * FROM users WHERE id = @userId AND is_active = 1');
+
+    const user = userResult.recordset[0];
 
     if (!user) {
       return {
@@ -45,8 +47,9 @@ export async function authenticateToken(request: NextRequest): Promise<{ success
       success: true,
       user: {
         id: user.id,
-        phone: user.phone,
-        full_name: user.full_name,
+        phone_number: user.phone_number,
+        first_name: user.first_name,
+        last_name: user.last_name,
         email: user.email,
         user_type: user.user_type
       }

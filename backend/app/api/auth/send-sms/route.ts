@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     // Generate verification code
     const code = generateVerificationCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
 
     // Save verification code to database
     await pool.request()
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       message: 'Doğrulama kodu gönderildi',
       data: {
         phone: phone,
-        expiresIn: 600 // 10 minutes in seconds
+        expiresIn: 60 // 1 minute in seconds
       }
     });
 
