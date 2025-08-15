@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import DatabaseConnection from '../../../../config/database';
+import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate supervisor
+    const authResult = await authenticateSupervisorToken(request);
+    
+    if (!authResult.success) {
+      return NextResponse.json(
+        { error: authResult.message },
+        { status: 401 }
+      );
+    }
+
     const { driverId, isApproved } = await request.json();
 
     if (!driverId || typeof isApproved !== 'boolean') {
@@ -12,21 +23,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = DatabaseConnection.getInstance();
-    await db.connect();
+    const dbInstance = DatabaseConnection.getInstance();
+    const pool = await dbInstance.connect();
 
     // Update driver approval status
-    const updateQuery = `
-      UPDATE drivers 
-      SET is_approved = @isApproved,
-          updated_at = GETDATE()
-      WHERE id = @driverId
-    `;
-
-    const result = await db.run(updateQuery, {
-      driverId: driverId,
-      isApproved: isApproved ? 1 : 0
-    });
+    const result = await pool.request()
+      .input('driverId', driverId)
+      .input('isApproved', isApproved ? 1 : 0)
+      .query(`
+        UPDATE drivers 
+        SET is_approved = @isApproved,
+            updated_at = GETDATE()
+        WHERE id = @driverId
+      `);
 
     if (result.rowsAffected[0] === 0) {
       return NextResponse.json(
@@ -50,7 +59,23 @@ export async function POST(request: NextRequest) {
       WHERE d.id = @driverId
     `;
 
-    const driver = await db.get(selectQuery, { driverId });
+    const driverResult = await pool.request()
+      .input('driverId', driverId)
+      .query(`
+        SELECT 
+          d.id,
+          d.first_name,
+          d.last_name,
+          d.phone_number,
+          d.is_approved,
+          d.is_active,
+          d.created_at,
+          d.updated_at
+        FROM drivers d
+        WHERE d.id = @driverId
+      `);
+
+    const driver = driverResult.recordset[0];
 
     return NextResponse.json({
       success: true,

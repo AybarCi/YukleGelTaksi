@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as jwt from 'jsonwebtoken';
+import sql from 'mssql';
 import DatabaseConnection from '../config/database';
 
 export interface AuthenticatedRequest extends NextRequest {
@@ -31,7 +32,7 @@ export async function authenticateToken(request: NextRequest): Promise<{ success
     const pool = await dbInstance.connect();
     
     const userResult = await pool.request()
-      .input('userId', decoded.userId)
+      .input('userId', sql.Int, decoded.userId)
       .query('SELECT * FROM users WHERE id = @userId AND is_active = 1');
 
     const user = userResult.recordset[0];

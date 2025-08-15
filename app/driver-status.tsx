@@ -29,14 +29,19 @@ export default function DriverStatusScreen() {
   const { showModal } = useAuth();
   const [driverStatus, setDriverStatus] = useState<DriverStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
 
   useEffect(() => {
     loadDriverStatus();
   }, []);
 
-  const loadDriverStatus = async () => {
+  const loadDriverStatus = async (isRefresh = false) => {
     try {
+      if (isRefresh) {
+        setIsRefreshing(true);
+      }
+      
       // Token'ı AsyncStorage'dan al
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
@@ -54,6 +59,9 @@ export default function DriverStatusScreen() {
       if (response.ok) {
         const result = await response.json();
         setDriverStatus(result.data);
+        if (isRefresh) {
+          showModal('Başarılı', 'Durum bilgisi güncellendi.', 'success');
+        }
       } else if (response.status === 404) {
         // Sürücü kaydı bulunamadı, kayıt ekranına yönlendir
         router.replace('/driver-registration');
@@ -65,6 +73,7 @@ export default function DriverStatusScreen() {
       showModal('Hata', 'Bağlantı hatası oluştu.', 'error');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -160,6 +169,9 @@ export default function DriverStatusScreen() {
           <Text style={styles.statusDescription}>{statusInfo.description}</Text>
           
           <View style={styles.driverInfo}>
+            <Text style={styles.applicationNumber}>
+              Başvuru No: #{driverStatus.id.toString().padStart(6, '0')}
+            </Text>
             <Text style={styles.driverName}>
               {driverStatus.first_name} {driverStatus.last_name}
             </Text>
@@ -173,21 +185,27 @@ export default function DriverStatusScreen() {
         <TouchableOpacity 
           style={[
             styles.actionButton,
-            { backgroundColor: statusInfo.canContinue ? '#10B981' : statusInfo.color }
+            { backgroundColor: statusInfo.canContinue ? '#10B981' : statusInfo.color },
+            isRefreshing && !statusInfo.canContinue && styles.disabledButton
           ]}
-          onPress={statusInfo.canContinue ? handleContinueAsDriver : loadDriverStatus}
+          onPress={() => {
+            if (statusInfo.canContinue) {
+              handleContinueAsDriver();
+            } else {
+              loadDriverStatus(true);
+            }
+          }}
+          disabled={isRefreshing && !statusInfo.canContinue}
         >
-          <Text style={styles.actionButtonText}>{statusInfo.actionText}</Text>
+          {isRefreshing && !statusInfo.canContinue ? (
+            <View style={styles.buttonContent}>
+              <ActivityIndicator size="small" color="#FFFFFF" style={styles.buttonLoader} />
+              <Text style={styles.actionButtonText}>Yenileniyor...</Text>
+            </View>
+          ) : (
+            <Text style={styles.actionButtonText}>{statusInfo.actionText}</Text>
+          )}
         </TouchableOpacity>
-
-        {!statusInfo.canContinue && (
-          <TouchableOpacity 
-            style={styles.secondaryButton}
-            onPress={() => router.push('/home')}
-          >
-            <Text style={styles.secondaryButtonText}>Müşteri Olarak Devam Et</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </View>
   );
@@ -275,6 +293,16 @@ const styles = StyleSheet.create({
     borderTopColor: '#E5E7EB',
     width: '100%',
   },
+  applicationNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FCD34D',
+    marginBottom: 12,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
   driverName: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -342,5 +370,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#000000',
+  },
+  disabledButton: {
+    opacity: 0.7,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonLoader: {
+    marginRight: 8,
   },
 });

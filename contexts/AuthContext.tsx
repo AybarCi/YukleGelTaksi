@@ -66,9 +66,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const storedUser = await AsyncStorage.getItem('user_data');
       
       if (storedToken && storedRefreshToken && storedUser) {
+        const userData = JSON.parse(storedUser);
         setToken(storedToken);
         setRefreshToken(storedRefreshToken);
-        setUser(JSON.parse(storedUser));
+        setUser(userData);
         
         // Test if current token is valid by making a simple API call
         try {
@@ -101,11 +102,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setUser(null);
               setToken(null);
               setRefreshToken(null);
+              return;
             }
           }
+          
+          // Token is valid, redirect based on user type
+          if (userData.user_type === 'driver') {
+            // Check driver status
+            try {
+              const driverStatusResponse = await fetch(`${API_BASE_URL}/drivers/status`, {
+                headers: {
+                  'Authorization': `Bearer ${storedToken}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (driverStatusResponse.ok) {
+                const driverData = await driverStatusResponse.json();
+                if (driverData.data.is_approved && driverData.data.is_active) {
+                  // Approved driver, go to driver dashboard
+                  setTimeout(() => {
+                    require('expo-router').router.replace('/driver-dashboard');
+                  }, 100);
+                } else {
+                  // Driver not approved, go to status screen
+                  setTimeout(() => {
+                    require('expo-router').router.replace('/driver-status');
+                  }, 100);
+                }
+              } else if (driverStatusResponse.status === 404) {
+                // No driver record, go to registration
+                setTimeout(() => {
+                  require('expo-router').router.replace('/driver-registration');
+                }, 100);
+              }
+            } catch (driverError) {
+              console.error('Error checking driver status:', driverError);
+              // Default to driver registration on error
+              setTimeout(() => {
+                require('expo-router').router.replace('/driver-registration');
+              }, 100);
+            }
+          } else {
+            // Regular user, go to home
+            setTimeout(() => {
+              require('expo-router').router.replace('/home');
+            }, 100);
+          }
+          
         } catch (tokenTestError) {
           console.error('Error testing token validity:', tokenTestError);
           // If there's a network error, keep the user logged in with stored data
+          // But still redirect based on user type
+          if (userData.user_type === 'driver') {
+            setTimeout(() => {
+              require('expo-router').router.replace('/driver-status');
+            }, 100);
+          } else {
+            setTimeout(() => {
+              require('expo-router').router.replace('/home');
+            }, 100);
+          }
         }
       }
     } catch (error) {

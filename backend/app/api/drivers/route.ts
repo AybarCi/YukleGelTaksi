@@ -42,7 +42,30 @@ export async function GET(request: NextRequest) {
     const pool = await dbInstance.connect();
     
     const result = await pool.request().query(`
-      SELECT TOP 10 * FROM drivers
+      SELECT 
+        d.*,
+        u.first_name as user_first_name,
+        u.last_name as user_last_name,
+        u.email as user_email,
+        u.phone_number as user_phone_number,
+        u.user_type,
+        u.is_active as user_is_active,
+        u.created_at as user_created_at,
+        CASE 
+          WHEN d.driver_photo IS NOT NULL AND d.driver_photo != '' THEN 1
+          ELSE 0
+        END as has_driver_photo,
+        CASE 
+          WHEN d.license_photo IS NOT NULL AND d.license_photo != '' THEN 1
+          ELSE 0
+        END as has_license_photo,
+        CASE 
+          WHEN d.eligibility_certificate IS NOT NULL AND d.eligibility_certificate != '' THEN 1
+          ELSE 0
+        END as has_eligibility_certificate
+      FROM drivers d
+      LEFT JOIN users u ON d.user_id = u.id
+      ORDER BY d.created_at DESC
     `);
 
     const drivers: Driver[] = result.recordset;

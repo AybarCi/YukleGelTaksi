@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
+import { useAuth } from '../contexts/AuthContext';
 
 
 const { width, height } = Dimensions.get('window');
@@ -18,6 +19,7 @@ const { width, height } = Dimensions.get('window');
 export default function SplashScreen() {
   const fadeAnim = new Animated.Value(0);
   const scaleAnim = new Animated.Value(0.8);
+  const { isLoading, user } = useAuth();
 
   useEffect(() => {
     // Logo animasyonu
@@ -35,18 +37,20 @@ export default function SplashScreen() {
       }),
     ]).start();
 
-    // İzinleri kontrol et ve sonraki ekrana geç
+    // İzinleri kontrol et
     checkPermissionsAndNavigate();
   }, []);
 
-  // 3 saniye sonra telefon auth ekranına geç
+  // AuthContext loading tamamlandığında ve kullanıcı yoksa phone-auth'a yönlendir
   useEffect(() => {
-    const timer = setTimeout(() => {
-      router.replace('/phone-auth');
-    }, 3000);
+    if (!isLoading && !user) {
+      const timer = setTimeout(() => {
+        router.replace('/phone-auth');
+      }, 1000); // 1 saniye bekle
 
-    return () => clearTimeout(timer);
-  }, []);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, user]);
 
   const checkPermissionsAndNavigate = async () => {
     try {

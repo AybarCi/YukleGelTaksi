@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -57,6 +57,40 @@ export default function DriverRegistrationScreen() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Sayfa yüklendiğinde kullanıcının mevcut başvurusunu kontrol et
+  useEffect(() => {
+    checkExistingApplication();
+  }, []);
+
+  const checkExistingApplication = async () => {
+    try {
+      console.log('Token:', token);
+      console.log('Checking existing application...');
+      
+      const response = await fetch('http://localhost:3001/api/drivers/status', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('Response status:', response.status);
+      const result = await response.json();
+      console.log('Response result:', result);
+
+      if (response.ok) {
+        if (result.exists) {
+          // Kullanıcının zaten başvurusu var, durum sayfasına yönlendir
+          router.replace('/driver-status');
+        }
+      }
+    } catch (error) {
+      console.log('Başvuru durumu kontrol edilirken hata:', error);
+      // Hata durumunda kullanıcıyı başvuru sayfasında bırak
+    }
+  };
 
   const updateFormData = (field: keyof DriverFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -118,7 +152,7 @@ export default function DriverRegistrationScreen() {
         }
       });
 
-      const response = await fetch('http://192.168.1.134:3001/api/drivers/register', {
+      const response = await fetch('http://localhost:3001/api/drivers/register', {
         method: 'POST',
         body: formDataToSend,
         headers: {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateToken } from '../../../../middleware/auth';
+import sql from 'mssql';
 import DatabaseConnection from '../../../../config/database';
 
 export async function GET(request: NextRequest) {
@@ -14,37 +15,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get phone number from authenticated user
-    const userPhoneNumber = authResult.user.phone_number;
+    // Get user ID from authenticated user
+    const userId = authResult.user.id;
 
-    const db = DatabaseConnection.getInstance();
+    const dbInstance = DatabaseConnection.getInstance();
+    const pool = await dbInstance.connect();
     
-    // Sürücü bilgilerini getir
-    const selectQuery = `
-      SELECT 
-        id,
-        first_name,
-        last_name,
-        phone_number,
-        is_approved,
-        is_active,
-        created_at,
-        updated_at
-      FROM drivers 
-      WHERE phone_number = @phone
-    `;
+    // Sürücü bilgilerini getir (users tablosu ile join)
+    const driverResult = await pool.request()
+      .input('userId', sql.Int, userId)
+      .query(`
+        SELECT 
+          d.id,
+          d.first_name,
+          d.last_name,
+          u.phone_number,
+          d.is_approved,
+          d.is_active,
+          d.created_at,
+          d.updated_at
+        FROM drivers d
+        INNER JOIN users u ON d.user_id = u.id
+        WHERE u.id = @userId
+      `);
 
-    const driver = await db.get(selectQuery, { phone: userPhoneNumber });
+    const driver = driverResult.recordset[0];
 
     if (!driver) {
-      return NextResponse.json(
-        { error: 'Sürücü kaydı bulunamadı' },
-        { status: 404 }
-      );
+      return NextResponse.json({
+        success: true,
+        exists: false,
+        message: 'Sürücü kaydı bulunamadı'
+      });
     }
 
     return NextResponse.json({
       success: true,
+      exists: true,
       data: {
         id: driver.id,
         first_name: driver.first_name,
@@ -65,4 +72,15 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }
