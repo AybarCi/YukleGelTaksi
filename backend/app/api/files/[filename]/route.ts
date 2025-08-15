@@ -49,6 +49,12 @@ export async function GET(
       case 'pdf':
         contentType = 'application/pdf';
         break;
+      case 'doc':
+        contentType = 'application/msword';
+        break;
+      case 'docx':
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        break;
     }
 
     return new NextResponse(fileBuffer, {

@@ -32,10 +32,18 @@ export async function POST(request: NextRequest) {
     for (const [key, value] of entries) {
       if (value instanceof File && value.size > 0) {
         // Validate file type
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
+        const allowedTypes = [
+          'image/jpeg', 
+          'image/jpg', 
+          'image/png', 
+          'image/webp', 
+          'application/pdf',
+          'application/msword', // .doc
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // .docx
+        ];
         if (!allowedTypes.includes(value.type)) {
           return NextResponse.json(
-            { error: `Geçersiz dosya tipi: ${value.type}. Sadece JPEG, PNG, WebP ve PDF dosyaları kabul edilir.` },
+            { error: `Geçersiz dosya tipi: ${value.type}. Sadece JPEG, PNG, WebP, PDF ve Word dosyaları kabul edilir.` },
             { status: 400 }
           );
         }

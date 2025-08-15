@@ -203,6 +203,17 @@ CREATE TABLE user_promotion_usage (
     FOREIGN KEY (trip_id) REFERENCES trips(id)
 );
 
+-- Taşıma hesaplama ayarları tablosu
+CREATE TABLE pricing_settings (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    base_price DECIMAL(10,2) NOT NULL DEFAULT 50.00,
+    price_per_km DECIMAL(10,2) NOT NULL DEFAULT 5.00,
+    price_per_kg DECIMAL(10,2) NOT NULL DEFAULT 2.00,
+    labor_price DECIMAL(10,2) NOT NULL DEFAULT 25.00,
+    created_at DATETIME2 DEFAULT GETDATE(),
+    updated_at DATETIME2 DEFAULT GETDATE()
+);
+
 -- İndeksler
 CREATE INDEX IX_users_phone_number ON users(phone_number);
 CREATE INDEX IX_users_email ON users(email);

@@ -184,7 +184,14 @@ export default function DriverRegistrationScreen() {
   const pickDocument = async (field: 'driver_photo' | 'license_photo' | 'eligibility_certificate') => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*'],
+        type: [
+          'image/png',
+          'image/jpg', 
+          'image/jpeg',
+          'application/pdf',
+          'application/msword', // .doc
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // .docx
+        ],
         copyToCacheDirectory: true,
       });
 
