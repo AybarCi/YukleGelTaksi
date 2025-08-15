@@ -106,23 +106,25 @@ export async function GET(request: NextRequest) {
     }
 
     const db = DatabaseConnection.getInstance();
-    await db.connect();
+    const pool = await db.connect();
 
-    const selectQuery = `
-      SELECT 
-        d.id,
-        d.first_name,
-        d.last_name,
-        d.phone,
-        d.is_approved,
-        d.is_active,
-        d.created_at,
-        d.updated_at
-      FROM drivers d
-      WHERE d.id = @driverId
-    `;
+    const driverResult = await pool.request()
+      .input('driverId', driverId)
+      .query(`
+        SELECT 
+          d.id,
+          d.first_name,
+          d.last_name,
+          d.phone_number,
+          d.is_approved,
+          d.is_active,
+          d.created_at,
+          d.updated_at
+        FROM drivers d
+        WHERE d.id = @driverId
+      `);
 
-    const driver = await db.get(selectQuery, { driverId });
+    const driver = driverResult.recordset[0];
 
     if (!driver) {
       return NextResponse.json(

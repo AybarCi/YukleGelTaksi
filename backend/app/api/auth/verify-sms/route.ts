@@ -68,8 +68,8 @@ export async function POST(request: NextRequest) {
       // Create new user if doesn't exist
       const insertResult = await pool.request()
         .input('phone_number', phone)
-        .input('first_name', `Kullanıcı`)
-        .input('last_name', phone)
+        .input('first_name', '')
+        .input('last_name', '')
         .input('email', `user_${phone}@yuklegeltaksi.com`)
         .input('user_type', user_type)
         .input('is_active', 1)

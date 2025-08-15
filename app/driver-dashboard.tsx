@@ -37,7 +37,7 @@ interface DriverInfo {
 }
 
 export default function DriverDashboardScreen() {
-  const { showModal } = useAuth();
+  const { showModal, logout } = useAuth();
   const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isOnline, setIsOnline] = useState(false);
@@ -61,7 +61,7 @@ export default function DriverDashboardScreen() {
         return;
       }
 
-      const response = await fetch(`http://192.168.1.134:3001/api/drivers/status`, {
+      const response = await fetch(`http://192.168.1.12:3001/api/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -72,7 +72,10 @@ export default function DriverDashboardScreen() {
         setIsOnline(result.data.is_active);
       }
     } catch (error) {
-      showModal('Hata', 'Sürücü bilgileri alınırken hata oluştu.', 'error');
+      console.log('Error loading driver info:', error);
+      // Network error - logout user and redirect to login
+      await logout();
+      router.replace('/phone-auth');
     }
   };
 
@@ -158,7 +161,7 @@ export default function DriverDashboardScreen() {
         {
           text: 'Çıkış Yap',
           onPress: async () => {
-            await AsyncStorage.removeItem('phoneNumber');
+            await logout();
             router.replace('/phone-auth');
           },
         },

@@ -26,7 +26,7 @@ interface DriverStatus {
 }
 
 export default function DriverStatusScreen() {
-  const { showModal } = useAuth();
+  const { showModal, logout } = useAuth();
   const [driverStatus, setDriverStatus] = useState<DriverStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -50,7 +50,7 @@ export default function DriverStatusScreen() {
       }
       
       // Sürücü durumunu API'den çek
-      const response = await fetch(`http://192.168.1.134:3001/api/drivers/status`, {
+      const response = await fetch(`http://192.168.1.12:3001/api/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -58,7 +58,18 @@ export default function DriverStatusScreen() {
       
       if (response.ok) {
         const result = await response.json();
-        setDriverStatus(result.data);
+        console.log('Driver status response:', result);
+        
+        // API response'ının yapısına göre kontrol et
+        if (result.exists === false) {
+          // Sürücü kaydı bulunamadı, kayıt ekranına yönlendir
+          router.replace('/driver-registration');
+          return;
+        }
+        
+        // API response'ının yapısına göre data'yı al
+        const driverData = result.data || result;
+        setDriverStatus(driverData);
         if (isRefresh) {
           showModal('Başarılı', 'Durum bilgisi güncellendi.', 'success');
         }
@@ -70,7 +81,10 @@ export default function DriverStatusScreen() {
         showModal('Hata', 'Durum bilgisi alınırken bir hata oluştu.', 'error');
       }
     } catch (error) {
-      showModal('Hata', 'Bağlantı hatası oluştu.', 'error');
+      console.log('Error checking driver status:', error);
+      // Network error - logout user and redirect to login
+      await logout();
+      router.replace('/phone-auth');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -86,7 +100,7 @@ export default function DriverStatusScreen() {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('phoneNumber');
+    await logout();
     router.replace('/phone-auth');
   };
 
@@ -107,7 +121,7 @@ export default function DriverStatusScreen() {
         <Ionicons name="alert-circle" size={64} color="#EF4444" />
         <Text style={styles.errorTitle}>Bir hata oluştu</Text>
         <Text style={styles.errorText}>Durum bilgisi alınamadı</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadDriverStatus}>
+        <TouchableOpacity style={styles.retryButton} onPress={() => loadDriverStatus()}>
           <Text style={styles.retryButtonText}>Tekrar Dene</Text>
         </TouchableOpacity>
       </View>

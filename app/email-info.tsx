@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function EmailInfoScreen() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { showModal } = useAuth();
+  const { showModal, updateUserInfo, user } = useAuth();
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,12 +38,16 @@ export default function EmailInfoScreen() {
     setIsLoading(true);
     
     try {
-      // Burada API çağrısı yapılacak
-      // Kullanıcı kaydı tamamlanacak ve token oluşturulacak
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Kullanıcının mevcut ad soyad bilgilerini al ve e-posta ile birlikte güncelle
+      const fullName = user?.full_name || '';
+      const [firstName = '', lastName = ''] = fullName.split(' ');
       
-      // Ana ekrana geç
-      router.replace('/home');
+      const success = await updateUserInfo(firstName, lastName, email.trim());
+      
+      if (success) {
+        // Ana ekrana geç
+        router.replace('/home');
+      }
     } catch (error) {
       showModal('Hata', 'Bir hata oluştu. Lütfen tekrar deneyin.', 'error');
     } finally {

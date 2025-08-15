@@ -24,6 +24,7 @@ interface AuthContextType {
   verifySMS: (phone: string, code: string, userType?: string) => Promise<{ success: boolean; token?: string }>;
   logout: () => Promise<void>;
   updateProfile: (userData: Partial<User>) => Promise<boolean>;
+  updateUserInfo: (firstName: string, lastName: string, email?: string) => Promise<boolean>;
   refreshProfile: () => Promise<void>;
   refreshAuthToken: () => Promise<boolean>;
   showModal: (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => void;
@@ -39,7 +40,7 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = 'http://192.168.1.134:3001/api';
+const API_BASE_URL = 'http://192.168.1.12:3001/api';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -119,13 +120,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               
               if (driverStatusResponse.ok) {
                 const driverData = await driverStatusResponse.json();
-                if (driverData.data.is_approved && driverData.data.is_active) {
+                // Null/undefined kontrolü ekle
+                if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
                   // Approved driver, go to driver dashboard
                   setTimeout(() => {
                     require('expo-router').router.replace('/driver-dashboard');
                   }, 100);
                 } else {
-                  // Driver not approved, go to status screen
+                  // Driver not approved or incomplete data, go to status screen
                   setTimeout(() => {
                     require('expo-router').router.replace('/driver-status');
                   }, 100);
@@ -135,12 +137,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setTimeout(() => {
                   require('expo-router').router.replace('/driver-registration');
                 }, 100);
+              } else {
+                // Other HTTP errors, go to driver status
+                console.error('Driver status check failed with status:', driverStatusResponse.status);
+                setTimeout(() => {
+                  require('expo-router').router.replace('/driver-status');
+                }, 100);
               }
             } catch (driverError) {
               console.error('Error checking driver status:', driverError);
-              // Default to driver registration on error
+              // Network error - logout user and redirect to login
+              await clearAuthData();
+              setUser(null);
+              setToken(null);
+              setRefreshToken(null);
               setTimeout(() => {
-                require('expo-router').router.replace('/driver-registration');
+                require('expo-router').router.replace('/phone-auth');
               }, 100);
             }
           } else {
@@ -152,17 +164,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
         } catch (tokenTestError) {
           console.error('Error testing token validity:', tokenTestError);
-          // If there's a network error, keep the user logged in with stored data
-          // But still redirect based on user type
-          if (userData.user_type === 'driver') {
-            setTimeout(() => {
-              require('expo-router').router.replace('/driver-status');
-            }, 100);
-          } else {
-            setTimeout(() => {
-              require('expo-router').router.replace('/home');
-            }, 100);
-          }
+          // Network error - logout user and redirect to login
+          await clearAuthData();
+          setUser(null);
+          setToken(null);
+          setRefreshToken(null);
+          setTimeout(() => {
+            require('expo-router').router.replace('/phone-auth');
+          }, 100);
         }
       }
     } catch (error) {
@@ -388,6 +397,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUserInfo = async (firstName: string, lastName: string, email?: string): Promise<boolean> => {
+    try {
+      const response = await makeAuthenticatedRequest('/auth/update-user-info', {
+        method: 'PUT',
+        body: JSON.stringify({ 
+          first_name: firstName, 
+          last_name: lastName, 
+          email: email || '' 
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update user data with new info
+        const updatedUser = {
+          ...user!,
+          full_name: `${firstName} ${lastName}`,
+          email: email || user?.email
+        };
+        setUser(updatedUser);
+        await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));
+        return true;
+      } else {
+        showModal('Güncelleme Hatası', data.message || 'Kullanıcı bilgileri güncellenemedi', 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Update user info error:', error);
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+      return false;
+    }
+  };
+
   const refreshProfile = async (): Promise<void> => {
     try {
       const response = await makeAuthenticatedRequest('/auth/profile');
@@ -466,6 +509,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     verifySMS,
     logout,
     updateProfile,
+    updateUserInfo,
     refreshProfile,
     refreshAuthToken,
     showModal,

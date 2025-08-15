@@ -20,9 +20,37 @@ export default function PhoneAuthScreen() {
   const [userType, setUserType] = useState<'customer' | 'driver'>('customer');
   const { sendSMS, showModal } = useAuth();
 
+  const validatePhoneAuth = () => {
+    // Kullanıcı tipi seçimi kontrolü
+    if (!userType) {
+      showModal('Hata', 'Lütfen kullanıcı tipini seçin.', 'error');
+      return false;
+    }
+    
+    // Telefon numarası kontrolü
+    const cleanedPhone = phoneNumber.replace(/\D/g, '');
+    
+    if (!cleanedPhone.trim()) {
+      showModal('Hata', 'Lütfen telefon numaranızı girin.', 'error');
+      return false;
+    }
+    
+    if (cleanedPhone.length !== 10) {
+      showModal('Hata', 'Telefon numarası 10 haneli olmalıdır.', 'error');
+      return false;
+    }
+    
+    // Türkiye cep telefonu formatı kontrolü (5XX ile başlamalı)
+    if (!cleanedPhone.startsWith('5')) {
+      showModal('Hata', 'Lütfen geçerli bir cep telefonu numarası girin.', 'error');
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleSendCode = async () => {
-    if (phoneNumber.length < 10) {
-      showModal('Hata', 'Lütfen geçerli bir telefon numarası girin.', 'error');
+    if (!validatePhoneAuth()) {
       return;
     }
 
@@ -113,7 +141,7 @@ export default function PhoneAuthScreen() {
               color={userType === 'driver' ? '#FCD34D' : '#6B7280'} 
             />
             <Text style={[styles.userTypeText, userType === 'driver' && styles.userTypeTextActive]}>
-              Sürücü Olmak İstiyorum
+              Sürücü
             </Text>
           </TouchableOpacity>
         </View>

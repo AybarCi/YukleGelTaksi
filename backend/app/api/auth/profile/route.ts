@@ -32,15 +32,19 @@ export async function GET(request: NextRequest) {
     }
 
     const db = DatabaseConnection.getInstance();
+    const pool = await db.connect();
     
     // Get user profile with wallet info
-    const user = await db.get(
-      `SELECT u.*, w.balance as wallet_balance
-       FROM users u
-       LEFT JOIN wallets w ON u.id = w.user_id
-       WHERE u.id = ?`,
-      [authResult.user.id]
-    );
+    const userResult = await pool.request()
+      .input('userId', authResult.user.id)
+      .query(`
+        SELECT u.*, w.balance as wallet_balance
+        FROM users u
+        LEFT JOIN wallets w ON u.id = w.user_id
+        WHERE u.id = @userId
+      `);
+    
+    const user = userResult.recordset[0];
 
     if (!user) {
       return NextResponse.json(
@@ -103,15 +107,16 @@ export async function PUT(request: NextRequest) {
 
     const updateData = validation.data;
     const db = DatabaseConnection.getInstance();
+    const pool = await db.connect();
 
     // Check if email is already taken by another user
     if (updateData.email) {
-      const existingUser = await db.get(
-        'SELECT id FROM users WHERE email = ? AND id != ?',
-        [updateData.email, authResult.user.id]
-      );
+      const existingUserResult = await pool.request()
+        .input('email', updateData.email)
+        .input('userId', authResult.user.id)
+        .query('SELECT id FROM users WHERE email = @email AND id != @userId');
 
-      if (existingUser) {
+      if (existingUserResult.recordset.length > 0) {
         return NextResponse.json(
           { success: false, message: 'Bu email adresi başka bir kullanıcı tarafından kullanılıyor' },
           { status: 409 }
@@ -121,12 +126,12 @@ export async function PUT(request: NextRequest) {
 
     // Build update query dynamically
     const updateFields = [];
-    const updateValues = [];
+    const updateRequest = pool.request();
     
     for (const [key, value] of Object.entries(updateData)) {
       if (value !== undefined) {
-        updateFields.push(`${key} = ?`);
-        updateValues.push(value);
+        updateFields.push(`${key} = @${key}`);
+        updateRequest.input(key, value);
       }
     }
 
@@ -137,23 +142,25 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    updateFields.push('updated_at = CURRENT_TIMESTAMP');
-    updateValues.push(authResult.user.id);
+    updateFields.push('updated_at = GETDATE()');
+    updateRequest.input('userId', authResult.user.id);
 
     // Update user profile
-    await db.run(
-      `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
-      updateValues
+    await updateRequest.query(
+      `UPDATE users SET ${updateFields.join(', ')} WHERE id = @userId`
     );
 
     // Get updated user data
-    const updatedUser = await db.get(
-      `SELECT u.*, w.balance as wallet_balance
-       FROM users u
-       LEFT JOIN wallets w ON u.id = w.user_id
-       WHERE u.id = ?`,
-      [authResult.user.id]
-    );
+    const updatedUserResult = await pool.request()
+      .input('userId', authResult.user.id)
+      .query(`
+        SELECT u.*, w.balance as wallet_balance
+        FROM users u
+        LEFT JOIN wallets w ON u.id = w.user_id
+        WHERE u.id = @userId
+      `);
+    
+    const updatedUser = updatedUserResult.recordset[0];
 
     // Return updated user data (excluding password)
     const userData = {

@@ -36,7 +36,7 @@ interface DriverFormData {
 }
 
 export default function DriverRegistrationScreen() {
-  const { showModal, token } = useAuth();
+  const { showModal, token, logout } = useAuth();
   const [formData, setFormData] = useState<DriverFormData>({
     tc_number: '',
     first_name: '',
@@ -68,7 +68,7 @@ export default function DriverRegistrationScreen() {
       console.log('Token:', token);
       console.log('Checking existing application...');
       
-      const response = await fetch('http://localhost:3001/api/drivers/status', {
+      const response = await fetch('http://192.168.1.12:3001/api/drivers/status', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -88,12 +88,97 @@ export default function DriverRegistrationScreen() {
       }
     } catch (error) {
       console.log('Başvuru durumu kontrol edilirken hata:', error);
-      // Hata durumunda kullanıcıyı başvuru sayfasında bırak
+      // Network error - logout user and redirect to login
+      await logout();
+      router.replace('/phone-auth');
     }
   };
 
   const updateFormData = (field: keyof DriverFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Adım validasyon fonksiyonları
+  const validateStep1 = () => {
+    const requiredFields = ['tc_number', 'first_name', 'last_name', 'email', 'tax_number', 'tax_office'];
+    
+    for (const field of requiredFields) {
+      if (!formData[field as keyof DriverFormData]) {
+        showModal('Hata', 'Lütfen tüm zorunlu alanları doldurun.', 'error');
+        return false;
+      }
+    }
+    
+    // TC Kimlik No kontrolü
+    if (formData.tc_number.length !== 11) {
+      showModal('Hata', 'TC Kimlik numarası 11 haneli olmalıdır.', 'error');
+      return false;
+    }
+    
+    // Email formatı kontrolü
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      showModal('Hata', 'Lütfen geçerli bir e-posta adresi girin.', 'error');
+      return false;
+    }
+    
+    return true;
+  };
+
+  const validateStep2 = () => {
+    const requiredFields = ['license_number', 'license_expiry_date'];
+    
+    for (const field of requiredFields) {
+      if (!formData[field as keyof DriverFormData]) {
+        showModal('Hata', 'Lütfen tüm zorunlu alanları doldurun.', 'error');
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  const validateStep3 = () => {
+    const requiredFields = ['vehicle_plate', 'vehicle_model', 'vehicle_color', 'vehicle_year'];
+    
+    for (const field of requiredFields) {
+      if (!formData[field as keyof DriverFormData]) {
+        showModal('Hata', 'Lütfen tüm zorunlu alanları doldurun.', 'error');
+        return false;
+      }
+    }
+    
+    // Model yılı kontrolü
+    const currentYear = new Date().getFullYear();
+    const vehicleYear = parseInt(formData.vehicle_year);
+    if (isNaN(vehicleYear) || vehicleYear < 1990 || vehicleYear > currentYear + 1) {
+      showModal('Hata', 'Lütfen geçerli bir model yılı girin.', 'error');
+      return false;
+    }
+    
+    return true;
+  };
+
+  const handleNextStep = () => {
+    let isValid = false;
+    
+    switch (currentStep) {
+      case 1:
+        isValid = validateStep1();
+        break;
+      case 2:
+        isValid = validateStep2();
+        break;
+      case 3:
+        isValid = validateStep3();
+        break;
+      default:
+        isValid = true;
+    }
+    
+    if (isValid) {
+      setCurrentStep(currentStep + 1);
+    }
   };
 
   const pickDocument = async (field: 'driver_photo' | 'license_photo' | 'eligibility_certificate') => {
@@ -111,23 +196,17 @@ export default function DriverRegistrationScreen() {
     }
   };
 
-  const handleSubmit = async () => {
-    // Form validasyonu
-    const requiredFields = [
-      'tc_number', 'first_name', 'last_name', 'email', 'tax_number', 
-      'tax_office', 'license_number', 'license_expiry_date', 'vehicle_plate', 
-      'vehicle_model', 'vehicle_color', 'vehicle_year'
-    ];
-
-    for (const field of requiredFields) {
-      if (!formData[field as keyof DriverFormData]) {
-        showModal('Hata', 'Lütfen tüm zorunlu alanları doldurun.', 'error');
-        return;
-      }
-    }
-
+  const validateStep4 = () => {
     if (!formData.driver_photo || !formData.license_photo || !formData.eligibility_certificate) {
       showModal('Hata', 'Lütfen tüm belgeleri yükleyin.', 'error');
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    // Son adım validasyonu
+    if (!validateStep4()) {
       return;
     }
 
@@ -152,7 +231,7 @@ export default function DriverRegistrationScreen() {
         }
       });
 
-      const response = await fetch('http://localhost:3001/api/drivers/register', {
+      const response = await fetch('http://192.168.1.12:3001/api/drivers/register', {
         method: 'POST',
         body: formDataToSend,
         headers: {
@@ -399,12 +478,16 @@ export default function DriverRegistrationScreen() {
       <StatusBar style="dark" />
       
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => currentStep > 1 ? setCurrentStep(currentStep - 1) : router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
+        {currentStep > 1 ? (
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => setCurrentStep(currentStep - 1)}
+          >
+            <Ionicons name="arrow-back" size={24} color="#000" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
         <Text style={styles.headerTitle}>Sürücü Başvurusu</Text>
         <View style={styles.stepIndicator}>
           <Text style={styles.stepText}>{currentStep}/4</Text>
@@ -422,7 +505,7 @@ export default function DriverRegistrationScreen() {
         {currentStep < 4 ? (
           <TouchableOpacity 
             style={styles.nextButton}
-            onPress={() => setCurrentStep(currentStep + 1)}
+            onPress={handleNextStep}
           >
             <Text style={styles.nextButtonText}>Devam Et</Text>
           </TouchableOpacity>

@@ -18,23 +18,61 @@ export default function UserInfoScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { showModal } = useAuth();
+  const { showModal, updateUserInfo } = useAuth();
+
+  const validateUserInfo = () => {
+    // Ad kontrolü
+    if (!firstName.trim()) {
+      showModal('Hata', 'Lütfen adınızı girin.', 'error');
+      return false;
+    }
+    
+    if (firstName.trim().length < 2) {
+      showModal('Hata', 'Ad en az 2 karakter olmalıdır.', 'error');
+      return false;
+    }
+    
+    // Sadece harf ve boşluk kontrolü (ad için)
+    if (!/^[a-zA-ZğüşıöçĞÜŞİÖÇ\s]+$/.test(firstName.trim())) {
+      showModal('Hata', 'Ad sadece harflerden oluşmalıdır.', 'error');
+      return false;
+    }
+    
+    // Soyad kontrolü
+    if (!lastName.trim()) {
+      showModal('Hata', 'Lütfen soyadınızı girin.', 'error');
+      return false;
+    }
+    
+    if (lastName.trim().length < 2) {
+      showModal('Hata', 'Soyad en az 2 karakter olmalıdır.', 'error');
+      return false;
+    }
+    
+    // Sadece harf ve boşluk kontrolü (soyad için)
+    if (!/^[a-zA-ZğüşıöçĞÜŞİÖÇ\s]+$/.test(lastName.trim())) {
+      showModal('Hata', 'Soyad sadece harflerden oluşmalıdır.', 'error');
+      return false;
+    }
+    
+    return true;
+  };
 
   const handleContinue = async () => {
-    if (!firstName.trim() || !lastName.trim()) {
-      showModal('Hata', 'Lütfen ad ve soyad alanlarını doldurun.', 'error');
+    if (!validateUserInfo()) {
       return;
     }
 
     setIsLoading(true);
     
     try {
-      // Burada API çağrısı yapılacak
-      // Şimdilik mock olarak 1 saniye bekleyip devam ediyoruz
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Kullanıcı ad ve soyad bilgilerini güncelle
+      const success = await updateUserInfo(firstName.trim(), lastName.trim());
       
-      // Email info ekranına geç
-      router.push('/email-info');
+      if (success) {
+        // Email info ekranına geç
+        router.push('/email-info');
+      }
     } catch (error) {
       showModal('Hata', 'Bir hata oluştu. Lütfen tekrar deneyin.', 'error');
     } finally {

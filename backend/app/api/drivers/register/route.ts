@@ -106,9 +106,18 @@ export async function POST(request: NextRequest) {
       finalEligibilityCertificate = fileName;
     }
     // Validation
-    if (!tc_number || !first_name || !last_name || !license_number || !vehicle_plate || !vehicle_model) {
+    if (!tc_number || !first_name?.trim() || !last_name?.trim() || !email?.trim() || !license_number || !vehicle_plate || !vehicle_model) {
       return NextResponse.json(
-        { error: 'Zorunlu alanlar eksik' },
+        { error: 'Zorunlu alanlar eksik: TC kimlik no, ad, soyad, email, ehliyet no, araç plakası ve araç modeli gereklidir' },
+        { status: 400 }
+      );
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: 'Geçerli bir e-posta adresi girin' },
         { status: 400 }
       );
     }
@@ -154,8 +163,8 @@ export async function POST(request: NextRequest) {
 
       // If user doesn't exist, create user record
       if (existingUserResult.recordset.length === 0) {
-        // Generate a unique email if not provided to avoid UNIQUE constraint violation
-        const userEmail = email || `driver_${Date.now()}_${Math.random().toString(36).substr(2, 9)}@yuklegeltaksi.com`;
+        // Use the email from form data, don't generate automatic email
+        const userEmail = email;
         
         const userInsertResult = await transaction.request()
           .input('phone_number', userPhoneNumber)
@@ -171,12 +180,15 @@ export async function POST(request: NextRequest) {
         
         userId = userInsertResult.recordset[0].id;
       } else {
-        // Update existing user to driver type
+        // Update existing user with driver info and type
         userId = existingUserResult.recordset[0].id;
         await transaction.request()
           .input('user_id', userId)
+          .input('first_name', first_name)
+          .input('last_name', last_name)
+          .input('email', email)
           .input('user_type', 'driver')
-          .query('UPDATE users SET user_type = @user_type, updated_at = GETDATE() WHERE id = @user_id');
+          .query('UPDATE users SET first_name = @first_name, last_name = @last_name, email = @email, user_type = @user_type, updated_at = GETDATE() WHERE id = @user_id');
       }
 
       // Insert driver record

@@ -19,7 +19,7 @@ export default function VerifyCodeScreen() {
   const [timer, setTimer] = useState(60);
   const inputRefs = useRef<TextInput[]>([]);
   const { phoneNumber, userType } = useLocalSearchParams<{ phoneNumber: string; userType: string }>();
-  const { verifySMS, sendSMS, showModal, token } = useAuth();
+  const { verifySMS, sendSMS, showModal, token, logout } = useAuth();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -57,11 +57,25 @@ export default function VerifyCodeScreen() {
     }
   };
 
+  const validateVerificationCode = (codeToVerify: string) => {
+    if (codeToVerify.length !== 6) {
+      showModal('Hata', 'Lütfen 6 haneli doğrulama kodunu girin.', 'error');
+      return false;
+    }
+    
+    // Sadece rakam kontrolü
+    if (!/^[0-9]+$/.test(codeToVerify)) {
+      showModal('Hata', 'Doğrulama kodu sadece rakamlardan oluşmalıdır.', 'error');
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleVerifyCode = async (verificationCode?: string) => {
     const codeToVerify = verificationCode || code.join('');
     
-    if (codeToVerify.length !== 6) {
-      showModal('Hata', 'Lütfen 6 haneli doğrulama kodunu girin.', 'error');
+    if (!validateVerificationCode(codeToVerify)) {
       return;
     }
 
@@ -83,7 +97,7 @@ export default function VerifyCodeScreen() {
         if (userType === 'driver') {
           // Sürücü için önce durumunu kontrol et
           try {
-            const response = await fetch(`http://192.168.1.134:3001/api/drivers/status`, {
+            const response = await fetch(`http://192.168.1.12:3001/api/drivers/status`, {
               headers: {
                 'Authorization': `Bearer ${result.token}`,
                 'Content-Type': 'application/json'
@@ -100,8 +114,10 @@ export default function VerifyCodeScreen() {
               showModal('Hata', 'Durum kontrol edilirken hata oluştu.', 'error');
             }
           } catch (error) {
-            // API hatası, kayıt ekranına yönlendir
-            router.replace('/driver-registration');
+            console.log('Error checking driver status:', error);
+            // Network error - logout user and redirect to login
+            await logout();
+            router.replace('/phone-auth');
           }
         } else {
           router.replace('/home');
