@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function EmailInfoScreen() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { showModal, updateUserInfo, user } = useAuth();
+  const { showModal, updateEmail, user } = useAuth();
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,11 +38,8 @@ export default function EmailInfoScreen() {
     setIsLoading(true);
     
     try {
-      // Kullanıcının mevcut ad soyad bilgilerini al ve e-posta ile birlikte güncelle
-      const fullName = user?.full_name || '';
-      const [firstName = '', lastName = ''] = fullName.split(' ');
-      
-      const success = await updateUserInfo(firstName, lastName, email.trim());
+      // Sadece e-posta adresini güncelle
+      const success = await updateEmail(email.trim());
       
       if (success) {
         // Ana ekrana geç

@@ -25,6 +25,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateProfile: (userData: Partial<User>) => Promise<boolean>;
   updateUserInfo: (firstName: string, lastName: string, email?: string) => Promise<boolean>;
+  updateEmail: (email: string) => Promise<boolean>;
   refreshProfile: () => Promise<void>;
   refreshAuthToken: () => Promise<boolean>;
   showModal: (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => void;
@@ -40,7 +41,7 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = 'http://192.168.1.12:3001/api';
+const API_BASE_URL = 'http://10.133.72.240:3001/api';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -52,6 +53,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [modalMessage, setModalMessage] = useState('');
   const [modalType, setModalType] = useState<'success' | 'warning' | 'error' | 'info'>('info');
   const [modalButtons, setModalButtons] = useState<any[]>([]);
+  const [tokenRefreshTimer, setTokenRefreshTimer] = useState<number | null>(null);
 
 
 
@@ -107,7 +109,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
           
-          // Token is valid, redirect based on user type
+          // Token is valid, start auto-refresh timer
+          startTokenRefreshTimer();
+          
+          // Redirect based on user type
           if (userData.user_type === 'driver') {
             // Check driver status
             try {
@@ -156,9 +161,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }, 100);
             }
           } else {
-            // Regular user, go to home
+            // Regular user, check info and redirect
             setTimeout(() => {
-              require('expo-router').router.replace('/home');
+              checkCustomerInfoAndRedirect(userData);
             }, 100);
           }
           
@@ -253,6 +258,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(authToken);
         setRefreshToken(authRefreshToken || '');
         await storeAuthData(authToken, authRefreshToken || '', userData);
+        
+        // Token otomatik yenileme timer'ını başlat
+        startTokenRefreshTimer();
+        
         return true;
       } else {
         showModal('Giriş Hatası', data.message || 'Giriş yapılamadı', 'error');
@@ -269,6 +278,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (userData: RegisterData): Promise<boolean> => {
     try {
+      // Müşteri kayıt akışında zorunlu alanları kontrol et
+      if (userData.user_type === 'passenger' || !userData.user_type) {
+        if (!userData.full_name || userData.full_name.trim().length === 0) {
+          showModal('Kayıt Hatası', 'Ad ve soyad zorunludur', 'error');
+          return false;
+        }
+        
+        if (!userData.phone || userData.phone.trim().length === 0) {
+          showModal('Kayıt Hatası', 'Telefon numarası zorunludur', 'error');
+          return false;
+        }
+        
+        // Email opsiyonel ama girilmişse geçerli olmalı
+        if (userData.email && userData.email.trim().length > 0) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(userData.email)) {
+            showModal('Kayıt Hatası', 'Geçerli bir email adresi girin', 'error');
+            return false;
+          }
+        }
+      }
+      
       setIsLoading(true);
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
@@ -344,6 +375,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(authToken);
         setRefreshToken(authRefreshToken);
         await storeAuthData(authToken, authRefreshToken, userData);
+        
+        // Token otomatik yenileme timer'ını başlat
+        startTokenRefreshTimer();
+        
+        // SMS doğrulama sonrası kullanıcı tipine göre yönlendirme
+        setTimeout(() => {
+          if (userData.user_type === 'driver') {
+            // Sürücü için durum kontrolü yap
+            checkDriverStatusAndRedirect(authToken);
+          } else {
+            // Normal kullanıcı için bilgi kontrolü yap
+            checkCustomerInfoAndRedirect(userData);
+          }
+        }, 100);
+        
         return { success: true, token: authToken };
       } else {
         showModal('Doğrulama Hatası', data.message || 'Kod doğrulanamadı', 'error');
@@ -358,8 +404,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Sürücü durumu kontrol et ve yönlendir
+  const checkDriverStatusAndRedirect = async (authToken: string) => {
+    try {
+      const driverStatusResponse = await fetch(`${API_BASE_URL}/drivers/status`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (driverStatusResponse.ok) {
+        const driverData = await driverStatusResponse.json();
+        if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
+          require('expo-router').router.replace('/driver-dashboard');
+        } else {
+          require('expo-router').router.replace('/driver-status');
+        }
+      } else if (driverStatusResponse.status === 404) {
+        require('expo-router').router.replace('/driver-registration');
+      } else {
+        require('expo-router').router.replace('/driver-status');
+      }
+    } catch (error) {
+      console.error('Error checking driver status after SMS verification:', error);
+      require('expo-router').router.replace('/driver-registration');
+    }
+  };
+
+  // Müşteri bilgi kontrolü yap ve yönlendir
+  const checkCustomerInfoAndRedirect = (userData: User) => {
+    // Ad/soyad eksikse user-info ekranına yönlendir
+    if (!userData.full_name || userData.full_name.trim().length === 0) {
+      require('expo-router').router.replace('/user-info');
+    } else {
+      require('expo-router').router.replace('/home');
+    }
+  };
+
   const logout = async (): Promise<void> => {
     try {
+      // Token yenileme timer'ını durdur
+      stopTokenRefreshTimer();
+      
       setUser(null);
       setToken(null);
       setRefreshToken(null);
@@ -431,6 +518,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateEmail = async (email: string): Promise<boolean> => {
+    try {
+      const response = await makeAuthenticatedRequest('/auth/update-user-info', {
+        method: 'PUT',
+        body: JSON.stringify({ 
+          first_name: user?.full_name?.split(' ')[0] || '',
+          last_name: user?.full_name?.split(' ').slice(1).join(' ') || '',
+          email: email 
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update user data with new email
+        const updatedUser = {
+          ...user!,
+          email: email
+        };
+        setUser(updatedUser);
+        await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));
+        return true;
+      } else {
+        showModal('Güncelleme Hatası', data.message || 'Email güncellenemedi', 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Update email error:', error);
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+      return false;
+    }
+  };
+
   const refreshProfile = async (): Promise<void> => {
     try {
       const response = await makeAuthenticatedRequest('/auth/profile');
@@ -445,12 +565,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Token'ı otomatik yenileme timer'ını başlat
+  const startTokenRefreshTimer = () => {
+    // Mevcut timer'ı temizle
+    if (tokenRefreshTimer) {
+      clearInterval(tokenRefreshTimer);
+    }
+    
+    // 50 dakikada bir token'ı yenile (token süresi 1 saat olacak)
+    const timer = setInterval(async () => {
+      if (token && refreshToken) {
+        console.log('Auto-refreshing token...');
+        await refreshAuthToken();
+      }
+    }, 50 * 60 * 1000); // 50 dakika
+    
+    setTokenRefreshTimer(timer);
+  };
+
+  // Token refresh timer'ını durdur
+  const stopTokenRefreshTimer = () => {
+    if (tokenRefreshTimer) {
+      clearInterval(tokenRefreshTimer);
+      setTokenRefreshTimer(null);
+    }
+  };
+
   const refreshAuthToken = async (): Promise<boolean> => {
     try {
       if (!refreshToken) {
+        console.log('No refresh token available');
         return false;
       }
 
+      console.log('Refreshing auth token...');
       const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
         method: 'POST',
         headers: {
@@ -462,11 +610,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await response.json();
 
       if (data.success) {
-        const { token: newToken } = data.data;
+        const { token: newToken, refreshToken: newRefreshToken } = data.data;
         setToken(newToken);
+        
+        // Yeni refresh token varsa onu da güncelle
+        if (newRefreshToken) {
+          setRefreshToken(newRefreshToken);
+          await AsyncStorage.setItem('refresh_token', newRefreshToken);
+        }
+        
         await AsyncStorage.setItem('auth_token', newToken);
+        console.log('Token refreshed successfully');
         return true;
       } else {
+        console.log('Refresh token is invalid, logging out user');
         // Refresh token is invalid, logout user
         await logout();
         return false;
@@ -510,6 +667,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     updateProfile,
     updateUserInfo,
+    updateEmail,
     refreshProfile,
     refreshAuthToken,
     showModal,

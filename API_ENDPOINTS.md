@@ -14,7 +14,7 @@ Tüm sürücüleri listeler.
       "id": 1,
       "first_name": "Ahmet",
       "last_name": "Yılmaz",
-      "phone_number": "+905551234567",
+
       "email": "ahmet@example.com",
       "license_number": "34ABC123",
       "vehicle_plate": "34 XYZ 123",
@@ -56,7 +56,7 @@ Tüm sürücüleri listeler.
     "id": 1,
     "first_name": "Ahmet",
     "last_name": "Yılmaz",
-    "phone": "+905551234567",
+
     "is_approved": true,
     "is_active": true,
     "created_at": "2024-01-15T10:30:00Z",
@@ -102,7 +102,7 @@ Yeni sürücü kaydı oluşturur.
 **Request Body (multipart/form-data):**
 - `firstName`: string
 - `lastName`: string
-- `phoneNumber`: string
+
 - `email`: string
 - `licenseNumber`: string
 - `vehiclePlate`: string

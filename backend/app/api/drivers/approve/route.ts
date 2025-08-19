@@ -66,7 +66,6 @@ export async function POST(request: NextRequest) {
           d.id,
           d.first_name,
           d.last_name,
-          d.phone_number,
           d.is_approved,
           d.is_active,
           d.created_at,

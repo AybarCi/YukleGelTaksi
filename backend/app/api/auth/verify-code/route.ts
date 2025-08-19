@@ -99,9 +99,9 @@ export async function POST(request: Request): Promise<Response> {
           .input('phone_number', phoneNumber)
           .input('is_verified', true)
           .query(`
-            INSERT INTO users (phone_number, is_verified, first_name, last_name)
+            INSERT INTO users (phone_number, is_verified, first_name, last_name, email)
             OUTPUT INSERTED.*
-            VALUES (@phone_number, @is_verified, '', '')
+            VALUES (@phone_number, @is_verified, NULL, NULL, NULL)
           `);
         
         user = createUserResult.recordset[0];

@@ -97,16 +97,34 @@ export default function VerifyCodeScreen() {
         if (userType === 'driver') {
           // Sürücü için önce durumunu kontrol et
           try {
-            const response = await fetch(`http://192.168.1.12:3001/api/drivers/status`, {
+            // Timeout controller ekle
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
+            
+            const response = await fetch(`http://10.133.72.240:3001/api/drivers/status`, {
               headers: {
                 'Authorization': `Bearer ${result.token}`,
                 'Content-Type': 'application/json'
-              }
+              },
+              signal: controller.signal
             });
             
+            clearTimeout(timeoutId);
+            
             if (response.ok) {
-              // Sürücü kaydı var, durum ekranına yönlendir
-              router.replace('/driver-status');
+              const driverData = await response.json();
+              console.log('Driver status response:', driverData);
+              
+              if (driverData.exists === false) {
+                // Sürücü kaydı yok, kayıt ekranına yönlendir
+                router.replace('/driver-registration');
+              } else if (driverData.data && driverData.data.is_approved) {
+                // Sürücü onaylanmış, durum ekranına yönlendir
+                router.replace('/driver-status');
+              } else {
+                // Sürücü henüz onaylanmamış, kayıt ekranına yönlendir (belge yükleme için)
+                router.replace('/driver-registration');
+              }
             } else if (response.status === 404) {
               // Sürücü kaydı yok, kayıt ekranına yönlendir
               router.replace('/driver-registration');
@@ -115,12 +133,55 @@ export default function VerifyCodeScreen() {
             }
           } catch (error) {
             console.log('Error checking driver status:', error);
-            // Network error - logout user and redirect to login
-            await logout();
-            router.replace('/phone-auth');
+            if (error instanceof Error && error.name === 'AbortError') {
+              showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error');
+            } else {
+              showModal('Hata', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.', 'error');
+            }
+            // Network error durumunda logout yapma, sadece hata göster
           }
         } else {
-          router.replace('/home');
+          // Customer için - yeni kullanıcı mı kontrol et
+          try {
+            // Timeout controller ekle
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
+            
+            const userResponse = await fetch(`http://10.133.72.240:3001/api/auth/profile`, {
+              headers: {
+                'Authorization': `Bearer ${result.token}`,
+                'Content-Type': 'application/json'
+              },
+              signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              // Eğer first_name VE last_name VE email hepsi boş/null ise user-info ekranına yönlendir
+              // Aksi halde kullanıcının bilgileri var demektir, direkt home'a git
+              if ((!userData.data.first_name || userData.data.first_name.trim() === '') && 
+                  (!userData.data.last_name || userData.data.last_name.trim() === '') &&
+                  (!userData.data.email || userData.data.email.trim() === '' || userData.data.email.includes('yuklegeltaksi.com'))) {
+                router.replace('/user-info');
+              } else {
+                router.replace('/home');
+              }
+            } else {
+              // Profil bilgisi alınamazsa user-info ekranına yönlendir
+              router.replace('/user-info');
+            }
+          } catch (error) {
+            console.log('Error checking user profile:', error);
+            if (error instanceof Error && error.name === 'AbortError') {
+              showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error');
+            } else {
+              showModal('Hata', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.', 'error');
+            }
+            // Hata durumunda user-info ekranına yönlendir
+            router.replace('/user-info');
+          }
         }
       } else {
         setCode(['', '', '', '', '', '']);

@@ -291,23 +291,8 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_sessions_token')
 CREATE INDEX idx_user_sessions_token ON user_sessions(token_hash);
 GO
 
--- Insert some sample drivers for testing
-IF NOT EXISTS (SELECT * FROM drivers WHERE phone_number = '+905551234567')
-INSERT INTO drivers (
-    first_name, last_name, phone_number, email, license_number,
-    vehicle_plate, vehicle_model, vehicle_color, vehicle_year,
-    current_latitude, current_longitude, is_available, rating
-) VALUES 
-('Mehmet', 'Yılmaz', '+905551234567', 'mehmet@example.com', 'LIC001',
- '34ABC123', 'Toyota Corolla', 'Beyaz', 2020, 41.0082, 28.9784, 1, 4.8),
-('Ali', 'Demir', '+905551234568', 'ali@example.com', 'LIC002',
- '34DEF456', 'Hyundai Accent', 'Gri', 2019, 41.0370, 28.9857, 1, 4.6),
-('Fatma', 'Kaya', '+905551234569', 'fatma@example.com', 'LIC003',
- '34GHI789', 'Renault Clio', 'Kırmızı', 2021, 40.9923, 29.0244, 1, 4.9),
-('Ahmet', 'Özkan', '+905551234570', 'ahmet@example.com', 'LIC004',
- '34JKL012', 'Volkswagen Polo', 'Mavi', 2018, 41.0255, 28.9742, 1, 4.7),
-('Ayşe', 'Şahin', '+905551234571', 'ayse@example.com', 'LIC005',
- '34MNO345', 'Ford Fiesta', 'Siyah', 2022, 41.0138, 28.9497, 1, 4.5);
+-- Sample drivers removed - phone_number column no longer exists in drivers table
+-- Phone numbers are now stored in users table and linked via user_id
 GO
 
 -- Update last_location_update for sample drivers

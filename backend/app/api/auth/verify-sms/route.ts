@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     const token = generateToken({
       userId: user.id,
       phone: user.phone_number,
-      userType: 'passenger'
+      userType: user.user_type || user_type
     });
     
     const refreshToken = generateRefreshToken({

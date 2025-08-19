@@ -73,7 +73,7 @@ export function generateToken(data: { userId: number; phone: string; userType?: 
   };
   
   const options: jwt.SignOptions = {
-    expiresIn: '24h' // 24 saat
+    expiresIn: '1h' // 1 saat
   };
   
   return jwt.sign(payload, process.env.JWT_SECRET || 'default-secret', options);
@@ -88,7 +88,7 @@ export function generateRefreshToken(data: { userId: number; phone: string }): s
   };
   
   const options: jwt.SignOptions = {
-    expiresIn: '90d' // 90 gün
+    expiresIn: '120d' // 120 gün
   };
   
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET || 'refresh-secret', options);

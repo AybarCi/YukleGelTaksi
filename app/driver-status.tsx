@@ -50,7 +50,7 @@ export default function DriverStatusScreen() {
       }
       
       // Sürücü durumunu API'den çek
-      const response = await fetch(`http://192.168.1.12:3001/api/drivers/status`, {
+      const response = await fetch(`http://10.133.72.240:3001/api/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -100,8 +100,21 @@ export default function DriverStatusScreen() {
   };
 
   const handleLogout = async () => {
-    await logout();
-    router.replace('/phone-auth');
+    showModal(
+      'Çıkış Yap',
+      'Çıkış yapmak istediğinizden emin misiniz?',
+      'warning',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Çıkış Yap',
+          onPress: async () => {
+            await logout();
+            router.replace('/phone-auth');
+          },
+        },
+      ]
+    );
   };
 
   if (isLoading) {

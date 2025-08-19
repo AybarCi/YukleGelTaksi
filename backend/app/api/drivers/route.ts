@@ -6,7 +6,6 @@ interface Driver {
   id: number;
   first_name: string;
   last_name: string;
-  phone_number: string;
   tc_number?: string;
   license_number: string;
   license_expiry_date?: string;

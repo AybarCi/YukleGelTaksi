@@ -168,7 +168,7 @@ Content-Type: application/json
   "tc_number": "12345678901",
   "first_name": "Ahmet",
   "last_name": "Yılmaz",
-  "phone_number": "+905551234567",
+
   "email": "ahmet@example.com",
   "license_number": "LIC123456",
   "vehicle_type": "sedan",

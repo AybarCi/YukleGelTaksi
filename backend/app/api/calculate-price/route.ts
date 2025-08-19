@@ -30,9 +30,18 @@ interface PriceCalculationResult {
   labor_count: number;
 }
 
-// POST - Fiyat hesaplama (authentication gerektirmez)
+// POST - Fiyat hesaplama
 export async function POST(request: NextRequest) {
   try {
+    // Kullanıcı authentication kontrolü
+    const authResult = await authenticateToken(request);
+    if (!authResult.success) {
+      return NextResponse.json(
+        { error: authResult.message },
+        { status: 401 }
+      );
+    }
+
     const body: CalculatePriceRequest = await request.json();
     const { distance_km, weight_kg, labor_count } = body;
 

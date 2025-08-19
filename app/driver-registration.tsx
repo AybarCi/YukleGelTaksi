@@ -68,7 +68,7 @@ export default function DriverRegistrationScreen() {
       console.log('Token:', token);
       console.log('Checking existing application...');
       
-      const response = await fetch('http://192.168.1.12:3001/api/drivers/status', {
+      const response = await fetch('http://10.133.72.240:3001/api/drivers/status', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -238,7 +238,7 @@ export default function DriverRegistrationScreen() {
         }
       });
 
-      const response = await fetch('http://192.168.1.12:3001/api/drivers/register', {
+      const response = await fetch('http://10.133.72.240:3001/api/drivers/register', {
         method: 'POST',
         body: formDataToSend,
         headers: {

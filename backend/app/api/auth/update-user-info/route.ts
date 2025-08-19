@@ -104,7 +104,7 @@ export async function PUT(request: NextRequest) {
       .query(`
         SELECT u.*, w.balance as wallet_balance
         FROM users u
-        LEFT JOIN wallets w ON u.id = w.user_id
+        LEFT JOIN user_wallets w ON u.id = w.user_id
         WHERE u.id = @user_id
       `);
 

@@ -130,14 +130,14 @@ export async function POST(request: NextRequest) {
       .input('phone_number', userPhoneNumber)
       .query('SELECT id FROM users WHERE phone_number = @phone_number');
 
-    // Check if phone number already exists in drivers table
+    // Check if user already has a driver record
     const existingDriverResult = await pool.request()
-      .input('phone_number', userPhoneNumber)
-      .query('SELECT id FROM drivers WHERE phone_number = @phone_number');
+      .input('user_id', existingUserResult.recordset.length > 0 ? existingUserResult.recordset[0].id : null)
+      .query('SELECT id FROM drivers WHERE user_id = @user_id');
 
     if (existingDriverResult.recordset.length > 0) {
       return NextResponse.json(
-        { error: 'Bu telefon numarası ile kayıtlı sürücü zaten mevcut' },
+        { error: 'Bu kullanıcı için sürücü kaydı zaten mevcut' },
         { status: 400 }
       );
     }
@@ -191,13 +191,28 @@ export async function POST(request: NextRequest) {
           .query('UPDATE users SET first_name = @first_name, last_name = @last_name, email = @email, user_type = @user_type, updated_at = GETDATE() WHERE id = @user_id');
       }
 
+      // Check if email already exists in drivers table (if email is provided)
+      if (email && email.trim()) {
+        const existingEmailResult = await transaction.request()
+          .input('email', email)
+          .query('SELECT id FROM drivers WHERE email = @email');
+
+        if (existingEmailResult.recordset.length > 0) {
+          await transaction.rollback();
+          return NextResponse.json(
+            { error: 'Bu e-posta adresi ile kayıtlı sürücü zaten mevcut' },
+            { status: 400 }
+          );
+        }
+      }
+
       // Insert driver record
       const driverInsertResult = await transaction.request()
         .input('user_id', userId)
         .input('tc_number', tc_number)
         .input('first_name', first_name)
         .input('last_name', last_name)
-        .input('email', email || null)
+        .input('email', email && email.trim() ? email : null)
         .input('tax_number', tax_number || null)
         .input('tax_office', tax_office || null)
         .input('license_number', license_number)
@@ -239,7 +254,6 @@ export async function POST(request: NextRequest) {
         data: {
           driverId,
           userId,
-          phone_number: userPhoneNumber,
           first_name,
           last_name
         }
