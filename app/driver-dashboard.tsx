@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { API_CONFIG } from '../config/api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -61,7 +62,7 @@ export default function DriverDashboardScreen() {
         return;
       }
 
-      const response = await fetch(`http://192.168.1.12:3001/api/drivers/status`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

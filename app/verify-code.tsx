@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoadingIndicator from '../components/LoadingIndicator';
+import { API_CONFIG } from '../config/api';
 
 export default function VerifyCodeScreen() {
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -101,7 +102,7 @@ export default function VerifyCodeScreen() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
             
-            const response = await fetch(`http://10.133.72.240:3001/api/drivers/status`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
               headers: {
                 'Authorization': `Bearer ${result.token}`,
                 'Content-Type': 'application/json'
@@ -147,7 +148,7 @@ export default function VerifyCodeScreen() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
             
-            const userResponse = await fetch(`http://10.133.72.240:3001/api/auth/profile`, {
+            const userResponse = await fetch(`${API_CONFIG.BASE_URL}/auth/profile`, {
               headers: {
                 'Authorization': `Bearer ${result.token}`,
                 'Content-Type': 'application/json'

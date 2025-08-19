@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import LoadingIndicator from '../components/LoadingIndicator';
+import { API_CONFIG } from '../config/api';
 
 interface DriverFormData {
   tc_number: string;
@@ -68,7 +69,7 @@ export default function DriverRegistrationScreen() {
       console.log('Token:', token);
       console.log('Checking existing application...');
       
-      const response = await fetch('http://10.133.72.240:3001/api/drivers/status', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -238,7 +239,7 @@ export default function DriverRegistrationScreen() {
         }
       });
 
-      const response = await fetch('http://10.133.72.240:3001/api/drivers/register', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/register`, {
         method: 'POST',
         body: formDataToSend,
         headers: {

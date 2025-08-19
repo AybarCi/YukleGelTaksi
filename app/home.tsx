@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,9 @@ import {
   Switch,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  Keyboard,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
@@ -18,6 +21,7 @@ import { router } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Driver {
@@ -38,14 +42,67 @@ export default function HomeScreen() {
   
   // Yük bilgileri state'leri
   const [weight, setWeight] = useState('');
-  const [volume, setVolume] = useState('');
   const [pickupLocation, setPickupLocation] = useState('');
   const [destinationLocation, setDestinationLocation] = useState('');
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
   const [pickupCoords, setPickupCoords] = useState<{latitude: number, longitude: number} | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<{latitude: number, longitude: number} | null>(null);
+  const [cargoImage, setCargoImage] = useState<string | null>(null);
+  const [distance, setDistance] = useState<number | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
   
-  const { logout, showModal } = useAuth();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const inputRefs = useRef<(TextInput | null)[]>([]);
+  
+  const { logout, showModal, user } = useAuth();
+
+  // Aktif input alanını scroll etmek için fonksiyon
+  const scrollToInput = (inputIndex: number) => {
+    if (scrollViewRef.current && keyboardVisible) {
+      const screenHeight = Dimensions.get('window').height;
+      const availableHeight = screenHeight - keyboardHeight - 150; // More padding
+      const inputHeight = 48;
+      const labelHeight = 22;
+      const marginBottom = 20;
+      const switchHeight = 56; // Switch container height
+      const titleHeight = 62;
+      
+      let targetOffset = titleHeight;
+      
+      // Her input için offset hesapla
+      if (inputIndex === 0) {
+        // Ağırlık input'u - en üstte
+        targetOffset += labelHeight + inputHeight;
+      } else if (inputIndex === 1) {
+        // Yükün konumu input'u
+        targetOffset += labelHeight + inputHeight + marginBottom; // Ağırlık
+        targetOffset += switchHeight + marginBottom; // Switch
+        targetOffset += labelHeight + inputHeight; // Pickup location
+      } else if (inputIndex === 2) {
+        // Varış noktası input'u
+        targetOffset += labelHeight + inputHeight + marginBottom; // Ağırlık
+        targetOffset += switchHeight + marginBottom; // Switch
+        targetOffset += labelHeight + inputHeight + marginBottom; // Pickup location
+        targetOffset += labelHeight + inputHeight; // Destination
+      }
+      
+      // Varış noktası için çok daha agresif scroll
+      let scrollPosition;
+      if (inputIndex === 2) {
+        // Varış noktası için özel hesaplama - klavyenin çok üstünde göster
+        scrollPosition = Math.max(0, targetOffset + 100); // Sabit offset ekle
+      } else {
+        scrollPosition = Math.max(0, targetOffset - (availableHeight * 0.4));
+      }
+      
+      scrollViewRef.current.scrollTo({
+        y: scrollPosition,
+        animated: true,
+      });
+    }
+  };
 
   useEffect(() => {
     getCurrentLocation();
@@ -54,7 +111,28 @@ export default function HomeScreen() {
       updateDriverLocations();
     }, 5000);
 
-    return () => clearInterval(interval);
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(e.endCoordinates.height);
+      // Aktif input alanını scroll et
+      if (activeInputIndex !== null) {
+        setTimeout(() => {
+          scrollToInput(activeInputIndex);
+        }, 100);
+      }
+    });
+    
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+      setActiveInputIndex(null);
+    });
+
+    return () => {
+      clearInterval(interval);
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
   }, []);
   
   useEffect(() => {
@@ -89,9 +167,89 @@ export default function HomeScreen() {
       setDestinationLocation(data.description);
     }
   };
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('İzin Gerekli', 'Fotoğraf seçmek için galeri erişim izni gereklidir.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setCargoImage(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('İzin Gerekli', 'Fotoğraf çekmek için kamera erişim izni gereklidir.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setCargoImage(result.assets[0].uri);
+    }
+  };
+
+  const showImagePicker = () => {
+    Alert.alert(
+      'Yük Fotoğrafı',
+      'Yükünüzün fotoğrafını nasıl eklemek istiyorsunuz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        { text: 'Galeriden Seç', onPress: pickImage },
+        { text: 'Fotoğraf Çek', onPress: takePhoto },
+      ]
+    );
+  };
+
+  const removeImage = () => {
+    setCargoImage(null);
+  };
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Dünya'nın yarıçapı (km)
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    return Math.round(distance * 10) / 10; // 1 ondalık basamağa yuvarla
+  };
+
+  useEffect(() => {
+    if (pickupCoords && destinationCoords) {
+      const dist = calculateDistance(
+        pickupCoords.latitude,
+        pickupCoords.longitude,
+        destinationCoords.latitude,
+        destinationCoords.longitude
+      );
+      setDistance(dist);
+    } else {
+      setDistance(null);
+    }
+  }, [pickupCoords, destinationCoords]);
   
   const handleCreateOrder = () => {
-     if (!weight || !volume || !pickupCoords || !destinationCoords) {
+     if (!weight || !pickupCoords || !destinationCoords) {
        showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
        return;
      }
@@ -162,7 +320,7 @@ export default function HomeScreen() {
       iconType: 'MaterialIcons',
       onPress: () => {
         setMenuVisible(false);
-        showModal('Taşımalar', 'Taşımalar sayfası yakında eklenecek.', 'info');
+        router.push('/shipments');
       }
     },
   ];
@@ -201,7 +359,7 @@ export default function HomeScreen() {
       iconType: 'Ionicons',
       onPress: () => {
         setMenuVisible(false);
-        showModal('Ayarlar', 'Ayarlar sayfası yakında eklenecek.', 'info');
+        router.push('/settings');
       }
     },
     {
@@ -235,10 +393,7 @@ export default function HomeScreen() {
   ];
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       <StatusBar style="dark" />
       
       {/* Full Screen Map */}
@@ -253,6 +408,11 @@ export default function HomeScreen() {
           }}
           showsUserLocation={true}
           showsMyLocationButton={true}
+          onPress={() => {
+            if (keyboardVisible) {
+              Keyboard.dismiss();
+            }
+          }}
         >
           {/* Driver markers */}
           {drivers.map((driver) => (
@@ -308,39 +468,64 @@ export default function HomeScreen() {
       </View>
       
       {/* Bottom Form Sheet */}
-      <View style={styles.bottomSheet}>
+      <View 
+        style={[
+          styles.bottomSheet,
+          keyboardVisible && {
+            maxHeight: Dimensions.get('window').height - keyboardHeight,
+            paddingBottom: 0,
+          }
+        ]}
+      >
         <View style={styles.bottomSheetHandle} />
-        <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.formTitle}>Yük Bilgileri</Text>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={[
+            styles.formContainer,
+            keyboardVisible && { 
+              maxHeight: Dimensions.get('window').height - keyboardHeight - 50,
+              flex: 1 
+            }
+          ]} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && { paddingBottom: 10 }
+          ]}
+          bounces={true}
+          scrollEventThrottle={16}
+          nestedScrollEnabled={true}
+          automaticallyAdjustKeyboardInsets={true}
+          contentInsetAdjustmentBehavior="automatic"
+        >
+        <View style={styles.formTitleContainer}>
+          <Text style={styles.formTitle}>Yük Bilgileri</Text>
+        </View>
         
-        {/* Ağırlık ve Hacim */}
-        <View style={styles.weightVolumeContainer}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Ağırlık (kg)</Text>
-            <View style={styles.inputWithIcon}>
-              <MaterialIcons name="fitness-center" size={20} color="#6B7280" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                value={weight}
-                onChangeText={setWeight}
-                placeholder="Örn: 25"
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Hacim (m³)</Text>
-            <View style={styles.inputWithIcon}>
-              <MaterialIcons name="inventory" size={20} color="#6B7280" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                value={volume}
-                onChangeText={setVolume}
-                placeholder="Örn: 2.5"
-                keyboardType="numeric"
-              />
-            </View>
+        {/* Ağırlık */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Ağırlık (kg)</Text>
+          <View style={styles.inputWithIcon}>
+            <MaterialIcons name="fitness-center" size={20} color="#6B7280" style={styles.inputIcon} />
+            <TextInput
+              ref={(ref) => { inputRefs.current[0] = ref; }}
+              style={styles.input}
+              value={weight}
+              onChangeText={setWeight}
+              placeholder="Örn: 25"
+              keyboardType="numeric"
+              returnKeyType="send"
+              returnKeyLabel="Bitti"
+              autoComplete="off"
+              autoCorrect={false}
+              onFocus={() => {
+                setActiveInputIndex(0);
+                setTimeout(() => scrollToInput(0), 100);
+              }}
+              onSubmitEditing={() => Keyboard.dismiss()}
+              blurOnSubmit={true}
+            />
           </View>
         </View>
         
@@ -362,10 +547,21 @@ export default function HomeScreen() {
             <View style={styles.inputWithIcon}>
               <Ionicons name="location" size={20} color="#6B7280" style={styles.inputIcon} />
               <TextInput
+                ref={(ref) => { inputRefs.current[1] = ref; }}
                 style={styles.input}
                 value={pickupLocation}
                 onChangeText={setPickupLocation}
                 placeholder="Yükün alınacağı adresi girin"
+                returnKeyType="done"
+                returnKeyLabel="Bitti"
+                autoComplete="off"
+                autoCorrect={false}
+                onFocus={() => {
+                   setActiveInputIndex(1);
+                   setTimeout(() => scrollToInput(1), 100);
+                 }}
+                onSubmitEditing={() => Keyboard.dismiss()}
+                blurOnSubmit={true}
               />
             </View>
           ) : (
@@ -382,12 +578,47 @@ export default function HomeScreen() {
           <View style={styles.inputWithIcon}>
             <Ionicons name="navigate" size={20} color="#6B7280" style={styles.inputIcon} />
             <TextInput
+              ref={(ref) => { inputRefs.current[2] = ref; }}
               style={styles.input}
               value={destinationLocation}
               onChangeText={setDestinationLocation}
               placeholder="Yükün teslim edileceği adresi girin"
+              returnKeyType="done"
+              returnKeyLabel="Bitti"
+              autoComplete="off"
+              autoCorrect={false}
+              onFocus={() => {
+                 setActiveInputIndex(2);
+                 setTimeout(() => scrollToInput(2), 300);
+               }}
+              onSubmitEditing={() => Keyboard.dismiss()}
+              blurOnSubmit={true}
             />
           </View>
+          {distance && (
+            <View style={styles.distanceInfo}>
+              <Ionicons name="location" size={16} color="#10B981" />
+              <Text style={styles.distanceText}>Mesafe: {distance} km</Text>
+            </View>
+          )}
+        </View>
+        
+        {/* Yük Fotoğrafı */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Yük Fotoğrafı</Text>
+          {cargoImage ? (
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: cargoImage }} style={styles.cargoImage} />
+              <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+                <Ionicons name="close-circle" size={24} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.addImageButton} onPress={showImagePicker}>
+              <Ionicons name="camera" size={24} color="#6B7280" />
+              <Text style={styles.addImageText}>Yük fotoğrafı ekle</Text>
+            </TouchableOpacity>
+          )}
         </View>
         
         {/* Sipariş Oluştur Butonu */}
@@ -412,9 +643,15 @@ export default function HomeScreen() {
                   <Ionicons name="person" size={32} color="#FCD34D" />
                 </View>
                 <View style={styles.profileInfo}>
-                  <Text style={styles.userName}>Kullanıcı Adı</Text>
-                  <TouchableOpacity style={styles.accountButton}>
-                    <Text style={styles.accountButtonText}>Hesabım</Text>
+                  <Text style={styles.userName}>{user?.full_name || 'Kullanıcı'}</Text>
+                  <TouchableOpacity 
+                    style={styles.accountButton}
+                    onPress={() => {
+                      setMenuVisible(false);
+                      router.push('/account-details');
+                    }}
+                  >
+                    <Text style={styles.accountButtonText}>Hesap Detayları</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -471,7 +708,7 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -644,20 +881,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40,
+  },
+  formTitleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   formTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#000000',
-    marginBottom: 20,
   },
-  weightVolumeContainer: {
+  keyboardDismissButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+  },
+  keyboardDismissText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 4,
+    fontWeight: '500',
   },
   inputGroup: {
-    flex: 1,
-    marginHorizontal: 5,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
@@ -744,6 +998,63 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  imageContainer: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  cargoImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 2,
+    elevation: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  addImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 120,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+  },
+  addImageText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  distanceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  distanceText: {
+    fontSize: 14,
+    color: '#059669',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -787,16 +1098,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   accountButton: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
     alignSelf: 'flex-start',
   },
   accountButtonText: {
     fontSize: 14,
-    color: '#374151',
+    color: '#3B82F6',
     fontWeight: '500',
+    textDecorationLine: 'underline',
   },
   closeButton: {
     width: 40,

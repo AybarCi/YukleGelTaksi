@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingIndicator from '../components/LoadingIndicator';
+import { API_CONFIG } from '../config/api';
 
 interface DriverStatus {
   id: number;
@@ -50,7 +51,7 @@ export default function DriverStatusScreen() {
       }
       
       // Sürücü durumunu API'den çek
-      const response = await fetch(`http://10.133.72.240:3001/api/drivers/status`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

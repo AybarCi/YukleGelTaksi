@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomModal from '../components/CustomModal';
+import { API_CONFIG } from '../config/api';
 
 interface User {
   id: number;
@@ -41,7 +42,7 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = 'http://10.133.72.240:3001/api';
+const API_BASE_URL = API_CONFIG.BASE_URL;
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -76,22 +77,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Test if current token is valid by making a simple API call
         try {
+          // Timeout controller ekle
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
+          
           const testResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
             headers: {
               'Authorization': `Bearer ${storedToken}`,
               'Content-Type': 'application/json'
-            }
+            },
+            signal: controller.signal
           });
+          
+          clearTimeout(timeoutId);
           
           if (testResponse.status === 401) {
             // Token expired, try to refresh
+            const refreshController = new AbortController();
+            const refreshTimeoutId = setTimeout(() => refreshController.abort(), 10000); // 10 saniye timeout
+            
             const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({ refreshToken: storedRefreshToken }),
+              signal: refreshController.signal
             });
+            
+            clearTimeout(refreshTimeoutId);
             
             const refreshData = await refreshResponse.json();
             
@@ -116,12 +130,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (userData.user_type === 'driver') {
             // Check driver status
             try {
+              // Timeout controller ekle
+              const driverController = new AbortController();
+              const driverTimeoutId = setTimeout(() => driverController.abort(), 10000); // 10 saniye timeout
+              
               const driverStatusResponse = await fetch(`${API_BASE_URL}/drivers/status`, {
                 headers: {
                   'Authorization': `Bearer ${storedToken}`,
                   'Content-Type': 'application/json'
-                }
+                },
+                signal: driverController.signal
               });
+              
+              clearTimeout(driverTimeoutId);
               
               if (driverStatusResponse.ok) {
                 const driverData = await driverStatusResponse.json();
@@ -151,6 +172,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
             } catch (driverError) {
               console.error('Error checking driver status:', driverError);
+              
+              // AbortError durumunda kullanıcıyı logout yapma, driver-status'a yönlendir
+              if (driverError instanceof Error && driverError.name === 'AbortError') {
+                console.log('Driver status check timed out, redirecting to driver-status');
+                setTimeout(() => {
+                  require('expo-router').router.replace('/driver-status');
+                }, 100);
+                return;
+              }
+              
               // Network error - logout user and redirect to login
               await clearAuthData();
               setUser(null);
@@ -169,6 +200,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
         } catch (tokenTestError) {
           console.error('Error testing token validity:', tokenTestError);
+          
+          // AbortError durumunda kullanıcıyı logout yapma, sadece loading'i durdur
+          if (tokenTestError instanceof Error && tokenTestError.name === 'AbortError') {
+            console.log('Token validation timed out, keeping user logged in');
+            return;
+          }
+          
           // Network error - logout user and redirect to login
           await clearAuthData();
           setUser(null);
