@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   FlatList,
   Dimensions,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { StatusBar } from 'expo-status-bar';
@@ -66,6 +68,7 @@ export default function DriverDashboardScreen() {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
+  const [menuVisible, setMenuVisible] = useState(false);
   const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
@@ -78,6 +81,7 @@ export default function DriverDashboardScreen() {
       // AsyncStorage'dan son online durumunu kontrol et
       AsyncStorage.getItem('driver_online_status').then(savedStatus => {
         const shouldBeOnline = savedStatus === 'true';
+        setIsOnline(shouldBeOnline); // Online durumunu hemen set et
         if (shouldBeOnline) {
           socketService.connect(token);
         }
@@ -160,37 +164,59 @@ export default function DriverDashboardScreen() {
 
   const loadDriverInfo = async () => {
     try {
+      // Önce AsyncStorage'dan kaydedilmiş sürücü bilgilerini oku
+      const savedDriverInfo = await AsyncStorage.getItem('driver_info');
+      if (savedDriverInfo) {
+        const driverData = JSON.parse(savedDriverInfo);
+        console.log('AsyncStorage\'dan sürücü bilgileri yüklendi:', driverData);
+        setDriverInfo(driverData);
+      }
+
+      // Online durumunu AsyncStorage'dan oku
+      const savedOnlineStatus = await AsyncStorage.getItem('driver_online_status');
+      const shouldBeOnline = savedOnlineStatus === 'true';
+      setIsOnline(shouldBeOnline);
+
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
         router.replace('/phone-auth');
         return;
       }
 
-      // AsyncStorage'dan son online durumunu oku
-      const savedOnlineStatus = await AsyncStorage.getItem('driver_online_status');
-      const shouldBeOnline = savedOnlineStatus === 'true';
-
+      console.log('API çağrısı yapılıyor:', `${API_CONFIG.BASE_URL}/drivers/status`);
       const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
+      
+      console.log('API yanıt durumu:', response.status);
+      
       if (response.ok) {
         const result = await response.json();
-        setDriverInfo(result.data);
+        console.log('API yanıtı:', result);
         
-        // Eğer sürücü çevrimdışı olarak kaydedilmişse, online durumunu false yap
-        if (!shouldBeOnline) {
-          setIsOnline(false);
+        if (result.success && result.data) {
+          console.log('Sürücü bilgileri set ediliyor:', result.data);
+          setDriverInfo(result.data);
+          // Sürücü bilgilerini AsyncStorage'a kaydet
+          await AsyncStorage.setItem('driver_info', JSON.stringify(result.data));
         } else {
-          setIsOnline(result.data.is_active);
+          console.log('API yanıtında veri yok:', result);
         }
+      } else {
+        console.log('API yanıt hatası:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.log('Hata detayı:', errorText);
       }
     } catch (error) {
       console.log('Error loading driver info:', error);
-      // Network error - logout user and redirect to login
-      await logout();
-      router.replace('/phone-auth');
+      // Network error durumunda AsyncStorage'dan yüklenen bilgileri kullan
+      // Sadece hiç bilgi yoksa logout yap
+      if (!driverInfo) {
+        await logout();
+        router.replace('/phone-auth');
+      }
     }
   };
 
@@ -453,9 +479,11 @@ export default function DriverDashboardScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.driverInfo}>
-          <Text style={styles.driverName}>
-            {driverInfo ? `${driverInfo.first_name} ${driverInfo.last_name}` : 'Sürücü'}
-          </Text>
+          {driverInfo && (
+            <Text style={styles.driverName}>
+              {`${driverInfo.first_name} ${driverInfo.last_name}`}
+            </Text>
+          )}
           <TouchableOpacity
             style={[styles.statusButton, { backgroundColor: isOnline ? '#10B981' : '#EF4444' }]}
             onPress={toggleOnlineStatus}
@@ -465,8 +493,8 @@ export default function DriverDashboardScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out" size={24} color="#EF4444" />
+        <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
+          <Ionicons name="menu" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
@@ -532,6 +560,164 @@ export default function DriverDashboardScreen() {
           }
         />
       </View>
+
+      {/* Hamburger Menu Modal */}
+       <Modal
+         visible={menuVisible}
+         animationType="slide"
+         transparent
+         onRequestClose={() => setMenuVisible(false)}
+       >
+         <View style={styles.modalOverlay}>
+           <View style={styles.menuContainer}>
+             <View style={styles.menuHeader}>
+               <View style={styles.profileSection}>
+                 <View style={styles.profileImage}>
+                   <Ionicons name="person" size={32} color="#10B981" />
+                 </View>
+                 <View style={styles.profileInfo}>
+                   {driverInfo && (
+                      <Text style={styles.driverNameMenu}>
+                        {`${driverInfo.first_name} ${driverInfo.last_name}`}
+                      </Text>
+                    )}
+                   <View style={styles.ratingContainer}>
+                     <Ionicons name="star" size={16} color="#FCD34D" />
+                     <Text style={styles.ratingText}>4.8</Text>
+                     <Text style={styles.ratingCount}>(127 değerlendirme)</Text>
+                   </View>
+                   <View style={[styles.statusBadgeMenu, { backgroundColor: isOnline ? '#10B981' : '#EF4444' }]}>
+                     <Text style={styles.statusBadgeText}>
+                       {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
+                     </Text>
+                   </View>
+                 </View>
+               </View>
+               <TouchableOpacity 
+                 style={styles.closeButton}
+                 onPress={() => setMenuVisible(false)}
+               >
+                 <Ionicons name="close" size={24} color="#000000" />
+               </TouchableOpacity>
+             </View>
+
+             <ScrollView style={styles.menuContent}>
+               {/* Sürücü Bilgileri */}
+               <TouchableOpacity 
+                 style={styles.menuItem}
+                 onPress={() => {
+                   setMenuVisible(false);
+                   router.push('/driver-profile');
+                 }}
+               >
+                 <Ionicons name="person-outline" size={24} color="#374151" />
+                 <View style={styles.menuItemContent}>
+                   <Text style={styles.menuItemTitle}>Sürücü Bilgileri</Text>
+                   <Text style={styles.menuItemSubtitle}>Profil bilgilerinizi görüntüleyin ve düzenleyin</Text>
+                 </View>
+                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+               </TouchableOpacity>
+               
+               {/* Sipariş Geçmişi */}
+               <TouchableOpacity 
+                 style={styles.menuItem}
+                 onPress={() => {
+                   setMenuVisible(false);
+                   router.push('/driver-order-history');
+                 }}
+               >
+                 <Ionicons name="time-outline" size={24} color="#374151" />
+                 <View style={styles.menuItemContent}>
+                   <Text style={styles.menuItemTitle}>Sipariş Geçmişi</Text>
+                   <Text style={styles.menuItemSubtitle}>Tamamladığınız siparişleri görüntüleyin</Text>
+                 </View>
+                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+               </TouchableOpacity>
+               
+               {/* Kazançlar */}
+               <TouchableOpacity 
+                 style={styles.menuItem}
+                 onPress={() => {
+                   setMenuVisible(false);
+                   router.push('/driver-earnings');
+                 }}
+               >
+                 <Ionicons name="wallet-outline" size={24} color="#374151" />
+                 <View style={styles.menuItemContent}>
+                   <Text style={styles.menuItemTitle}>Kazançlarım</Text>
+                   <Text style={styles.menuItemSubtitle}>Günlük ve aylık kazançlarınızı görüntüleyin</Text>
+                 </View>
+                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+               </TouchableOpacity>
+               
+               {/* Değerlendirmeler */}
+               <TouchableOpacity 
+                 style={styles.menuItem}
+                 onPress={() => {
+                   setMenuVisible(false);
+                   router.push('/driver-reviews');
+                 }}
+               >
+                 <Ionicons name="star-outline" size={24} color="#374151" />
+                 <View style={styles.menuItemContent}>
+                   <Text style={styles.menuItemTitle}>Değerlendirmeler</Text>
+                   <Text style={styles.menuItemSubtitle}>Müşteri değerlendirmelerinizi görüntüleyin</Text>
+                 </View>
+                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+               </TouchableOpacity>
+               
+               {/* Ayarlar */}
+               <TouchableOpacity 
+                 style={styles.menuItem}
+                 onPress={() => {
+                   setMenuVisible(false);
+                   router.push('/driver-settings');
+                 }}
+               >
+                 <Ionicons name="settings-outline" size={24} color="#374151" />
+                 <View style={styles.menuItemContent}>
+                   <Text style={styles.menuItemTitle}>Ayarlar</Text>
+                   <Text style={styles.menuItemSubtitle}>Uygulama ayarlarını düzenleyin</Text>
+                 </View>
+                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+               </TouchableOpacity>
+               
+               {/* Yardım ve Destek */}
+               <TouchableOpacity 
+                 style={styles.menuItem}
+                 onPress={() => {
+                   setMenuVisible(false);
+                   router.push('/settings');
+                 }}
+               >
+                 <Ionicons name="help-circle-outline" size={24} color="#374151" />
+                 <View style={styles.menuItemContent}>
+                   <Text style={styles.menuItemTitle}>Yardım ve Destek</Text>
+                   <Text style={styles.menuItemSubtitle}>SSS ve destek talebi oluşturun</Text>
+                 </View>
+                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+               </TouchableOpacity>
+               
+               <View style={styles.menuDivider} />
+               
+               {/* Çıkış Yap */}
+               <TouchableOpacity 
+                 style={styles.menuItem}
+                 onPress={() => {
+                   setMenuVisible(false);
+                   handleLogout();
+                 }}
+               >
+                 <Ionicons name="log-out-outline" size={24} color="#EF4444" />
+                 <View style={styles.menuItemContent}>
+                   <Text style={[styles.menuItemTitle, { color: '#EF4444' }]}>Çıkış Yap</Text>
+                   <Text style={styles.menuItemSubtitle}>Hesabınızdan çıkış yapın</Text>
+                 </View>
+               </TouchableOpacity>
+             </ScrollView>
+           </View>
+         </View>
+       </Modal>
     </View>
   );
 }
@@ -572,14 +758,125 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  logoutButton: {
+  menuButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#FFD700',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
+  modalOverlay: {
+     flex: 1,
+     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+     justifyContent: 'flex-end',
+   },
+   menuContainer: {
+     backgroundColor: '#FFFFFF',
+     borderTopLeftRadius: 20,
+     borderTopRightRadius: 20,
+     maxHeight: '80%',
+   },
+   menuHeader: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     alignItems: 'center',
+     paddingHorizontal: 20,
+     paddingTop: 20,
+     paddingBottom: 16,
+     borderBottomWidth: 1,
+     borderBottomColor: '#E5E7EB',
+   },
+   profileSection: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     flex: 1,
+   },
+   profileImage: {
+     width: 60,
+     height: 60,
+     borderRadius: 30,
+     backgroundColor: '#F3F4F6',
+     justifyContent: 'center',
+     alignItems: 'center',
+     marginRight: 12,
+   },
+   profileInfo: {
+     flex: 1,
+   },
+   driverNameMenu: {
+     fontSize: 18,
+     fontWeight: 'bold',
+     color: '#000000',
+     marginBottom: 4,
+   },
+   ratingContainer: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     marginBottom: 8,
+   },
+   ratingText: {
+     fontSize: 14,
+     fontWeight: '600',
+     color: '#374151',
+     marginLeft: 4,
+   },
+   ratingCount: {
+     fontSize: 12,
+     color: '#9CA3AF',
+     marginLeft: 4,
+   },
+   statusBadgeMenu: {
+     paddingHorizontal: 12,
+     paddingVertical: 4,
+     borderRadius: 12,
+     alignSelf: 'flex-start',
+   },
+   statusBadgeText: {
+     fontSize: 12,
+     fontWeight: 'bold',
+     color: '#FFFFFF',
+   },
+   closeButton: {
+     width: 32,
+     height: 32,
+     borderRadius: 16,
+     backgroundColor: '#F3F4F6',
+     justifyContent: 'center',
+     alignItems: 'center',
+   },
+   menuContent: {
+     paddingHorizontal: 20,
+     paddingBottom: 20,
+   },
+   menuItem: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     paddingVertical: 16,
+     borderBottomWidth: 1,
+     borderBottomColor: '#F3F4F6',
+   },
+   menuItemContent: {
+     flex: 1,
+     marginLeft: 12,
+   },
+   menuItemTitle: {
+     fontSize: 16,
+     fontWeight: '600',
+     color: '#374151',
+     marginBottom: 2,
+   },
+   menuItemSubtitle: {
+     fontSize: 14,
+     color: '#9CA3AF',
+   },
+   menuDivider: {
+     height: 1,
+     backgroundColor: '#E5E7EB',
+     marginVertical: 8,
+   },
   mapContainer: {
     height: height * 0.4,
   },

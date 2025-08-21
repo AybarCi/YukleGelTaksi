@@ -154,6 +154,39 @@ Content-Type: application/json
 
 ## Driver Endpoints
 
+### Sürücü Profil Bilgilerini Al
+```
+GET /api/drivers/profile
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "exists": true,
+  "data": {
+    "id": 1,
+    "first_name": "Ahmet",
+    "last_name": "Yılmaz",
+    "phone_number": "+905551234567",
+    "email": "ahmet@example.com",
+    "license_number": "34ABC123",
+    "vehicle_plate": "34 XYZ 123",
+    "vehicle_model": "Toyota Corolla",
+    "vehicle_year": 2020,
+    "is_active": true,
+    "is_approved": true,
+    "rating": 4.8,
+    "total_trips": 150,
+    "profile_image": "profile_photo.jpg",
+    "status": "approved",
+    "created_at": "2024-01-01T00:00:00.000Z",
+    "updated_at": "2024-01-01T00:00:00.000Z"
+  }
+}
+```
+
 ### Tüm Sürücüleri Listele
 ```
 GET /api/drivers

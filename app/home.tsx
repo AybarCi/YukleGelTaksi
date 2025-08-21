@@ -794,7 +794,7 @@ export default function HomeScreen() {
           style={styles.floatingMenuButton}
           onPress={() => setMenuVisible(true)}
         >
-          <Ionicons name="menu" size={24} color="#000000" />
+          <Ionicons name="menu" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
       
@@ -1149,7 +1149,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FFD700',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 2,
@@ -1157,6 +1157,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   fullMapContainer: {
     flex: 1,
@@ -1172,7 +1174,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FFD700',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
@@ -1181,6 +1183,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     zIndex: 1000,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   bottomSheet: {
     position: 'absolute',
