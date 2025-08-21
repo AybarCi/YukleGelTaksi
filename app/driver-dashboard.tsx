@@ -100,6 +100,42 @@ export default function DriverDashboardScreen() {
         // İptal edilen siparişi listeden kaldır
         setCustomers(prev => (prev || []).filter(customer => customer.id !== orderId));
       });
+      
+      // Server konum güncellemesi istediğinde mevcut konumu gönder
+      socketService.on('request_location_update', async () => {
+        console.log('Server konum güncellemesi istiyor, mevcut konum gönderiliyor...');
+        if (currentLocation) {
+          socketService.updateLocation({
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            heading: 0
+          });
+          console.log('Mevcut konum sunucuya gönderildi:', currentLocation);
+        } else {
+          console.log('Konum bilgisi yok, konum alınmaya çalışılıyor...');
+          // Konum bilgisi yoksa yeniden al
+          try {
+            const location = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.High,
+            });
+            const newLocation = {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              latitudeDelta: 0.0922,
+              longitudeDelta: 0.0421,
+            };
+            setCurrentLocation(newLocation);
+            socketService.updateLocation({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              heading: location.coords.heading || 0,
+            });
+            console.log('Yeni konum alındı ve sunucuya gönderildi:', newLocation);
+          } catch (error) {
+            console.error('Konum alınırken hata:', error);
+          }
+        }
+      });
     }
     
     return () => {
@@ -108,6 +144,7 @@ export default function DriverDashboardScreen() {
       socketService.off('max_reconnect_attempts_reached');
       socketService.off('new_order');
       socketService.off('order_cancelled');
+      socketService.off('request_location_update');
       // Cleanup location watch
       if (locationWatchRef.current) {
         locationWatchRef.current.remove();

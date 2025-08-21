@@ -92,9 +92,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Test if current token is valid by making a simple API call
         try {
-          // Timeout controller ekle
+          // Timeout controller ekle - daha uzun timeout
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 saniye timeout
           
           const testResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
             headers: {
@@ -109,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (testResponse.status === 401) {
             // Token expired, try to refresh
             const refreshController = new AbortController();
-            const refreshTimeoutId = setTimeout(() => refreshController.abort(), 10000); // 10 saniye timeout
+            const refreshTimeoutId = setTimeout(() => refreshController.abort(), 30000); // 30 saniye timeout
             
             const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
               method: 'POST',
@@ -145,9 +145,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (userData.user_type === 'driver') {
             // Check driver status
             try {
-              // Timeout controller ekle
+              // Timeout controller ekle - daha uzun timeout
               const driverController = new AbortController();
-              const driverTimeoutId = setTimeout(() => driverController.abort(), 10000); // 10 saniye timeout
+              const driverTimeoutId = setTimeout(() => driverController.abort(), 30000); // 30 saniye timeout
               
               const driverStatusResponse = await fetch(`${API_BASE_URL}/drivers/status`, {
                 headers: {
@@ -366,13 +366,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const sendSMS = async (phone: string): Promise<boolean> => {
     try {
+      // Timeout controller ekle
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 saniye timeout
+      
       const response = await fetch(`${API_BASE_URL}/auth/send-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ phone }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 

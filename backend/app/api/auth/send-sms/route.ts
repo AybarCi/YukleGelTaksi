@@ -16,14 +16,18 @@ function generateVerificationCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Simulate SMS sending (in production, integrate with SMS provider)
+// SMS kodu console'a yazdır (test için)
 function sendSMS(phone: string, code: string): Promise<boolean> {
   return new Promise((resolve) => {
-    // Simulate SMS sending delay
+    // Test için kodu console'a yazdır
     setTimeout(() => {
-      console.log(`SMS gönderildi: ${phone} - Kod: ${code}`);
+      console.log(`\n=== SMS DOĞRULAMA KODU ===`);
+      console.log(`Telefon: ${phone}`);
+      console.log(`Kod: ${code}`);
+      console.log(`Zaman: ${new Date().toLocaleString('tr-TR')}`);
+      console.log(`========================\n`);
       resolve(true);
-    }, 1000);
+    }, 500);
   });
 }
 

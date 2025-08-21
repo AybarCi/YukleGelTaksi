@@ -81,13 +81,13 @@ class SocketService {
           refreshToken: refreshToken
         },
         transports: ['polling', 'websocket'], // polling önce dene
-        timeout: 20000, // 20 saniye timeout
+        timeout: 30000, // 30 saniye timeout
         forceNew: true,
         reconnection: true,
-        reconnectionAttempts: 10, // daha fazla deneme
-        reconnectionDelay: 2000, // 2 saniye bekle
-        reconnectionDelayMax: 10000, // maksimum 10 saniye
-        randomizationFactor: 0.5,
+        reconnectionAttempts: 15, // daha fazla deneme
+        reconnectionDelay: 1000, // 1 saniye bekle
+        reconnectionDelayMax: 5000, // maksimum 5 saniye
+        randomizationFactor: 0.3,
         autoConnect: true,
         upgrade: true,
         rememberUpgrade: true
@@ -206,6 +206,24 @@ class SocketService {
     this.socket.on('new_order', (data) => {
       console.log('New order available:', data);
       this.emit('new_order', data);
+    });
+
+    // Driver offline event
+    this.socket.on('driver_offline', (data) => {
+      console.log('Driver went offline:', data);
+      this.emit('driver_offline', data);
+    });
+
+    // Server konum güncellemesi istediğinde
+    this.socket.on('request_location_update', async () => {
+      console.log('Server konum güncellemesi istiyor...');
+      this.emit('request_location_update', {});
+    });
+
+    // Sürücü disconnect olduğunda
+    this.socket.on('driver_disconnected', (data) => {
+      console.log('Driver disconnected:', data);
+      this.emit('driver_disconnected', data);
     });
   }
 

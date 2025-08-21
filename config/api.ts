@@ -1,14 +1,14 @@
 // Merkezi API konfigürasyonu
 export const API_CONFIG = {
-  BASE_URL: 'http://192.168.1.6:3001/api',
-  FILES_URL: 'http://192.168.1.6192.168.1.157:3001/api/files'
+  BASE_URL: 'http://192.168.1.17:3001/api',
+  FILES_URL: 'http://192.168.1.17:3001/api/files'
 };
 
 // Environment'a göre URL'leri ayarla
 if (process.env.NODE_ENV === 'development') {
   // Development için local IP
-  API_CONFIG.BASE_URL = 'http://192.168.1.6:3001/api';
-  API_CONFIG.FILES_URL = 'http://192.168.1.6:3001/api/files';
+  API_CONFIG.BASE_URL = 'http://192.168.1.17:3001/api';
+  API_CONFIG.FILES_URL = 'http://192.168.1.17:3001/api/files';
 } else if (process.env.NODE_ENV === 'production') {
   // Production için domain
   API_CONFIG.BASE_URL = 'https://api.yuklegeltaksi.com/api';

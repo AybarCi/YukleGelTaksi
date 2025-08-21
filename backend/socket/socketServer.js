@@ -61,12 +61,12 @@ class SocketServer {
   setupSocketHandlers() {
     this.io.use(this.authenticateSocket.bind(this));
 
-    this.io.on('connection', (socket) => {
+    this.io.on('connection', async (socket) => {
       console.log(`Socket connected: ${socket.id}`);
       console.log(`User type: ${socket.userType}, User ID: ${socket.userId}`);
 
       if (socket.userType === 'driver') {
-        this.handleDriverConnection(socket);
+        await this.handleDriverConnection(socket);
       } else if (socket.userType === 'customer') {
         this.handleCustomerConnection(socket);
       }
@@ -85,37 +85,127 @@ class SocketServer {
   async authenticateSocket(socket, next) {
     try {
       const token = socket.handshake.auth.token;
+      const refreshToken = socket.handshake.auth.refreshToken;
+      
       if (!token) {
         return next(new Error('Authentication error: No token provided'));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-      socket.userId = decoded.userId;
-      socket.userType = decoded.userType;
-      
-      if (socket.userType === 'driver') {
-        socket.driverId = decoded.driverId || decoded.userId;
+      try {
+        // İlk olarak mevcut token'ı doğrula
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        socket.userId = decoded.userId;
+        socket.userType = decoded.userType || 'customer';
+
+        // Eğer sürücü ise, driver ID'sini al
+        if (socket.userType === 'driver') {
+          const db = DatabaseConnection.getInstance();
+          const pool = await db.connect();
+          const driverResult = await pool.request()
+            .input('userId', socket.userId)
+            .query('SELECT id FROM drivers WHERE user_id = @userId AND is_active = 1');
+          
+          if (driverResult.recordset.length > 0) {
+            socket.driverId = driverResult.recordset[0].id;
+          }
+        }
+
+        next();
+      } catch (tokenError) {
+        // Token süresi dolmuşsa refresh token ile yenile
+        if (tokenError.name === 'TokenExpiredError' && refreshToken) {
+          console.log('Token expired, attempting refresh for socket connection');
+          
+          try {
+            const newToken = await this.refreshSocketToken(refreshToken);
+            if (newToken) {
+              // Yeni token ile tekrar doğrula
+              const decoded = jwt.verify(newToken, process.env.JWT_SECRET || 'your-secret-key');
+              socket.userId = decoded.userId;
+              socket.userType = decoded.userType || 'customer';
+
+              // Eğer sürücü ise, driver ID'sini al
+              if (socket.userType === 'driver') {
+                const db = DatabaseConnection.getInstance();
+                const pool = await db.connect();
+                const driverResult = await pool.request()
+                  .input('userId', socket.userId)
+                  .query('SELECT id FROM drivers WHERE user_id = @userId AND is_active = 1');
+                
+                if (driverResult.recordset.length > 0) {
+                  socket.driverId = driverResult.recordset[0].id;
+                }
+              }
+
+              // Yeni token'ı client'a gönder
+              socket.emit('token_refreshed', { token: newToken });
+              console.log(`Token refreshed successfully for user ${socket.userId}`);
+              next();
+            } else {
+              return next(new Error('Token refresh failed'));
+            }
+          } catch (refreshError) {
+            console.error('Token refresh error:', refreshError);
+            return next(new Error('Authentication error'));
+          }
+        } else {
+          return next(new Error('Authentication error: Invalid token'));
+        }
       }
-      
-      next();
     } catch (error) {
       console.error('Socket authentication error:', error);
-      next(new Error('Authentication error: Invalid token'));
+      next(new Error('Authentication error'));
     }
   }
 
-  handleDriverConnection(socket) {
+  async handleDriverConnection(socket) {
     const driverId = socket.driverId;
     
-    // Sürücüyü bağlı sürücüler listesine ekle (detaylı bilgilerle)
-    this.connectedDrivers.set(driverId, {
-      socketId: socket.id,
-      location: null,
-      isAvailable: true,
-      userType: 'driver',
-      userId: driverId
-    });
-    console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id})`);
+    try {
+      // Eğer bu sürücü zaten bağlıysa, eski bağlantıyı kapat
+      const existingDriver = this.connectedDrivers.get(driverId);
+      if (existingDriver && existingDriver.socketId !== socket.id) {
+        const oldSocket = this.io.sockets.sockets.get(existingDriver.socketId);
+        if (oldSocket) {
+          console.log(`🔄 Disconnecting old socket ${existingDriver.socketId} for driver ${driverId}`);
+          oldSocket.disconnect(true);
+        }
+      }
+      
+      // Veritabanından sadece sürücünün müsaitlik durumunu çek
+      const db = DatabaseConnection.getInstance();
+      const result = await db.query(
+        'SELECT is_available FROM drivers WHERE id = @driverId',
+        { driverId: driverId }
+      );
+      
+      const isAvailable = result && result.recordset && result.recordset.length > 0 ? result.recordset[0].is_available : true;
+      
+      // Sürücüyü bağlı sürücüler listesine ekle (konum null olarak başlat)
+      this.connectedDrivers.set(driverId, {
+        socketId: socket.id,
+        location: null,
+        isAvailable: isAvailable,
+        userType: 'driver',
+        userId: driverId
+      });
+      console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: ${isAvailable}`);
+      
+      // Sürücüden konum güncellemesi iste
+      socket.emit('request_location_update');
+      console.log(`📡 Sent request_location_update to driver ${driverId}`);
+    } catch (error) {
+      console.error('❌ Error fetching driver availability:', error);
+      // Fallback olarak true kullan
+      this.connectedDrivers.set(driverId, {
+        socketId: socket.id,
+        location: null,
+        isAvailable: true,
+        userType: 'driver',
+        userId: driverId
+      });
+      console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: true (fallback)`);
+    }
 
     // Sürücüyü tüm aktif müşteri room'larına ekle
     this.addDriverToCustomerRooms(socket);
@@ -176,7 +266,7 @@ class SocketServer {
       this.cancelOrder(orderId, customerId);
     });
 
-    socket.on('update_customer_location', (location) => {
+    socket.on('customer_location_update', (location) => {
       // Müşteri konumunu güncelle
       const customerInfo = this.connectedCustomers.get(customerId);
       if (customerInfo) {
@@ -184,6 +274,9 @@ class SocketServer {
         console.log(`📍 Customer ${customerId} location updated:`, location);
       }
       this.updateCustomerLocation(customerId, location);
+      
+      // Müşteri konumu değiştiğinde yakındaki sürücüleri yeniden hesapla ve gönder
+      this.sendNearbyDriversToCustomer(socket);
     });
   }
 
@@ -192,10 +285,33 @@ class SocketServer {
     
     if (socket.userType === 'driver') {
       const driverId = socket.driverId;
+      console.log(`🔍 Before disconnect - Connected drivers count: ${this.connectedDrivers.size}`);
+      console.log(`🔍 Driver ${driverId} exists in map: ${this.connectedDrivers.has(driverId)}`);
+      
       const driverData = this.connectedDrivers.get(driverId);
-      if (driverData) {
+      if (driverData && driverData.socketId === socket.id) {
         console.log(`🚗 Driver ${driverId} disconnected (had location: ${driverData.location ? 'Yes' : 'No'}, was available: ${driverData.isAvailable})`);
-        this.connectedDrivers.delete(driverId);
+        
+        // Sürücüyü tüm müşteri room'larından çıkar
+        this.removeDriverFromAllCustomerRooms(driverId);
+        
+        // Önce sürücüyü listeden sil
+        const deleteResult = this.connectedDrivers.delete(driverId);
+        console.log(`🗑️ Driver ${driverId} deleted from map: ${deleteResult}`);
+        console.log(`🔍 After delete - Connected drivers count: ${this.connectedDrivers.size}`);
+        
+        // Müşterilere sürücünün disconnect olduğunu bildir
+        this.broadcastToAllCustomers('driver_disconnected', {
+          driverId: driverId.toString()
+        });
+        
+        // Tüm müşterilere güncellenmiş sürücü listesini gönder
+        this.broadcastNearbyDriversToAllCustomers();
+        console.log(`🔌 Driver ${driverId} disconnect broadcasted to all customers`);
+      } else if (driverData) {
+        console.log(`⚠️ Driver ${driverId} socket ${socket.id} disconnected, but active socket is ${driverData.socketId}`);
+      } else {
+        console.log(`⚠️ Driver ${driverId} not found in connected drivers map`);
       }
     } else if (socket.userType === 'customer') {
       const customerId = socket.userId;
@@ -243,6 +359,9 @@ class SocketServer {
 
       // Broadcast location to all customers
       this.broadcastDriverLocationToCustomers(driverId, location);
+      
+      // Tüm müşterilere güncellenmiş sürücü listesini gönder
+      this.broadcastNearbyDriversToAllCustomers();
       
       console.log(`✅ Driver ${driverId} location updated in both memory and database`);
     } catch (error) {
@@ -302,7 +421,23 @@ class SocketServer {
   }
 
   async updateCustomerLocation(userId, location) {
-    console.log('Update customer location called:', userId, location);
+    try {
+      console.log('📍 Updating customer location in database:', userId, location);
+      
+      const db = DatabaseConnection.getInstance();
+      await db.query(
+        'UPDATE users SET current_latitude = @latitude, current_longitude = @longitude, last_location_update = GETDATE(), updated_at = GETDATE() WHERE id = @userId',
+        { 
+          latitude: location.latitude, 
+          longitude: location.longitude, 
+          userId: userId 
+        }
+      );
+      
+      console.log(`✅ Customer ${userId} location updated in database`);
+    } catch (error) {
+      console.error('❌ Error updating customer location:', error);
+    }
   }
 
   broadcastDriverLocationToCustomers(driverId, location) {
@@ -314,6 +449,18 @@ class SocketServer {
       heading: location.heading || 0
     });
     console.log(`Driver ${driverId} location broadcasted to customers:`, location);
+  }
+
+  broadcastNearbyDriversToAllCustomers() {
+    // Tüm bağlı müşterilere güncellenmiş sürücü listesini gönder
+    this.connectedCustomers.forEach((customerInfo, customerId) => {
+      const customerRoom = `customer_${customerId}`;
+      const customerSocket = this.io.sockets.sockets.get(customerInfo.socketId);
+      if (customerSocket) {
+        this.sendNearbyDriversToCustomer(customerSocket);
+      }
+    });
+    console.log(`📡 Nearby drivers list broadcasted to all ${this.connectedCustomers.size} customers`);
   }
 
   async handleOrderAcceptance(driverId, orderId) {
@@ -382,6 +529,40 @@ class SocketServer {
     }
   }
 
+  removeDriverFromAllCustomerRooms(driverId) {
+    console.log(`🗑️ Removing driver ${driverId} from all customer rooms`);
+    
+    // Tüm room'ları kontrol et
+    const rooms = this.io.sockets.adapter.rooms;
+    let removedFromRooms = [];
+    
+    rooms.forEach((sockets, roomName) => {
+      // Sadece customer room'larını kontrol et
+      if (roomName.startsWith('customer_')) {
+        // Bu room'daki tüm socket'leri kontrol et
+        sockets.forEach(socketId => {
+          const socket = this.io.sockets.sockets.get(socketId);
+          if (socket && socket.userType === 'driver' && socket.driverId === driverId) {
+            socket.leave(roomName);
+            removedFromRooms.push(roomName);
+            console.log(`  ✅ Driver ${driverId} removed from ${roomName}`);
+          }
+        });
+      }
+    });
+    
+    if (removedFromRooms.length > 0) {
+      console.log(`🚗 Driver ${driverId} removed from ${removedFromRooms.length} customer rooms: ${removedFromRooms.join(', ')}`);
+      
+      // Müşterilere sürücünün çevrimdışı olduğunu bildir
+      removedFromRooms.forEach(roomName => {
+        this.io.to(roomName).emit('driver_offline', { driverId });
+      });
+    } else {
+      console.log(`ℹ️ Driver ${driverId} was not in any customer rooms`);
+    }
+  }
+
   logRoomMembers(roomName) {
     const roomMembers = this.io.sockets.adapter.rooms.get(roomName);
     if (!roomMembers) {
@@ -431,6 +612,50 @@ class SocketServer {
         console.log(`  - Unknown user (Socket: ${socketId})`);
       }
     });
+  }
+
+  async refreshSocketToken(refreshToken) {
+    try {
+      // Refresh token'ı doğrula
+      const refreshDecoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'refresh-secret');
+      
+      if (refreshDecoded.type !== 'refresh') {
+        console.log('Invalid refresh token type');
+        return null;
+      }
+
+      // Kullanıcıyı veritabanından al
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      const userResult = await pool.request()
+        .input('userId', refreshDecoded.userId)
+        .query('SELECT * FROM users WHERE id = @userId AND is_active = 1');
+
+      const user = userResult.recordset[0];
+      if (!user) {
+        console.log('User not found for refresh token');
+        return null;
+      }
+
+      // Yeni access token oluştur
+      const newTokenPayload = {
+        userId: user.id,
+        phone: user.phone_number,
+        userType: user.user_type || 'customer'
+      };
+      
+      const newToken = jwt.sign(
+        newTokenPayload,
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '1h' }
+      );
+
+      return newToken;
+    } catch (error) {
+      console.error('Refresh token error:', error);
+      return null;
+    }
   }
 }
 

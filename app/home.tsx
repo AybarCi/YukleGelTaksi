@@ -245,6 +245,20 @@ export default function HomeScreen() {
       }
     });
     
+    // Sürücü bağlantı kesilmesi olayını dinle
+    socketService.on('driver_disconnected', (data: any) => {
+      console.log('📡 [SOCKET] driver_disconnected event alındı:', data);
+      if (data && data.driverId) {
+        console.log('🚫 [SOCKET] Sürücü bağlantısı kesildi, haritadan kaldırılıyor:', data.driverId);
+        setDrivers(prevDrivers => {
+          const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
+          const filteredDrivers = currentDrivers.filter(driver => driver.id !== data.driverId);
+          console.log('🔄 [SOCKET] Sürücü kaldırıldı, kalan sürücü sayısı:', filteredDrivers.length);
+          return filteredDrivers;
+        });
+      }
+    });
+
     // Sipariş durumu güncellemelerini dinle
     socketService.on('order_accepted', (data: any) => {
       showModal('Sipariş Kabul Edildi', `Siparişiniz ${data.driverName} tarafından kabul edildi.`, 'success');
@@ -257,6 +271,22 @@ export default function HomeScreen() {
     socketService.on('orderStatusUpdate', (data: any) => {
       console.log('Sipariş durumu güncellendi:', data);
       showModal('Sipariş Güncellemesi', `Sipariş durumunuz: ${data.status}`, 'info');
+    });
+
+    // Sürücü çevrimdışı olduğunda haritadan kaldır
+    socketService.on('driver_offline', (data: any) => {
+      console.log('📡 [SOCKET] driver_offline event alındı:', data);
+      if (data && data.driverId) {
+        console.log('🚫 [SOCKET] Sürücü çevrimdışı oldu, haritadan kaldırılıyor:', data.driverId);
+        setDrivers(prevDrivers => {
+          const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
+          const updatedDrivers = currentDrivers.filter(driver => driver.id !== String(data.driverId));
+          console.log('🗑️ [SOCKET] Sürücü haritadan kaldırıldı. Kalan sürücü sayısı:', updatedDrivers.length);
+          return updatedDrivers;
+        });
+      } else {
+        console.log('❌ [SOCKET] Geçersiz driver_offline verisi:', data);
+      }
     });
 
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
