@@ -300,6 +300,22 @@ class SocketService {
     return true;
   }
 
+  // Driver offline event - sürücü çevrimdışı olduğunda socket disconnect yapar
+  public goOffline() {
+    if (!this.isConnected || !this.socket) {
+      console.log('Socket already disconnected');
+      return true;
+    }
+
+    console.log('Driver going offline, disconnecting socket...');
+    // Önce server'a offline olduğunu bildir
+    this.socket.emit('driver_going_offline');
+    
+    // Sonra socket bağlantısını kapat
+    this.disconnect();
+    return true;
+  }
+
   // Public method for customers
   public updateCustomerLocation(location: LocationUpdate) {
     if (!this.isConnected || !this.socket) {

@@ -228,6 +228,33 @@ class SocketServer {
     socket.on('update_order_status', ({ orderId, status }) => {
       this.updateOrderStatus(orderId, status, driverId);
     });
+
+    // Driver offline event handler
+    socket.on('driver_going_offline', async () => {
+      console.log(`🔴 Driver ${driverId} is going offline voluntarily`);
+      
+      // Veritabanında sürücünün durumunu offline yap
+      await this.updateDriverAvailability(driverId, false);
+      
+      // Sürücüyü tüm müşteri room'larından çıkar
+      this.removeDriverFromAllCustomerRooms(driverId);
+      
+      // Sürücüyü bağlı sürücüler listesinden sil
+      this.connectedDrivers.delete(driverId);
+      
+      // Müşterilere sürücünün offline olduğunu bildir
+      this.broadcastToAllCustomers('driver_went_offline', {
+        driverId: driverId.toString()
+      });
+      
+      // Tüm müşterilere güncellenmiş sürücü listesini gönder
+      this.broadcastNearbyDriversToAllCustomers();
+      
+      console.log(`📡 Driver ${driverId} offline event broadcasted to all customers`);
+      
+      // Socket bağlantısını kapat
+      socket.disconnect(true);
+    });
   }
 
   handleCustomerConnection(socket) {
@@ -269,14 +296,33 @@ class SocketServer {
     socket.on('customer_location_update', (location) => {
       // Müşteri konumunu güncelle
       const customerInfo = this.connectedCustomers.get(customerId);
+      const previousLocation = customerInfo ? customerInfo.location : null;
+      
       if (customerInfo) {
         customerInfo.location = location;
         console.log(`📍 Customer ${customerId} location updated:`, location);
       }
       this.updateCustomerLocation(customerId, location);
       
-      // Müşteri konumu değiştiğinde yakındaki sürücüleri yeniden hesapla ve gönder
-      this.sendNearbyDriversToCustomer(socket);
+      // Sadece önemli konum değişikliklerinde sürücü listesini yeniden gönder
+      // Eğer önceki konum yoksa veya 100 metreden fazla değişiklik varsa güncelle
+      let shouldUpdateDrivers = !previousLocation;
+      
+      if (previousLocation && !shouldUpdateDrivers) {
+        const distance = this.calculateDistance(
+          previousLocation.latitude, previousLocation.longitude,
+          location.latitude, location.longitude
+        );
+        // 100 metreden fazla değişiklik varsa güncelle
+        shouldUpdateDrivers = distance > 0.1; // 0.1 km = 100 metre
+      }
+      
+      if (shouldUpdateDrivers) {
+        console.log(`🔄 Significant location change detected, updating nearby drivers for customer ${customerId}`);
+        this.sendNearbyDriversToCustomer(socket);
+      } else {
+        console.log(`📍 Minor location change, skipping driver list update for customer ${customerId}`);
+      }
     });
   }
 
@@ -401,6 +447,24 @@ class SocketServer {
     this.connectedCustomers.forEach((socketId) => {
       this.io.to(socketId).emit(event, data);
     });
+  }
+
+  // İki koordinat arasındaki mesafeyi hesapla (km cinsinden)
+  calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Dünya'nın yarıçapı (km)
+    const dLat = this.toRadians(lat2 - lat1);
+    const dLon = this.toRadians(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // km cinsinden mesafe
+  }
+
+  // Derece'yi radyan'a çevir
+  toRadians(degrees) {
+    return degrees * (Math.PI/180);
   }
 
   getConnectedDriversCount() {

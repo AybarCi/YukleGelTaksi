@@ -73,9 +73,15 @@ export default function DriverDashboardScreen() {
     loadCustomers();
     requestLocationPermission();
     
-    // Socket bağlantısını kur
+    // Socket bağlantısını kur - sadece sürücü çevrimiçiyse
     if (token) {
-      socketService.connect(token);
+      // AsyncStorage'dan son online durumunu kontrol et
+      AsyncStorage.getItem('driver_online_status').then(savedStatus => {
+        const shouldBeOnline = savedStatus === 'true';
+        if (shouldBeOnline) {
+          socketService.connect(token);
+        }
+      });
       
       // Socket bağlantı durumu event'lerini dinle
       socketService.on('connection_error', (data: any) => {
@@ -160,6 +166,10 @@ export default function DriverDashboardScreen() {
         return;
       }
 
+      // AsyncStorage'dan son online durumunu oku
+      const savedOnlineStatus = await AsyncStorage.getItem('driver_online_status');
+      const shouldBeOnline = savedOnlineStatus === 'true';
+
       const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -168,7 +178,13 @@ export default function DriverDashboardScreen() {
       if (response.ok) {
         const result = await response.json();
         setDriverInfo(result.data);
-        setIsOnline(result.data.is_active);
+        
+        // Eğer sürücü çevrimdışı olarak kaydedilmişse, online durumunu false yap
+        if (!shouldBeOnline) {
+          setIsOnline(false);
+        } else {
+          setIsOnline(result.data.is_active);
+        }
       }
     } catch (error) {
       console.log('Error loading driver info:', error);
@@ -289,27 +305,37 @@ export default function DriverDashboardScreen() {
     try {
       const newStatus = !isOnline;
       
-      // Socket ile müsaitlik durumunu güncelle
-      if (socketService.isSocketConnected()) {
-        socketService.updateAvailability(newStatus);
-      }
-      
-      setIsOnline(newStatus);
-      
       if (newStatus) {
+        // Online olduğunda socket bağlantısını kur ve müsaitlik durumunu güncelle
+        if (token) {
+          await socketService.connect(token);
+        }
+        if (socketService.isSocketConnected()) {
+          socketService.updateAvailability(newStatus);
+        }
         // Online olduğunda konum takibini başlat
         await startLocationTracking();
+        // Online durumunu AsyncStorage'da sakla
+        await AsyncStorage.setItem('driver_online_status', 'true');
       } else {
+        // Offline olduğunda önce socket disconnect yap
+        if (socketService.isSocketConnected()) {
+          socketService.goOffline(); // Bu fonksiyon socket'i disconnect edecek
+        }
         // Offline olduğunda konum takibini durdur
         if (locationWatchRef.current) {
           locationWatchRef.current.remove();
           locationWatchRef.current = null;
         }
+        // Offline durumunu AsyncStorage'da sakla
+        await AsyncStorage.setItem('driver_online_status', 'false');
       }
+      
+      setIsOnline(newStatus);
       
       showModal(
         'Durum Güncellendi',
-        newStatus ? 'Artık çevrimiçisiniz ve konum takibi başlatıldı' : 'Çevrimdışı oldunuz ve konum takibi durduruldu',
+        newStatus ? 'Artık çevrimiçisiniz ve konum takibi başlatıldı' : 'Çevrimdışı oldunuz ve bağlantı kesildi',
         'success'
       );
     } catch (error) {

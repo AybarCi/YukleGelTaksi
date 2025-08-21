@@ -312,9 +312,11 @@ export default function HomeScreen() {
       socketService.off('max_reconnect_attempts_reached');
       socketService.off('driver_location_update');
       socketService.off('nearbyDriversUpdate');
+      socketService.off('driver_disconnected');
       socketService.off('order_accepted');
       socketService.off('order_status_update');
       socketService.off('orderStatusUpdate');
+      socketService.off('driver_offline');
       
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
@@ -323,7 +325,8 @@ export default function HomeScreen() {
   
   useEffect(() => {
     if (useCurrentLocation) {
-      getCurrentLocation();
+      // Switch açıldığında forceUpdate=true ile konum güncellemesini zorla
+      getCurrentLocation(true);
     } else {
       setPickupCoords(null);
       setPickupLocation('');
@@ -472,7 +475,7 @@ export default function HomeScreen() {
     }
   };
 
-  const getCurrentLocation = async () => {
+  const getCurrentLocation = async (forceUpdate = false) => {
     try {
       console.log('🗺️ [CUSTOMER LOCATION] Konum alınmaya başlandı...');
       setIsLocationLoading(true);
@@ -491,17 +494,33 @@ export default function HomeScreen() {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude
       });
+      
+      // Önceki konum ile karşılaştır
+      let shouldUpdateSocket = forceUpdate || !userLocation;
+      if (userLocation && !shouldUpdateSocket) {
+        const distance = calculateDistance(
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          location.coords.latitude,
+          location.coords.longitude
+        );
+        // 50 metreden fazla değişiklik varsa güncelle
+        shouldUpdateSocket = distance > 0.05; // 0.05 km = 50 metre
+      }
+      
       setUserLocation(location);
       
-      // Müşteri konumunu socket ile güncelle
-      if (socketService.isSocketConnected()) {
-        console.log('📡 [CUSTOMER LOCATION] Socket ile konum gönderiliyor...');
+      // Sadece önemli konum değişikliklerinde socket'e gönder
+      if (shouldUpdateSocket && socketService.isSocketConnected()) {
+        console.log('📡 [CUSTOMER LOCATION] Önemli konum değişikliği, socket ile gönderiliyor...');
         socketService.updateCustomerLocation({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude
         });
-      } else {
+      } else if (!socketService.isSocketConnected()) {
         console.log('❌ [CUSTOMER LOCATION] Socket bağlantısı yok, konum gönderilemedi');
+      } else {
+        console.log('📍 [CUSTOMER LOCATION] Küçük konum değişikliği, socket güncellemesi atlandı');
       }
       
       // Eğer mevcut konum kullanılacaksa pickup koordinatlarını ayarla
