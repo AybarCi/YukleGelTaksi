@@ -539,53 +539,65 @@ class SocketServer {
     try {
       console.log(`🔍 Fetching nearby drivers for customer ${socket.userId}`);
       
-      // Bağlı sürücüleri memory'den al (veritabanına gitmeden)
-      const connectedDriversArray = Array.from(this.connectedDrivers.entries());
-      console.log(`🌐 Connected drivers count: ${connectedDriversArray.length}`);
+      // Sadece gerçekten bağlı olan sürücüleri göster (bellekten)
+      const connectedDriversWithLocation = [];
       
-      if (connectedDriversArray.length === 0) {
-        console.log(`⚠️ No connected drivers found`);
-        const customerRoom = `customer_${socket.userId}`;
-        this.io.to(customerRoom).emit('nearbyDriversUpdate', { drivers: [] });
-        socket.emit('nearbyDriversUpdate', { drivers: [] });
-        return;
+      for (const [driverId, driverData] of this.connectedDrivers) {
+        if (driverData.location && driverData.isAvailable) {
+          // Veritabanından sürücü detaylarını getir
+          const db = DatabaseConnection.getInstance();
+          const pool = await db.connect();
+          
+          const result = await pool.request()
+            .input('driverId', driverId)
+            .query(`
+              SELECT 
+                d.id,
+                d.first_name,
+                d.last_name,
+                d.vehicle_plate,
+                d.vehicle_model,
+                d.vehicle_color
+              FROM drivers d
+              WHERE d.id = @driverId AND d.is_active = 1
+            `);
+          
+          if (result.recordset && result.recordset.length > 0) {
+            const driver = result.recordset[0];
+            connectedDriversWithLocation.push({
+              id: driver.id.toString(),
+              latitude: driverData.location.latitude,
+              longitude: driverData.location.longitude,
+              heading: driverData.location.heading || 0,
+              name: driver.first_name,
+              vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
+              plate: driver.vehicle_plate
+            });
+          }
+        }
       }
       
-      // Memory'deki sürücü bilgilerini filtrele ve formatla
-      const availableDrivers = connectedDriversArray
-        .filter(([driverId, driverInfo]) => {
-          // Sadece uygun olan ve konum bilgisi olan sürücüleri al
-          return driverInfo.isAvailable && 
-                 driverInfo.location && 
-                 driverInfo.location.latitude && 
-                 driverInfo.location.longitude;
-        })
-        .map(([driverId, driverInfo]) => ({
-          id: driverId.toString(),
-          driver_id: driverId.toString(),
-          latitude: driverInfo.location.latitude,
-          longitude: driverInfo.location.longitude,
-          heading: driverInfo.location.heading || 0
-        }));
-
-      console.log(`🚗 Available drivers with location: ${availableDrivers.length}`);
-      if (availableDrivers.length > 0) {
-        console.log(`📍 Driver locations:`, availableDrivers.map(d => ({ 
+      const drivers = connectedDriversWithLocation;
+      
+      console.log(`🚗 Available drivers with location: ${drivers.length}`);
+      if (drivers.length > 0) {
+        console.log(`📍 Driver locations:`, drivers.map(d => ({ 
           id: d.id, 
           lat: d.latitude, 
           lng: d.longitude,
-          heading: d.heading
+          heading: d.heading,
+          name: d.name
         })));
       }
 
       // Müşterinin room'una emit et
       const customerRoom = `customer_${socket.userId}`;
-      this.io.to(customerRoom).emit('nearbyDriversUpdate', { drivers: availableDrivers });
+      this.io.to(customerRoom).emit('nearbyDriversUpdate', { drivers });
       
-      console.log(`✅ Sent ${availableDrivers.length} nearby drivers to customer ${socket.userId} in room ${customerRoom}`);
+      console.log(`✅ Sent ${drivers.length} nearby drivers to customer ${socket.userId} in room ${customerRoom}`);
       
       // Ayrıca direkt socket'e de gönder (fallback)
-      socket.emit('nearbyDriversUpdate', { drivers: availableDrivers });
+      socket.emit('nearbyDriversUpdate', { drivers });
       
     } catch (error) {
       console.error('❌ Error sending nearby drivers to customer:', error);

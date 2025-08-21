@@ -33,6 +33,7 @@ interface Driver {
   latitude: number;
   longitude: number;
   heading: number;
+  name?: string;
 }
 
 export default function HomeScreen() {
@@ -230,9 +231,10 @@ export default function HomeScreen() {
           })
           .map((driver: any) => ({
             id: String(driver.id || driver.driver_id),
-            latitude: Number(driver.latitude),
-            longitude: Number(driver.longitude),
-            heading: Number(driver.heading) || 0
+            latitude: Number(driver.latitude || driver.lat),
+            longitude: Number(driver.longitude || driver.lng),
+            heading: Number(driver.heading) || 0,
+            name: driver.name || driver.first_name || `Sürücü ${driver.id || driver.driver_id}`
           }));
         console.log('🎯 [SOCKET] Geçerli sürücü listesi:', validDrivers.length, 'sürücü');
         console.log('📍 [SOCKET] Sürücü konumları:', validDrivers.map((d: Driver) => ({ id: d.id, lat: d.latitude, lng: d.longitude })));
@@ -736,7 +738,7 @@ export default function HomeScreen() {
                              latitude: driver.latitude,
                              longitude: driver.longitude,
                            }}
-                           title={`Sürücü ${driver.id}`}
+                           title={driver.name || `Sürücü ${driver.id}`}
                            description="Müsait sürücü"
                          >
                            <View style={styles.driverMarker}>

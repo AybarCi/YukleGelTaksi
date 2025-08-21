@@ -456,6 +456,9 @@ class SocketServer {
       // Tüm müşterilere sürücü konum güncellemesini broadcast et
       this.broadcastDriverLocationToCustomers(driverId, location);
       
+      // Tüm müşterilere güncellenmiş sürücü listesini gönder
+      this.broadcastNearbyDriversToAllCustomers();
+      
     } catch (error) {
       console.error('Error updating driver location:', error);
     }
@@ -642,10 +645,12 @@ class SocketServer {
         latitude: driver.current_latitude,
         longitude: driver.current_longitude,
         heading: 0, // Default heading value
+        first_name: driver.first_name,
+        last_name: driver.last_name,
         name: `${driver.first_name} ${driver.last_name}`,
         vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
         plate: driver.vehicle_plate
-      }));
+      }))
       
       // Müşteriye çevrimiçi sürücüleri gönder
       socket.emit('nearbyDriversUpdate', { drivers });
@@ -684,6 +689,8 @@ class SocketServer {
         latitude: driver.current_latitude,
         longitude: driver.current_longitude,
         heading: 0, // Default heading value
+        first_name: driver.first_name,
+        last_name: driver.last_name,
         name: `${driver.first_name} ${driver.last_name}`,
         vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
         plate: driver.vehicle_plate
