@@ -1,8 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, PanResponder, Dimensions } from 'react-native';
-import { Truck, MapPin, Navigation } from 'lucide-react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Kamyonet SVG İkonu
+const TruckIcon = ({ size = 20, color = '#FFFFFF' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    {/* Kamyonet gövdesi */}
+    <Rect x="2" y="11" width="8" height="6" rx="1" fill={color} />
+    {/* Kamyonet kabini */}
+    <Rect x="10" y="8" width="6" height="9" rx="1" fill={color} />
+    {/* Ön cam */}
+    <Rect x="11" y="9" width="4" height="3" rx="0.5" fill={color} opacity="0.7" />
+    {/* Ön tekerlek */}
+    <Svg x="4" y="16" width="3" height="3">
+      <Rect width="3" height="3" rx="1.5" fill={color} opacity="0.8" />
+    </Svg>
+    {/* Arka tekerlek */}
+    <Svg x="12" y="16" width="3" height="3">
+      <Rect width="3" height="3" rx="1.5" fill={color} opacity="0.8" />
+    </Svg>
+    {/* Kamyonet kasası detayı */}
+    <Rect x="3" y="12" width="6" height="1" fill={color} opacity="0.6" />
+  </Svg>
+);
 
 interface Driver {
   id: number;
@@ -290,19 +313,19 @@ export default function InteractiveMap() {
 
         {/* Landmarks */}
         <View style={[styles.landmark, { top: 100, left: 100 }]}>
-          <MapPin size={16} color="#3B82F6" />
+          <MaterialIcons name="location-on" size={16} color="#3B82F6" />
           <Text style={styles.landmarkText}>Belediye</Text>
         </View>
         <View style={[styles.landmark, { top: 200, left: 250 }]}>
-          <MapPin size={16} color="#3B82F6" />
+          <MaterialIcons name="location-on" size={16} color="#3B82F6" />
           <Text style={styles.landmarkText}>AVM</Text>
         </View>
         <View style={[styles.landmark, { top: 300, left: 150 }]}>
-          <MapPin size={16} color="#3B82F6" />
+          <MaterialIcons name="location-on" size={16} color="#3B82F6" />
           <Text style={styles.landmarkText}>Hastane</Text>
         </View>
         <View style={[styles.landmark, { top: 100, left: 200 }]}>
-          <MapPin size={16} color="#10B981" />
+          <MaterialIcons name="location-on" size={16} color="#10B981" />
           <Text style={styles.landmarkText}>Park</Text>
         </View>
 
@@ -326,7 +349,7 @@ export default function InteractiveMap() {
                 styles.driverIcon,
                 { backgroundColor: getDriverStatusColor(driver.status) }
               ]}>
-                <Truck size={16} color="#FFFFFF" />
+                <TruckIcon size={24} color="#FFFFFF" />
               </View>
               <View style={styles.driverInfo}>
                 <Text style={styles.driverName}>{driver.name}</Text>

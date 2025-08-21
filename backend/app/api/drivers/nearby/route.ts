@@ -82,15 +82,16 @@ export async function POST(request: Request): Promise<Response> {
       const driversResult = await pool.request()
         .query(`
           SELECT 
-            id, first_name, last_name, phone_number,
-            current_latitude, current_longitude,
-            vehicle_plate, vehicle_model, vehicle_color,
-            rating, is_available, last_location_update
-          FROM drivers 
-          WHERE is_available = 1 
-            AND current_latitude IS NOT NULL 
-            AND current_longitude IS NOT NULL
-            AND DATEDIFF(minute, last_location_update, GETDATE()) <= 10
+            d.id, u.first_name, u.last_name, u.phone_number,
+            u.current_latitude, u.current_longitude,
+            d.vehicle_plate, d.vehicle_model, d.vehicle_color,
+            d.rating, d.is_available, u.last_location_update
+          FROM drivers d
+          INNER JOIN users u ON d.user_id = u.id
+          WHERE d.is_available = 1 
+            AND u.current_latitude IS NOT NULL 
+            AND u.current_longitude IS NOT NULL
+            AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= 10
         `);
 
       const allDrivers = driversResult.recordset;

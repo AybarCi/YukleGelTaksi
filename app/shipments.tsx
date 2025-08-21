@@ -155,12 +155,12 @@ export default function ShipmentsScreen() {
     });
   };
 
-  const filteredShipments = shipments.filter(shipment => {
+  const filteredShipments = shipments && Array.isArray(shipments) ? shipments.filter(shipment => {
     if (filter === 'all') return true;
     if (filter === 'active') return ['pending', 'accepted', 'in_progress'].includes(shipment.status);
     if (filter === 'completed') return ['delivered', 'cancelled'].includes(shipment.status);
     return true;
-  });
+  }) : [];
 
   const renderShipmentItem = (shipment: Shipment) => (
     <TouchableOpacity key={shipment.id} style={styles.shipmentCard}>

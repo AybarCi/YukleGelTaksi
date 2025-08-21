@@ -5,10 +5,10 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from '../contexts/AuthContext';
@@ -80,12 +80,11 @@ export default function SplashScreen() {
           }
         ]}
       >
-        <View style={styles.logoCircle}>
-          <Ionicons name="car" size={60} color="#000000" />
-        </View>
-        
-        <Text style={styles.appName}>Yükle Gel</Text>
-        <Text style={styles.appSubtitle}>Taksi</Text>
+        <Image 
+          source={require('../assets/images/logo-test1.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
       </Animated.View>
       
       <View style={styles.footer}>
@@ -106,30 +105,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 100,
   },
-  logoCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FCD34D',
-    justifyContent: 'center',
-    alignItems: 'center',
+  logo: {
+    width: 200,
+    height: 200,
     marginBottom: 24,
-    elevation: 8,
-    shadowColor: '#FCD34D',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#000000',
-    marginBottom: 4,
-  },
-  appSubtitle: {
-    fontSize: 18,
-    color: '#6B7280',
-    fontWeight: '500',
   },
   footer: {
     position: 'absolute',

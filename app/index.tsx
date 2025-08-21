@@ -1,22 +1,46 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
 export default function Index() {
   const { user, token, isLoading } = useAuth();
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && !hasNavigated) {
+      setHasNavigated(true);
+      
       if (user && token) {
-        router.replace('/home');
+        // User is authenticated
+        if (user.user_type === 'driver') {
+          // For drivers, check their status and navigate accordingly
+          // For now, navigate to driver-dashboard (can be enhanced later)
+          setTimeout(() => {
+            router.replace('/driver-dashboard');
+          }, 100);
+        } else {
+          // For passengers, check if profile is complete
+          if (!user.full_name || user.full_name.trim().length === 0) {
+            setTimeout(() => {
+              router.replace('/user-info');
+            }, 100);
+          } else {
+            setTimeout(() => {
+              router.replace('/home');
+            }, 100);
+          }
+        }
       } else {
-        router.replace('/splash');
+        // User is not authenticated
+        setTimeout(() => {
+          router.replace('/splash');
+        }, 100);
       }
     }
-  }, [user, token, isLoading]);
+  }, [user, token, isLoading, hasNavigated]);
 
-  if (isLoading) {
+  if (isLoading || hasNavigated) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#FCD34D" />

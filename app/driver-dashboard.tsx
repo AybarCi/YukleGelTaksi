@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,9 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { API_CONFIG } from '../config/api';
+import socketService from '../services/socketService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -37,8 +39,24 @@ interface DriverInfo {
   is_active: boolean;
 }
 
+interface OrderData {
+  id: number;
+  pickupAddress: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  destinationAddress: string;
+  destinationLatitude: number;
+  destinationLongitude: number;
+  weight: number;
+  laborCount: number;
+  estimatedPrice: number;
+  customerId: number;
+  customerName?: string;
+  customerPhone?: string;
+}
+
 export default function DriverDashboardScreen() {
-  const { showModal, logout } = useAuth();
+  const { showModal, logout, token } = useAuth();
   const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isOnline, setIsOnline] = useState(false);
@@ -48,11 +66,54 @@ export default function DriverDashboardScreen() {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
+  const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
     loadDriverInfo();
     loadCustomers();
-  }, []);
+    requestLocationPermission();
+    
+    // Socket bağlantısını kur
+    if (token) {
+      socketService.connect(token);
+      
+      // Socket bağlantı durumu event'lerini dinle
+      socketService.on('connection_error', (data: any) => {
+        console.error('Socket bağlantı hatası:', data.error);
+        showModal('Bağlantı Hatası', 'Sunucuya bağlanırken bir hata oluştu. Lütfen internet bağlantınızı kontrol edin.', 'error');
+      });
+
+      socketService.on('max_reconnect_attempts_reached', () => {
+        console.log('Maksimum yeniden bağlanma denemesi aşıldı');
+        showModal('Bağlantı Sorunu', 'Sunucuya bağlanılamıyor. Lütfen uygulamayı yeniden başlatın.', 'warning');
+      });
+      
+      // Socket event listener'ları
+      socketService.on('new_order', (orderData: OrderData) => {
+        console.log('New order received:', orderData);
+        // Yeni sipariş geldiğinde customers listesini güncelle
+        loadCustomers();
+      });
+      
+      socketService.on('order_cancelled', (orderId: number) => {
+        console.log('Order cancelled:', orderId);
+        // İptal edilen siparişi listeden kaldır
+        setCustomers(prev => (prev || []).filter(customer => customer.id !== orderId));
+      });
+    }
+    
+    return () => {
+      // Cleanup socket listeners
+      socketService.off('connection_error');
+      socketService.off('max_reconnect_attempts_reached');
+      socketService.off('new_order');
+      socketService.off('order_cancelled');
+      // Cleanup location watch
+      if (locationWatchRef.current) {
+        locationWatchRef.current.remove();
+      }
+    };
+  }, [token]);
 
   const loadDriverInfo = async () => {
     try {
@@ -77,6 +138,80 @@ export default function DriverDashboardScreen() {
       // Network error - logout user and redirect to login
       await logout();
       router.replace('/phone-auth');
+    }
+  };
+
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        showModal('Konum İzni', 'Konum izni gerekli. Lütfen ayarlardan konum iznini açın.', 'warning');
+        return;
+      }
+      
+      // Konum izni alındıktan sonra konum takibini başlat
+      startLocationTracking();
+    } catch (error) {
+      console.error('Location permission error:', error);
+      showModal('Hata', 'Konum izni alınırken hata oluştu.', 'error');
+    }
+  };
+
+  const startLocationTracking = async () => {
+    try {
+      // İlk konumu al
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      
+      const newLocation = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      };
+      
+      setCurrentLocation(newLocation);
+      
+      // Socket ile konum gönder
+      if (socketService.isSocketConnected()) {
+        socketService.updateLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          heading: location.coords.heading || 0,
+        });
+      }
+      
+      // Konum takibini başlat (her 10 saniyede bir güncelle)
+      locationWatchRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000, // 10 saniye
+          distanceInterval: 10, // 10 metre
+        },
+        (location) => {
+          const newLocation = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.0922,
+            longitudeDelta: 0.0421,
+          };
+          
+          setCurrentLocation(newLocation);
+          
+          // Socket ile konum gönder
+          if (socketService.isSocketConnected() && isOnline) {
+            socketService.updateLocation({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              heading: location.coords.heading || 0,
+            });
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Location tracking error:', error);
+      showModal('Hata', 'Konum takibi başlatılırken hata oluştu.', 'error');
     }
   };
 
@@ -116,11 +251,28 @@ export default function DriverDashboardScreen() {
   const toggleOnlineStatus = async () => {
     try {
       const newStatus = !isOnline;
-      // API çağrısı yapılacak
+      
+      // Socket ile müsaitlik durumunu güncelle
+      if (socketService.isSocketConnected()) {
+        socketService.updateAvailability(newStatus);
+      }
+      
       setIsOnline(newStatus);
+      
+      if (newStatus) {
+        // Online olduğunda konum takibini başlat
+        await startLocationTracking();
+      } else {
+        // Offline olduğunda konum takibini durdur
+        if (locationWatchRef.current) {
+          locationWatchRef.current.remove();
+          locationWatchRef.current = null;
+        }
+      }
+      
       showModal(
         'Durum Güncellendi',
-        newStatus ? 'Artık çevrimiçisiniz' : 'Çevrimdışı oldunuz',
+        newStatus ? 'Artık çevrimiçisiniz ve konum takibi başlatıldı' : 'Çevrimdışı oldunuz ve konum takibi durduruldu',
         'success'
       );
     } catch (error) {
@@ -285,7 +437,7 @@ export default function DriverDashboardScreen() {
         </View>
         
         <FlatList
-          data={customers.filter(c => c.status === 'waiting' || c.status === 'accepted')}
+          data={(customers || []).filter(c => c.status === 'waiting' || c.status === 'accepted')}
           renderItem={renderCustomerItem}
           keyExtractor={(item) => item.id.toString()}
           showsVerticalScrollIndicator={false}

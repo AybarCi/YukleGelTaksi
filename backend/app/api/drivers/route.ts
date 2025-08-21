@@ -21,9 +21,7 @@ interface Driver {
   is_available: boolean;
   rating: number;
   total_trips: number;
-  current_latitude?: number;
-  current_longitude?: number;
-  last_location_update?: string;
+  // Location fields moved to users table
   created_at: string;
   updated_at: string;
 }

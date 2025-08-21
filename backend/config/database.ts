@@ -61,9 +61,16 @@ class DatabaseConnection {
         const statements = schema.split('GO').filter(stmt => stmt.trim());
         
         for (const statement of statements) {
-          if (statement.trim()) {
-            const request = this.pool.request();
-            await request.query(statement.trim());
+          const trimmedStatement = statement.trim();
+          if (trimmedStatement && trimmedStatement.length > 0 && !trimmedStatement.startsWith('--')) {
+            try {
+              const request = this.pool.request();
+              await request.query(trimmedStatement);
+            } catch (statementError) {
+              console.error('SQL Statement Error:', statementError);
+              console.error('Problematic statement:', trimmedStatement);
+              throw statementError;
+            }
           }
         }
         console.log('Veritabanı şeması başarıyla oluşturuldu');

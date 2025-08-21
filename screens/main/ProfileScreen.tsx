@@ -117,7 +117,7 @@ const ProfileScreen: React.FC = () => {
       icon: 'information-circle-outline',
       title: 'Hakkında',
       subtitle: 'Uygulama sürümü ve yasal bilgiler',
-      onPress: () => showModal('YükleGel Taksi', 'Sürüm 1.0.0\n\n© 2024 YükleGel Taksi', 'info'),
+      onPress: () => showModal('Hakkında', 'Sürüm 1.0.0', 'info'),
     },
   ];
 

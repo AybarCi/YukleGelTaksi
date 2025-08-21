@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,15 +15,18 @@ import {
   Alert,
   Keyboard,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import MapView, { Marker } from 'react-native-maps';
-// import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
+import socketService from '../services/socketService';
+import { API_CONFIG } from '../config/api';
 
 interface Driver {
   id: string;
@@ -32,13 +36,14 @@ interface Driver {
 }
 
 export default function HomeScreen() {
+  console.log('🏠 [HOME] HomeScreen component başlatılıyor');
   const [menuVisible, setMenuVisible] = useState(false);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
-  const [drivers, setDrivers] = useState<Driver[]>([
-    { id: '1', latitude: 41.0082, longitude: 28.9784, heading: 45 },
-    { id: '2', latitude: 41.0122, longitude: 28.9824, heading: 120 },
-    { id: '3', latitude: 41.0062, longitude: 28.9744, heading: 270 },
-  ]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  console.log('🏠 [HOME] Initial drivers state:', drivers);
+  
+  // Drivers state'inin güvenli olduğundan emin olmak için
+  const safeDrivers = Array.isArray(drivers) ? drivers : [];
   
   // Yük bilgileri state'leri
   const [weight, setWeight] = useState('');
@@ -49,14 +54,19 @@ export default function HomeScreen() {
   const [destinationCoords, setDestinationCoords] = useState<{latitude: number, longitude: number} | null>(null);
   const [cargoImage, setCargoImage] = useState<string | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
+  const [notes, setNotes] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
+  const [isLocationLoading, setIsLocationLoading] = useState(true);
   
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRefs = useRef<(TextInput | null)[]>([]);
   
-  const { logout, showModal, user } = useAuth();
+  const { logout, showModal, user, token } = useAuth();
+  console.log('🏠 [HOME] Auth context loaded - user:', user?.id, 'token exists:', !!token);
+
+
 
   // Aktif input alanını scroll etmek için fonksiyon
   const scrollToInput = (inputIndex: number) => {
@@ -105,11 +115,149 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    getCurrentLocation();
-    // Sürücü konumlarını güncellemek için interval
-    const interval = setInterval(() => {
-      updateDriverLocations();
-    }, 5000);
+    console.log('🏠 [HOME] Component mount edildi, konum alınıyor...');
+    console.log('🏠 [HOME] useEffect başlangıcında drivers state:', drivers);
+    const initializeApp = async () => {
+      // Sadece konumu al, sürücüler socket'ten gelecek
+      await getCurrentLocation();
+    };
+    
+    initializeApp();
+    
+    // Socket bağlantısını token ile başlat
+    if (token) {
+      console.log('🔌 [SOCKET] Token mevcut, socket bağlantısı başlatılıyor...');
+      console.log('🔌 [SOCKET] Drivers state socket başlatmadan önce:', drivers);
+      socketService.connect(token);
+    }
+    
+    // Socket bağlantı durumu event'lerini dinle
+    socketService.on('connection_error', (data: any) => {
+      console.error('Socket bağlantı hatası:', data.error);
+      showModal('Bağlantı Hatası', 'Sunucuya bağlanırken bir hata oluştu. Lütfen internet bağlantınızı kontrol edin.', 'error');
+    });
+
+    socketService.on('max_reconnect_attempts_reached', () => {
+      console.log('Maksimum yeniden bağlanma denemesi aşıldı');
+      showModal('Bağlantı Sorunu', 'Sunucuya bağlanılamıyor. Lütfen uygulamayı yeniden başlatın.', 'warning');
+    });
+
+    // Socket event listener'larını kur
+    socketService.on('driver_location_update', (data: any) => {
+      console.log('📡 [SOCKET] driver_location_update event alındı:', data);
+      if (data && data.driverId && data.latitude && data.longitude) {
+        console.log('✅ [SOCKET] Sürücü konumu güncelleniyor:', {
+          driverId: data.driverId,
+          latitude: data.latitude,
+          longitude: data.longitude
+        });
+        setDrivers(prevDrivers => {
+          console.log('🔄 [SOCKET] setDrivers çağrıldı - prevDrivers:', prevDrivers, 'type:', typeof prevDrivers, 'isArray:', Array.isArray(prevDrivers));
+          // Güvenli array kontrolü
+          const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
+          console.log('🔄 [SOCKET] currentDrivers after safety check:', currentDrivers);
+          
+          const updatedDrivers = [...currentDrivers];
+          const driverIndex = updatedDrivers.findIndex(d => d && d.id === data.driverId);
+          
+          if (driverIndex !== -1) {
+            updatedDrivers[driverIndex] = {
+              ...updatedDrivers[driverIndex],
+              latitude: data.latitude,
+              longitude: data.longitude,
+              heading: data.heading || updatedDrivers[driverIndex].heading || 0,
+            };
+          } else {
+            // Yeni sürücü ekle
+            updatedDrivers.push({
+              id: data.driverId,
+              latitude: data.latitude,
+              longitude: data.longitude,
+              heading: data.heading || 0,
+            });
+          }
+          console.log('🔄 [SOCKET] Sürücü listesi güncellendi, toplam:', updatedDrivers.length);
+          console.log('🔄 [SOCKET] Returning updatedDrivers:', updatedDrivers);
+          return updatedDrivers;
+        });
+      } else {
+        console.log('❌ [SOCKET] Geçersiz driver_location_update verisi:', data);
+      }
+    });
+    
+    // Sürücü listesi güncellemelerini dinle
+    socketService.on('nearbyDriversUpdate', (data: any) => {
+      console.log('📡 [SOCKET] nearbyDriversUpdate event alındı:', data);
+      
+      try {
+        // Güvenli kontrol: data ve data.drivers var mı?
+        if (!data) {
+          console.log('❌ [SOCKET] nearbyDriversUpdate verisi null/undefined');
+          setDrivers([]);
+          return;
+        }
+        
+        if (!data.drivers) {
+          console.log('❌ [SOCKET] nearbyDriversUpdate data.drivers null/undefined');
+          setDrivers([]);
+          return;
+        }
+        
+        if (!Array.isArray(data.drivers)) {
+          console.log('❌ [SOCKET] nearbyDriversUpdate data.drivers array değil:', typeof data.drivers);
+          setDrivers([]);
+          return;
+        }
+        
+        if (data.drivers.length === 0) {
+          console.log('⚠️ [SOCKET] Yakında sürücü bulunamadı');
+          setDrivers([]);
+          return;
+        }
+        
+        console.log('✅ [SOCKET] Çevrimiçi sürücü listesi alındı, toplam:', data.drivers.length);
+        
+        // Ekstra güvenlik kontrolü - data.drivers'ın array olduğundan emin ol
+        const driversArray = Array.isArray(data.drivers) ? data.drivers : [];
+        
+        const validDrivers = driversArray
+          .filter((driver: any) => {
+            return driver && 
+                   typeof driver === 'object' && 
+                   (driver.id || driver.driver_id) && 
+                   driver.latitude !== undefined && 
+                   driver.longitude !== undefined;
+          })
+          .map((driver: any) => ({
+            id: String(driver.id || driver.driver_id),
+            latitude: Number(driver.latitude),
+            longitude: Number(driver.longitude),
+            heading: Number(driver.heading) || 0
+          }));
+        console.log('🎯 [SOCKET] Geçerli sürücü listesi:', validDrivers.length, 'sürücü');
+        console.log('📍 [SOCKET] Sürücü konumları:', validDrivers.map((d: Driver) => ({ id: d.id, lat: d.latitude, lng: d.longitude })));
+        console.log('🎯 [SOCKET] setDrivers çağrılıyor validDrivers ile:', validDrivers);
+        setDrivers(validDrivers);
+      } catch (error) {
+        console.log('❌ [SOCKET] nearbyDriversUpdate işleme hatası:', error);
+        console.log('❌ [SOCKET] Hata nedeniyle setDrivers([]) çağrılıyor');
+        setDrivers([]);
+      }
+    });
+    
+    // Sipariş durumu güncellemelerini dinle
+    socketService.on('order_accepted', (data: any) => {
+      showModal('Sipariş Kabul Edildi', `Siparişiniz ${data.driverName} tarafından kabul edildi.`, 'success');
+    });
+    
+    socketService.on('order_status_update', (data: any) => {
+      showModal('Sipariş Durumu', `Sipariş durumu: ${data.status}`, 'info');
+    });
+    
+    socketService.on('orderStatusUpdate', (data: any) => {
+      console.log('Sipariş durumu güncellendi:', data);
+      showModal('Sipariş Güncellemesi', `Sipariş durumunuz: ${data.status}`, 'info');
+    });
 
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardVisible(true);
@@ -129,11 +277,19 @@ export default function HomeScreen() {
     });
 
     return () => {
-      clearInterval(interval);
+      // Socket event listener'larını temizle
+      socketService.off('connection_error');
+      socketService.off('max_reconnect_attempts_reached');
+      socketService.off('driver_location_update');
+      socketService.off('nearbyDriversUpdate');
+      socketService.off('order_accepted');
+      socketService.off('order_status_update');
+      socketService.off('orderStatusUpdate');
+      
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, []);
+  }, [token]);
   
   useEffect(() => {
     if (useCurrentLocation) {
@@ -248,51 +404,97 @@ export default function HomeScreen() {
     }
   }, [pickupCoords, destinationCoords]);
   
-  const handleCreateOrder = () => {
-     if (!weight || !pickupCoords || !destinationCoords) {
-       showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
-       return;
-     }
-     
-     showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu.', 'success');
-   };
+  const handleCreateOrder = async () => {
+    if (!weight || !pickupCoords || !destinationCoords) {
+      showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
+      return;
+    }
+    
+    try {
+      const orderData = {
+         pickupAddress: pickupLocation,
+         pickupLatitude: pickupCoords.latitude,
+         pickupLongitude: pickupCoords.longitude,
+         destinationAddress: destinationLocation,
+         destinationLatitude: destinationCoords.latitude,
+         destinationLongitude: destinationCoords.longitude,
+         weight: parseFloat(weight),
+         laborCount: 1,
+         estimatedPrice: distance ? Math.round(distance * 15) : 50
+       };
+      
+      await socketService.createOrder(orderData);
+      showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu. Yakınlardaki sürücüler bilgilendirildi.', 'success');
+      
+      // Formu temizle
+      setWeight('');
+      setNotes('');
+      setCargoImage(null);
+      setPickupLocation('');
+      setDestinationLocation('');
+      setPickupCoords(null);
+      setDestinationCoords(null);
+      setDistance(null);
+      
+    } catch (error) {
+      console.error('Sipariş oluşturma hatası:', error);
+      showModal('Hata', 'Sipariş oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.', 'error');
+    }
+  };
 
   const getCurrentLocation = async () => {
     try {
+      console.log('🗺️ [CUSTOMER LOCATION] Konum alınmaya başlandı...');
+      setIsLocationLoading(true);
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        console.log('❌ [CUSTOMER LOCATION] Konum izni verilmedi');
         showModal('Konum İzni', 'Konum izni verilmedi.', 'warning');
+        setIsLocationLoading(false);
         return;
       }
       
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
+      console.log('✅ [CUSTOMER LOCATION] Konum alındı:', {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      });
       setUserLocation(location);
+      
+      // Müşteri konumunu socket ile güncelle
+      if (socketService.isSocketConnected()) {
+        console.log('📡 [CUSTOMER LOCATION] Socket ile konum gönderiliyor...');
+        socketService.updateCustomerLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude
+        });
+      } else {
+        console.log('❌ [CUSTOMER LOCATION] Socket bağlantısı yok, konum gönderilemedi');
+      }
       
       // Eğer mevcut konum kullanılacaksa pickup koordinatlarını ayarla
       if (useCurrentLocation) {
+        console.log('📍 [CUSTOMER LOCATION] Pickup koordinatları ayarlandı');
         setPickupCoords({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude
         });
         setPickupLocation('Mevcut Konumum');
       }
+      
+      setIsLocationLoading(false);
     } catch (error) {
+      console.error('❌ [CUSTOMER LOCATION] Konum hatası:', error);
       showModal('Konum Hatası', 'Konum bilgisi alınamadı.', 'error');
+      setIsLocationLoading(false);
     }
   };
 
   const updateDriverLocations = () => {
-    // Sürücü konumlarını simüle et (gerçek uygulamada socket ile gelecek)
-    setDrivers(prevDrivers => 
-      prevDrivers.map(driver => ({
-        ...driver,
-        latitude: driver.latitude + (Math.random() - 0.5) * 0.001,
-        longitude: driver.longitude + (Math.random() - 0.5) * 0.001,
-        heading: (driver.heading + Math.random() * 20 - 10) % 360,
-      }))
-    );
+    // Bu fonksiyon artık useEffect içinde socket event listener olarak kullanılıyor
+    // Gerekirse manuel güncelleme için kullanılabilir
   };
 
   const menuItems = [
@@ -391,72 +593,136 @@ export default function HomeScreen() {
       }
     },
   ];
-
+// Render
+  console.log('🎨 [RENDER] Render başlıyor - drivers state:', safeDrivers, 'length:', safeDrivers.length);
+  console.log('🎨 [RENDER] userLocation:', userLocation);
+  console.log('🎨 [RENDER] user:', user);
+  console.log('🎨 [RENDER] isLocationLoading:', isLocationLoading);
+  
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
       
       {/* Full Screen Map */}
       <View style={styles.fullMapContainer}>
-        <MapView
-          style={styles.fullMap}
-          initialRegion={{
-            latitude: userLocation?.coords.latitude || 41.0082,
-            longitude: userLocation?.coords.longitude || 28.9784,
-            latitudeDelta: 0.0922,
-            longitudeDelta: 0.0421,
-          }}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
-          onPress={() => {
-            if (keyboardVisible) {
-              Keyboard.dismiss();
-            }
-          }}
-        >
-          {/* Driver markers */}
-          {drivers.map((driver) => (
-            <Marker
-              key={driver.id}
-              coordinate={{
-                latitude: driver.latitude,
-                longitude: driver.longitude,
-              }}
-              title={`Sürücü ${driver.id}`}
-              description="Müsait sürücü"
-            >
-              <View style={styles.driverMarker}>
-                <Ionicons name="car" size={16} color="#FFFFFF" />
-              </View>
-            </Marker>
-          ))}
-          
-          {/* Pickup location marker */}
-          {pickupCoords && (
-            <Marker
-              coordinate={pickupCoords}
-              title="Yükün Konumu"
-              description="Yükün alınacağı adres"
-            >
-              <View style={styles.pickupMarker}>
-                <Ionicons name="location" size={16} color="#FFFFFF" />
-              </View>
-            </Marker>
-          )}
-          
-          {/* Destination location marker */}
-          {destinationCoords && (
-            <Marker
-              coordinate={destinationCoords}
-              title="Varış Noktası"
-              description="Yükün teslim edileceği adres"
-            >
-              <View style={styles.destinationMarker}>
-                <Ionicons name="navigate" size={16} color="#FFFFFF" />
-              </View>
-            </Marker>
-          )}
-        </MapView>
+          {(() => {
+             console.log('🗺️ [MAP] Render koşulu kontrol ediliyor - isLocationLoading:', isLocationLoading);
+             if (isLocationLoading) {
+               console.log('📍 [MAP] Loading gösteriliyor');
+               return (
+                 <View style={styles.loadingContainer}>
+                   <ActivityIndicator size="large" color="#F59E0B" />
+                   <Text style={styles.loadingText}>Konum alınıyor...</Text>
+                 </View>
+               );
+             } else {
+               console.log('🗺️ [MAP] MapView render edilecek - userLocation var:', !!userLocation);
+               console.log('🗺️ [MAP] MapView render öncesi drivers:', drivers, 'length:', drivers?.length);
+               return (
+                 <MapView
+                   provider={PROVIDER_GOOGLE}
+                   style={styles.fullMap}
+                   initialRegion={{
+                     latitude: userLocation?.coords.latitude || 41.0082,
+                     longitude: userLocation?.coords.longitude || 28.9784,
+                     latitudeDelta: 0.0922,
+                     longitudeDelta: 0.0421,
+                   }}
+                   showsUserLocation={true}
+                   showsMyLocationButton={true}
+                   onPress={() => {
+                     if (keyboardVisible) {
+                       Keyboard.dismiss();
+                     }
+                   }}
+                   onMapReady={() => {
+                     console.log('🗺️ [MAP] Harita hazır, müşteri konumu:', userLocation ? {
+                       latitude: userLocation.coords.latitude,
+                       longitude: userLocation.coords.longitude
+                     } : 'Konum alınmamış');
+                   }}
+                 >
+                   {/* Driver markers */}
+                   {(() => {
+                     console.log('🗺️ [MAP RENDER] Sürücü marker\'ları render ediliyor, toplam:', safeDrivers.length);
+                     console.log('🗺️ [MAP RENDER] Drivers state:', safeDrivers);
+                     console.log('🚗 [MAP] Sürücü markerları render ediliyor - drivers:', safeDrivers);
+                     
+                     // Güvenli kontrol: safeDrivers boşsa null döndür
+                     if (safeDrivers.length === 0) {
+                       console.log('⚠️ [MAP RENDER] Drivers verisi mevcut değil veya boş');
+                       return null;
+                     }
+                     
+                     console.log('🚗 [MAP] Drivers var ve length > 0, mapping başlıyor');
+                     return safeDrivers.map((driver) => {
+                       console.log('🚗 [MAP] Driver render ediliyor:', driver);
+                       // Her driver için güvenlik kontrolü
+                       if (!driver || typeof driver !== 'object' || !driver.id || 
+                           typeof driver.latitude !== 'number' || typeof driver.longitude !== 'number') {
+                         console.log('⚠️ [MAP RENDER] Geçersiz sürücü verisi atlanıyor:', driver);
+                         return null;
+                       }
+                       console.log('✅ [MAP] Geçerli sürücü marker render ediliyor:', { id: driver.id, lat: driver.latitude, lng: driver.longitude });
+                       
+                       console.log('📍 [MAP RENDER] Sürücü marker render ediliyor:', { id: driver.id, lat: driver.latitude, lng: driver.longitude });
+                       return (
+                         <Marker
+                           key={driver.id}
+                           coordinate={{
+                             latitude: driver.latitude,
+                             longitude: driver.longitude,
+                           }}
+                           title={`Sürücü ${driver.id}`}
+                           description="Müsait sürücü"
+                         >
+                           <View style={styles.driverMarker}>
+                             <MaterialIcons name="local-shipping" size={20} color="#FFFFFF" />
+                           </View>
+                         </Marker>
+                       );
+                     });
+                   })()}
+                   
+                   {/* Pickup location marker */}
+                   {pickupCoords && (
+                     <Marker
+                       coordinate={pickupCoords}
+                       title="Yükün Konumu"
+                       description="Yükün alınacağı adres"
+                     >
+                       <View style={styles.pickupMarker}>
+                         <Ionicons name="location" size={16} color="#FFFFFF" />
+                       </View>
+                     </Marker>
+                   )}
+                   
+                   {/* Destination location marker */}
+                   {destinationCoords && (
+                     <Marker
+                       coordinate={destinationCoords}
+                       title="Varış Noktası"
+                       description="Yükün teslim edileceği adres"
+                     >
+                       <View style={styles.destinationMarker}>
+                         <Ionicons name="navigate" size={16} color="#FFFFFF" />
+                       </View>
+                     </Marker>
+                   )}
+                   
+                   {/* Rota çizgisi */}
+                   {pickupCoords && destinationCoords && (
+                     <Polyline
+                       coordinates={[pickupCoords, destinationCoords]}
+                       strokeColor="#F59E0B"
+                       strokeWidth={4}
+                       lineDashPattern={[5, 5]}
+                     />
+                   )}
+                 </MapView>
+               );
+             }
+           })()}
         
         {/* Floating Menu Button */}
         <TouchableOpacity 
@@ -544,24 +810,69 @@ export default function HomeScreen() {
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Yükün Konumu</Text>
           {!useCurrentLocation ? (
-            <View style={styles.inputWithIcon}>
-              <Ionicons name="location" size={20} color="#6B7280" style={styles.inputIcon} />
-              <TextInput
-                ref={(ref) => { inputRefs.current[1] = ref; }}
-                style={styles.input}
-                value={pickupLocation}
-                onChangeText={setPickupLocation}
+            <View style={styles.placesContainer}>
+              <GooglePlacesAutocomplete
                 placeholder="Yükün alınacağı adresi girin"
-                returnKeyType="done"
-                returnKeyLabel="Bitti"
-                autoComplete="off"
-                autoCorrect={false}
-                onFocus={() => {
-                   setActiveInputIndex(1);
-                   setTimeout(() => scrollToInput(1), 100);
-                 }}
-                onSubmitEditing={() => Keyboard.dismiss()}
-                blurOnSubmit={true}
+                predefinedPlaces={[]}
+                onPress={(data, details = null) => {
+                  if (details) {
+                    const coords = {
+                      latitude: details.geometry.location.lat,
+                      longitude: details.geometry.location.lng,
+                    };
+                    setPickupCoords(coords);
+                    setPickupLocation(data.description);
+                    
+                    // Mesafe hesapla
+                    if (destinationCoords) {
+                      const dist = calculateDistance(
+                        coords.latitude,
+                        coords.longitude,
+                        destinationCoords.latitude,
+                        destinationCoords.longitude
+                      );
+                      setDistance(parseFloat(dist.toFixed(1)));
+                    }
+                  }
+                }}
+                query={{
+                  key: 'AIzaSyBvOkBwGyiwHXelLqGHnqQZ8vQHzMvrzQs',
+                  language: 'tr',
+                  components: 'country:tr',
+                }}
+                fetchDetails={true}
+                styles={{
+                  container: styles.placesContainer,
+                  textInput: styles.placesInput,
+                  listView: styles.placesList,
+                  row: {
+                    backgroundColor: '#FFFFFF',
+                    padding: 13,
+                    height: 44,
+                    flexDirection: 'row',
+                  },
+                  separator: {
+                    height: 0.5,
+                    backgroundColor: '#E5E7EB',
+                  },
+                  description: {
+                    fontWeight: 'bold',
+                    color: '#000000',
+                  },
+                  predefinedPlacesDescription: {
+                    color: '#1faadb',
+                  },
+                }}
+                textInputProps={{
+                  onFocus: () => {
+                    setActiveInputIndex(1);
+                    setTimeout(() => scrollToInput(1), 100);
+                  },
+                  returnKeyType: 'search',
+                  returnKeyLabel: 'Ara',
+                }}
+                enablePoweredByContainer={false}
+                debounce={200}
               />
             </View>
           ) : (
@@ -575,24 +886,69 @@ export default function HomeScreen() {
         {/* Varış Noktası */}
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Varış Noktası</Text>
-          <View style={styles.inputWithIcon}>
-            <Ionicons name="navigate" size={20} color="#6B7280" style={styles.inputIcon} />
-            <TextInput
-              ref={(ref) => { inputRefs.current[2] = ref; }}
-              style={styles.input}
-              value={destinationLocation}
-              onChangeText={setDestinationLocation}
+          <View style={styles.placesContainer}>
+            <GooglePlacesAutocomplete
               placeholder="Yükün teslim edileceği adresi girin"
-              returnKeyType="done"
-              returnKeyLabel="Bitti"
-              autoComplete="off"
-              autoCorrect={false}
-              onFocus={() => {
-                 setActiveInputIndex(2);
-                 setTimeout(() => scrollToInput(2), 300);
-               }}
-              onSubmitEditing={() => Keyboard.dismiss()}
-              blurOnSubmit={true}
+              predefinedPlaces={[]}
+              onPress={(data, details = null) => {
+                if (details) {
+                  const coords = {
+                    latitude: details.geometry.location.lat,
+                    longitude: details.geometry.location.lng,
+                  };
+                  setDestinationCoords(coords);
+                  setDestinationLocation(data.description);
+                  
+                  // Mesafe hesapla
+                  if (pickupCoords) {
+                    const dist = calculateDistance(
+                      pickupCoords.latitude,
+                      pickupCoords.longitude,
+                      coords.latitude,
+                      coords.longitude
+                    );
+                    setDistance(parseFloat(dist.toFixed(1)));
+                  }
+                }
+              }}
+              query={{
+                key: 'AIzaSyBvOkBwGyiwHXelLqGHnqQZ8vQHzMvrzQs',
+                language: 'tr',
+                components: 'country:tr',
+              }}
+              fetchDetails={true}
+              styles={{
+                container: styles.placesContainer,
+                textInput: styles.placesInput,
+                listView: styles.placesList,
+                row: {
+                  backgroundColor: '#FFFFFF',
+                  padding: 13,
+                  height: 44,
+                  flexDirection: 'row',
+                },
+                separator: {
+                  height: 0.5,
+                  backgroundColor: '#E5E7EB',
+                },
+                description: {
+                  fontWeight: 'bold',
+                  color: '#000000',
+                },
+                predefinedPlacesDescription: {
+                  color: '#1faadb',
+                },
+              }}
+              textInputProps={{
+                onFocus: () => {
+                  setActiveInputIndex(2);
+                  setTimeout(() => scrollToInput(2), 300);
+                },
+                returnKeyType: 'search',
+                returnKeyLabel: 'Ara',
+              }}
+              enablePoweredByContainer={false}
+              debounce={200}
             />
           </View>
           {distance && (
@@ -1166,6 +1522,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#374151',
+    fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
     fontWeight: '500',
   },
 });

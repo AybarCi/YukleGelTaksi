@@ -4,7 +4,7 @@
   "description": "YükleGel Taksi Backend API",
   "main": "server.js",
   "scripts": {
-    "dev": "next dev -p 3001 -H 0.0.0.0",
+    "dev": "node server.js",
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint"
@@ -27,6 +27,7 @@
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "sharp": "^0.32.6",
+    "socket.io": "^4.8.1",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "twilio": "^4.19.0",

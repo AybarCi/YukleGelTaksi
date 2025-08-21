@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomModal from '../components/CustomModal';
 import { API_CONFIG } from '../config/api';
+import socketService from '../services/socketService';
 
 interface User {
   id: number;
@@ -61,6 +62,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Load stored auth data on app start
   useEffect(() => {
     loadStoredAuth();
+  }, []);
+
+  // Socket token yenileme olayını dinle
+  useEffect(() => {
+    const handleTokenRefresh = (data: { token: string }) => {
+      console.log('Token refreshed via socket:', data.token);
+      setToken(data.token);
+    };
+
+    socketService.on('token_refreshed', handleTokenRefresh);
+
+    return () => {
+      socketService.off('token_refreshed', handleTokenRefresh);
+    };
   }, []);
 
   const loadStoredAuth = async () => {
@@ -148,54 +163,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const driverData = await driverStatusResponse.json();
                 // Null/undefined kontrolü ekle
                 if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
-                  // Approved driver, go to driver dashboard
-                  setTimeout(() => {
-                    require('expo-router').router.replace('/driver-dashboard');
-                  }, 100);
+                  // Approved driver - navigation will be handled by index.tsx
+                  console.log('Driver approved and active');
                 } else {
-                  // Driver not approved or incomplete data, go to status screen
-                  setTimeout(() => {
-                    require('expo-router').router.replace('/driver-status');
-                  }, 100);
+                  // Driver not approved - navigation will be handled by index.tsx
+                  console.log('Driver not approved or inactive');
                 }
               } else if (driverStatusResponse.status === 404) {
-                // No driver record, go to registration
-                setTimeout(() => {
-                  require('expo-router').router.replace('/driver-registration');
-                }, 100);
+                // No driver record - navigation will be handled by index.tsx
+                console.log('No driver record found');
               } else {
-                // Other HTTP errors, go to driver status
+                // Other HTTP errors - navigation will be handled by index.tsx
                 console.error('Driver status check failed with status:', driverStatusResponse.status);
-                setTimeout(() => {
-                  require('expo-router').router.replace('/driver-status');
-                }, 100);
               }
             } catch (driverError) {
               console.error('Error checking driver status:', driverError);
               
-              // AbortError durumunda kullanıcıyı logout yapma, driver-status'a yönlendir
+              // AbortError durumunda kullanıcıyı logout yapma
               if (driverError instanceof Error && driverError.name === 'AbortError') {
-                console.log('Driver status check timed out, redirecting to driver-status');
-                setTimeout(() => {
-                  require('expo-router').router.replace('/driver-status');
-                }, 100);
+                console.log('Driver status check timed out');
                 return;
               }
               
-              // Network error - logout user and redirect to login
+              // Network error - logout user
               await clearAuthData();
               setUser(null);
               setToken(null);
               setRefreshToken(null);
-              setTimeout(() => {
-                require('expo-router').router.replace('/phone-auth');
-              }, 100);
             }
           } else {
-            // Regular user, check info and redirect
-            setTimeout(() => {
-              checkCustomerInfoAndRedirect(userData);
-            }, 100);
+            // Regular user - navigation will be handled by index.tsx
+            console.log('Regular user authenticated');
           }
           
         } catch (tokenTestError) {
@@ -207,14 +205,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
           }
           
-          // Network error - logout user and redirect to login
+          // Network error - logout user
           await clearAuthData();
           setUser(null);
           setToken(null);
           setRefreshToken(null);
-          setTimeout(() => {
-            require('expo-router').router.replace('/phone-auth');
-          }, 100);
         }
       }
     } catch (error) {
@@ -455,28 +450,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (driverStatusResponse.ok) {
         const driverData = await driverStatusResponse.json();
         if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
-          require('expo-router').router.replace('/driver-dashboard');
+          console.log('Driver approved after SMS verification');
         } else {
-          require('expo-router').router.replace('/driver-status');
+          console.log('Driver not approved after SMS verification');
         }
       } else if (driverStatusResponse.status === 404) {
-        require('expo-router').router.replace('/driver-registration');
+        console.log('No driver record found after SMS verification');
       } else {
-        require('expo-router').router.replace('/driver-status');
+        console.log('Driver status check failed after SMS verification');
       }
     } catch (error) {
       console.error('Error checking driver status after SMS verification:', error);
-      require('expo-router').router.replace('/driver-registration');
     }
   };
 
-  // Müşteri bilgi kontrolü yap ve yönlendir
+  // Müşteri bilgi kontrolü yap - navigation will be handled by index.tsx
   const checkCustomerInfoAndRedirect = (userData: User) => {
     // Ad/soyad eksikse user-info ekranına yönlendir
     if (!userData.full_name || userData.full_name.trim().length === 0) {
-      require('expo-router').router.replace('/user-info');
+      console.log('User info incomplete');
     } else {
-      require('expo-router').router.replace('/home');
+      console.log('User info complete');
     }
   };
 

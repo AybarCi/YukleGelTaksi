@@ -358,8 +358,8 @@ export default function SettingsScreen() {
 
         {/* App Info */}
         <View style={styles.appInfo}>
-          <Text style={styles.appInfoText}>YükleGel Taksi v1.0.0</Text>
-          <Text style={styles.appInfoSubtext}>© 2024 YükleGel Taksi</Text>
+          <Text style={styles.appInfoText}>v1.0.0</Text>
+          <Text style={styles.appInfoSubtext}>© 2024</Text>
         </View>
       </ScrollView>
     </SafeAreaView>

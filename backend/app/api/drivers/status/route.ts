@@ -27,8 +27,8 @@ export async function GET(request: NextRequest) {
       .query(`
         SELECT 
           d.id,
-          d.first_name,
-          d.last_name,
+          u.first_name,
+          u.last_name,
           u.phone_number,
           d.is_approved,
           d.is_active,

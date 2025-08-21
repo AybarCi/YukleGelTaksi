@@ -114,12 +114,13 @@ export async function GET(request: NextRequest) {
           d.id,
           d.first_name,
           d.last_name,
-          d.phone_number,
+          u.phone_number,
           d.is_approved,
           d.is_active,
           d.created_at,
           d.updated_at
         FROM drivers d
+        INNER JOIN users u ON d.user_id = u.id
         WHERE d.id = @driverId
       `);
 

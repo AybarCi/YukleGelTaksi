@@ -56,8 +56,6 @@ CREATE TABLE drivers (
     driver_photo NVARCHAR(255),
     license_photo NVARCHAR(255),
     eligibility_certificate NVARCHAR(255),
-    current_latitude DECIMAL(10, 8),
-    current_longitude DECIMAL(11, 8),
     is_available BIT DEFAULT 1,
     is_active BIT DEFAULT 1,
     rating DECIMAL(3, 2) DEFAULT 5.00,
@@ -247,13 +245,8 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_addresses_user_i
 CREATE INDEX idx_user_addresses_user_id ON user_addresses(user_id);
 GO
 
-IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_drivers_phone')
-CREATE INDEX idx_drivers_phone ON drivers(phone_number);
-GO
-
-IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_drivers_location')
-CREATE INDEX idx_drivers_location ON drivers(current_latitude, current_longitude);
-GO
+-- CREATE INDEX idx_drivers_phone ON drivers(phone_number); -- phone_number alanı artık users tablosunda
+-- Removed idx_drivers_location index as location fields moved to users table
 
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_drivers_available')
 CREATE INDEX idx_drivers_available ON drivers(is_available, is_active);
@@ -401,5 +394,4 @@ IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'driv
 BEGIN
     ALTER TABLE drivers ADD eligibility_certificate NVARCHAR(255);
 END
-GO
 GO

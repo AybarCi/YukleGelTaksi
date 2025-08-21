@@ -76,17 +76,8 @@ export async function POST(request: NextRequest) {
       .input('phone_number', phone_number)
       .query('SELECT id FROM users WHERE phone_number = @phone_number');
 
-    // Check if phone number already exists in drivers table
-    const existingDriverResult = await pool.request()
-      .input('phone_number', phone_number)
-      .query('SELECT id FROM drivers WHERE phone_number = @phone_number');
-
-    if (existingDriverResult.recordset.length > 0) {
-      return NextResponse.json(
-        { error: 'Bu telefon numarası ile kayıtlı sürücü zaten mevcut' },
-        { status: 400 }
-      );
-    }
+    // Phone number kontrolü artık sadece users tablosunda yapılıyor
+    // çünkü phone_number alanı drivers tablosundan users tablosuna taşındı
 
     // Check if license number already exists
     const existingLicenseResult = await pool.request()

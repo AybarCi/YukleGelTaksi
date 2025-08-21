@@ -51,8 +51,7 @@ CREATE TABLE IF NOT EXISTS drivers (
     driver_photo TEXT,
     license_photo TEXT,
     eligibility_certificate TEXT,
-    current_latitude REAL,
-    current_longitude REAL,
+    
     is_available INTEGER DEFAULT 1,
     is_active INTEGER DEFAULT 1,
     rating REAL DEFAULT 5.00,
@@ -86,6 +85,6 @@ INSERT OR IGNORE INTO supervisors (username, email, password_hash, first_name, l
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone_number);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_drivers_phone ON drivers(phone_number);
+-- CREATE INDEX IF NOT EXISTS idx_drivers_phone ON drivers(phone_number); -- phone_number alanı artık users tablosunda
 CREATE INDEX IF NOT EXISTS idx_drivers_license ON drivers(license_number);
-CREATE INDEX IF NOT EXISTS idx_drivers_location ON drivers(current_latitude, current_longitude);
+-- Removed idx_drivers_location index as location fields moved to users table
