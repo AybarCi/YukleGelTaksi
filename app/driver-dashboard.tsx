@@ -475,9 +475,28 @@ export default function DriverDashboardScreen() {
         <MapView
           provider={PROVIDER_GOOGLE}
           style={styles.map}
-          region={currentLocation}
+          initialRegion={{
+            latitude: currentLocation.latitude - 0.001,
+            longitude: currentLocation.longitude,
+            latitudeDelta: 0.008,
+            longitudeDelta: 0.006,
+          }}
+          region={{
+            latitude: currentLocation.latitude - 0.001,
+            longitude: currentLocation.longitude,
+            latitudeDelta: 0.008,
+            longitudeDelta: 0.006,
+          }}
           showsUserLocation={true}
           showsMyLocationButton={true}
+          followsUserLocation={true}
+          userLocationPriority="high"
+          userLocationUpdateInterval={3000}
+          userLocationAnnotationTitle="Konumunuz"
+          zoomEnabled={true}
+          scrollEnabled={true}
+          pitchEnabled={true}
+          rotateEnabled={true}
         >
           <Marker
             coordinate={{

@@ -672,13 +672,27 @@ export default function HomeScreen() {
                    provider={PROVIDER_GOOGLE}
                    style={styles.fullMap}
                    initialRegion={{
-                     latitude: userLocation?.coords.latitude || 41.0082,
+                     latitude: (userLocation?.coords.latitude || 41.0082) - 0.002,
                      longitude: userLocation?.coords.longitude || 28.9784,
-                     latitudeDelta: 0.0922,
-                     longitudeDelta: 0.0421,
+                     latitudeDelta: 0.008,
+                     longitudeDelta: 0.006,
+                   }}
+                   region={{
+                     latitude: (userLocation?.coords.latitude || 41.0082) - 0.002,
+                     longitude: userLocation?.coords.longitude || 28.9784,
+                     latitudeDelta: 0.008,
+                     longitudeDelta: 0.006,
                    }}
                    showsUserLocation={true}
                    showsMyLocationButton={true}
+                   followsUserLocation={true}
+                   userLocationPriority="high"
+                   userLocationUpdateInterval={3000}
+                   userLocationAnnotationTitle="Konumunuz"
+                   zoomEnabled={true}
+                   scrollEnabled={true}
+                   pitchEnabled={true}
+                   rotateEnabled={true}
                    onPress={() => {
                      if (keyboardVisible) {
                        Keyboard.dismiss();
