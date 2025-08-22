@@ -1,4 +1,5 @@
 import DatabaseConnection from '../../../../config/database';
+import SystemSettingsService from '../../../../services/systemSettingsService';
 
 interface NearbyDriversRequest {
   latitude: number;
@@ -78,8 +79,14 @@ export async function POST(request: Request): Promise<Response> {
       const db = DatabaseConnection.getInstance();
       const pool = await db.connect();
 
+      // Sistem ayarlarından değerleri al
+      const systemSettings = SystemSettingsService.getInstance();
+      const locationUpdateInterval = await systemSettings.getSetting('driver_location_update_interval_minutes', 10);
+      const maxDriversPerRequest = await systemSettings.getSetting('max_drivers_per_request', 20);
+
       // Müsait sürücüleri al
       const driversResult = await pool.request()
+        .input('locationUpdateInterval', locationUpdateInterval)
         .query(`
           SELECT 
             d.id, u.first_name, u.last_name, u.phone_number,
@@ -91,7 +98,7 @@ export async function POST(request: Request): Promise<Response> {
           WHERE d.is_available = 1 
             AND u.current_latitude IS NOT NULL 
             AND u.current_longitude IS NOT NULL
-            AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= 10
+            AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= @locationUpdateInterval
         `);
 
       const allDrivers = driversResult.recordset;
@@ -113,7 +120,7 @@ export async function POST(request: Request): Promise<Response> {
         })
         .filter((driver: any) => driver.distance <= radius)
         .sort((a: any, b: any) => a.distance - b.distance) // Mesafeye göre sırala
-        .slice(0, 20); // En fazla 20 sürücü
+        .slice(0, maxDriversPerRequest); // Sistem ayarından maksimum sürücü sayısı
 
       const drivers = nearbyDrivers.map((driver: any) => ({
         id: driver.id,

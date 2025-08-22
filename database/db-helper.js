@@ -228,7 +228,20 @@ class DatabaseHelper {
     }
 
     // Sürücü işlemleri
-    async getAvailableDrivers(latitude, longitude, radiusKm = 5) {
+    async getAvailableDrivers(latitude, longitude, radiusKm) {
+        // Eğer radiusKm belirtilmemişse sistem ayarlarından al
+        if (!radiusKm) {
+            try {
+                const settingsResult = await this.executeQuery(
+                    'SELECT setting_value FROM system_settings WHERE setting_key = @key AND is_active = 1',
+                    { key: 'driver_search_radius_km' }
+                );
+                radiusKm = settingsResult.recordset.length > 0 ? parseFloat(settingsResult.recordset[0].setting_value) : 5;
+            } catch (error) {
+                console.error('Error getting driver search radius from settings:', error);
+                radiusKm = 5; // Varsayılan değer
+            }
+        }
         const query = `
             SELECT d.*, u.first_name, u.last_name
             FROM drivers d

@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import jwt from 'jsonwebtoken';
 import DatabaseConnection from '../config/database.js';
+import SystemSettingsService from '../services/systemSettingsService.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: number;
@@ -291,17 +292,22 @@ class SocketServer {
 
   private async broadcastOrderToNearbyDrivers(orderId: number, orderData: OrderData) {
     try {
+      // Sistem ayarlarından değerleri al
+      const systemSettings = SystemSettingsService.getInstance();
+      const searchRadius = await systemSettings.getSetting('driver_search_radius_km', 15);
+      const maxDriversPerRequest = await systemSettings.getSetting('max_drivers_per_request', 5);
+      
       const nearbyDrivers = await this.getNearbyAvailableDrivers(
         orderData.pickupLatitude,
         orderData.pickupLongitude,
-        15, // 15 km radius - genişletildi
+        searchRadius,
         orderData.weight // Yük ağırlığını da gönder
       );
 
       console.log(`Found ${nearbyDrivers.length} suitable drivers for order ${orderId}`);
       
-      // En iyi 5 sürücüye sipariş gönder (spam önlemek için)
-      const topDrivers = nearbyDrivers.slice(0, 5);
+      // Sistem ayarından maksimum sürücü sayısına göre sipariş gönder
+      const topDrivers = nearbyDrivers.slice(0, maxDriversPerRequest);
       
       topDrivers.forEach((driver, index) => {
         const socketId = this.connectedDrivers.get(driver.id);
@@ -332,11 +338,16 @@ class SocketServer {
   private async getNearbyAvailableDrivers(latitude: number, longitude: number, radiusKm: number, orderWeight?: number) {
     const db = DatabaseConnection.getInstance();
     const pool = await db.connect();
+    
+    // Sistem ayarlarından konum güncelleme aralığını al
+    const systemSettings = SystemSettingsService.getInstance();
+    const locationUpdateInterval = await systemSettings.getSetting('driver_location_update_interval_minutes', 10);
 
     const result = await pool.request()
       .input('latitude', latitude)
       .input('longitude', longitude)
       .input('radius', radiusKm)
+      .input('locationUpdateInterval', locationUpdateInterval)
       .query(`
         SELECT 
           d.id,
@@ -372,7 +383,7 @@ class SocketServer {
               sin(radians(@latitude)) * sin(radians(u.current_latitude))
             )
           ) <= @radius
-          AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= 10
+          AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= @locationUpdateInterval
         ORDER BY distance ASC
       `);
 
@@ -577,11 +588,15 @@ class SocketServer {
       const { current_latitude, current_longitude } = customerResult.recordset[0];
       console.log(`📍 Customer ${customerId} location: ${current_latitude}, ${current_longitude}`);
       
-      // Yakındaki müsait sürücüleri bul (5km yarıçap)
+      // Sistem ayarlarından arama yarıçapını al
+      const systemSettings = SystemSettingsService.getInstance();
+      const searchRadius = await systemSettings.getSetting('driver_search_radius_km', 5);
+      
+      // Yakındaki müsait sürücüleri bul
       const nearbyDrivers = await this.getNearbyAvailableDrivers(
         current_latitude, 
         current_longitude, 
-        5 // 5km yarıçap
+        searchRadius
       );
       
       console.log(`🚗 Found ${nearbyDrivers.length} nearby drivers for customer ${customerId}:`, 
