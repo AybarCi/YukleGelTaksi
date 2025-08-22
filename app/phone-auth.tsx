@@ -70,8 +70,11 @@ export default function PhoneAuthScreen() {
           params: { phoneNumber: cleanedPhone, userType }
         });
       }
+      // SMS gönderme başarısız olursa burada bir şey yapmaya gerek yok
+      // çünkü sendSMS fonksiyonu zaten hata mesajını gösteriyor
     } catch (error) {
-      showModal('Hata', 'SMS gönderilirken bir hata oluştu.', 'error');
+      console.error('Phone auth error:', error);
+      showModal('Hata', 'SMS gönderilirken beklenmeyen bir hata oluştu.', 'error');
     } finally {
       setIsLoading(false);
     }

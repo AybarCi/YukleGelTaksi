@@ -51,7 +51,7 @@ export default function DriverStatusScreen() {
       }
       
       // Sürücü durumunu API'den çek
-      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

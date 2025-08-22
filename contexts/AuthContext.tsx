@@ -96,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 saniye timeout
           
-          const testResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
+          const testResponse = await fetch(`${API_BASE_URL}/api/auth/profile`, {
             headers: {
               'Authorization': `Bearer ${storedToken}`,
               'Content-Type': 'application/json'
@@ -111,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const refreshController = new AbortController();
             const refreshTimeoutId = setTimeout(() => refreshController.abort(), 30000); // 30 saniye timeout
             
-            const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+            const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -149,7 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const driverController = new AbortController();
               const driverTimeoutId = setTimeout(() => driverController.abort(), 30000); // 30 saniye timeout
               
-              const driverStatusResponse = await fetch(`${API_BASE_URL}/drivers/status`, {
+              const driverStatusResponse = await fetch(`${API_BASE_URL}/api/drivers/status`, {
                 headers: {
                   'Authorization': `Bearer ${storedToken}`,
                   'Content-Type': 'application/json'
@@ -275,7 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (phone: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -334,7 +334,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       setIsLoading(true);
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -370,7 +370,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 saniye timeout
       
-      const response = await fetch(`${API_BASE_URL}/auth/send-sms`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/send-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -381,6 +381,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       clearTimeout(timeoutId);
 
+      // Response kontrolü
+      if (!response.ok) {
+        if (response.status === 500) {
+          showModal('Sunucu Hatası', 'SMS servisi şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.', 'error');
+        } else if (response.status === 404) {
+          showModal('Hata', 'SMS servisi bulunamadı. Lütfen sistem yöneticisi ile iletişime geçin.', 'error');
+        } else {
+          showModal('Hata', `SMS gönderilirken hata oluştu (${response.status})`, 'error');
+        }
+        return false;
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -389,9 +401,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         showModal('SMS Hatası', data.message || 'SMS gönderilemedi', 'error');
         return false;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Send SMS error:', error);
-      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+      
+      if (error.name === 'AbortError') {
+        showModal('Zaman Aşımı', 'SMS gönderme işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error');
+      } else if (error.message?.includes('Network request failed') || error.message?.includes('fetch')) {
+        showModal('Bağlantı Hatası', 'İnternet bağlantınızı kontrol edin ve tekrar deneyin.', 'error');
+      } else {
+        showModal('Hata', 'SMS gönderilirken beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.', 'error');
+      }
       return false;
     }
   };
@@ -399,7 +418,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const verifySMS = async (phone: string, code: string, userType?: string): Promise<{ success: boolean; token?: string }> => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_BASE_URL}/auth/verify-sms`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/verify-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -447,7 +466,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sürücü durumu kontrol et ve yönlendir
   const checkDriverStatusAndRedirect = async (authToken: string) => {
     try {
-      const driverStatusResponse = await fetch(`${API_BASE_URL}/drivers/status`, {
+      const driverStatusResponse = await fetch(`${API_BASE_URL}/api/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
@@ -501,7 +520,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateProfile = async (userData: Partial<User>): Promise<boolean> => {
     try {
-      const response = await makeAuthenticatedRequest('/auth/profile', {
+      const response = await makeAuthenticatedRequest('/api/auth/profile', {
         method: 'PUT',
         body: JSON.stringify(userData),
       });
@@ -525,7 +544,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateUserInfo = async (firstName: string, lastName: string, email?: string): Promise<boolean> => {
     try {
-      const response = await makeAuthenticatedRequest('/auth/update-user-info', {
+      const response = await makeAuthenticatedRequest('/api/auth/update-user-info', {
         method: 'PUT',
         body: JSON.stringify({ 
           first_name: firstName, 
@@ -592,7 +611,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async (): Promise<void> => {
     try {
-      const response = await makeAuthenticatedRequest('/auth/profile');
+      const response = await makeAuthenticatedRequest('/api/auth/profile');
       const data = await response.json();
 
       if (data.success) {
@@ -638,7 +657,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('Refreshing auth token...');
-      const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -183,8 +183,8 @@ export default function DriverDashboardScreen() {
         return;
       }
 
-      console.log('API çağrısı yapılıyor:', `${API_CONFIG.BASE_URL}/drivers/status`);
-      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
+      console.log('API çağrısı yapılıyor:', `${API_CONFIG.BASE_URL}/api/drivers/status`);
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

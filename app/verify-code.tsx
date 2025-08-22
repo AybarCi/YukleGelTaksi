@@ -102,7 +102,7 @@ export default function VerifyCodeScreen() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
             
-            const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/status`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/status`, {
               headers: {
                 'Authorization': `Bearer ${result.token}`,
                 'Content-Type': 'application/json'
@@ -127,19 +127,26 @@ export default function VerifyCodeScreen() {
                 router.replace('/driver-registration');
               }
             } else if (response.status === 404) {
-              // Sürücü kaydı yok, kayıt ekranına yönlendir
-              router.replace('/driver-registration');
+              // Sürücü kaydı yok, modal ile bilgilendir ve kayıt ekranına yönlendir
+              showModal('Bilgi', 'Sürücü kaydınız bulunamadı. Kayıt işlemini tamamlamanız gerekiyor.', 'info', [
+                {
+                  text: 'Tamam',
+                  onPress: () => router.replace('/driver-registration')
+                }
+              ]);
             } else {
-              showModal('Hata', 'Durum kontrol edilirken hata oluştu.', 'error');
+              showModal('Hata', `Durum kontrol edilirken hata oluştu (${response.status}).`, 'error');
             }
           } catch (error) {
-            console.log('Error checking driver status:', error);
+            console.error('Error checking driver status:', error);
             if (error instanceof Error && error.name === 'AbortError') {
               showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error');
             } else {
               showModal('Hata', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.', 'error');
             }
             // Network error durumunda logout yapma, sadece hata göster
+          } finally {
+            setIsLoading(false);
           }
         } else {
           // Customer için - yeni kullanıcı mı kontrol et
@@ -148,7 +155,7 @@ export default function VerifyCodeScreen() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 saniye timeout
             
-            const userResponse = await fetch(`${API_CONFIG.BASE_URL}/auth/profile`, {
+            const userResponse = await fetch(`${API_CONFIG.BASE_URL}/api/auth/profile`, {
               headers: {
                 'Authorization': `Bearer ${result.token}`,
                 'Content-Type': 'application/json'
@@ -169,19 +176,42 @@ export default function VerifyCodeScreen() {
               } else {
                 router.replace('/home');
               }
+            } else if (userResponse.status === 404) {
+              // Kullanıcı profili bulunamadı, modal ile bilgilendir ve user-info ekranına yönlendir
+              showModal('Bilgi', 'Profil bilgileriniz bulunamadı. Lütfen bilgilerinizi tamamlayın.', 'info', [
+                {
+                  text: 'Tamam',
+                  onPress: () => router.replace('/user-info')
+                }
+              ]);
             } else {
-              // Profil bilgisi alınamazsa user-info ekranına yönlendir
-              router.replace('/user-info');
+              // Diğer hatalar için modal göster ve user-info ekranına yönlendir
+              showModal('Hata', `Profil bilgileri alınırken hata oluştu (${userResponse.status}).`, 'error', [
+                {
+                  text: 'Tamam',
+                  onPress: () => router.replace('/user-info')
+                }
+              ]);
             }
           } catch (error) {
-            console.log('Error checking user profile:', error);
+            console.error('Error checking user profile:', error);
             if (error instanceof Error && error.name === 'AbortError') {
-              showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error');
+              showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error', [
+                {
+                  text: 'Tamam',
+                  onPress: () => router.replace('/user-info')
+                }
+              ]);
             } else {
-              showModal('Hata', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.', 'error');
+              showModal('Hata', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.', 'error', [
+                {
+                  text: 'Tamam',
+                  onPress: () => router.replace('/user-info')
+                }
+              ]);
             }
-            // Hata durumunda user-info ekranına yönlendir
-            router.replace('/user-info');
+          } finally {
+            setIsLoading(false);
           }
         }
       } else {
@@ -207,10 +237,14 @@ export default function VerifyCodeScreen() {
       const success = await sendSMS(phoneNumber);
       if (success) {
         setTimer(60);
+        setCode(['', '', '', '', '', '']); // Kod alanlarını temizle
+        inputRefs.current[0]?.focus(); // İlk alana odaklan
         showModal('Başarılı', 'Doğrulama kodu yeniden gönderildi.', 'success');
       }
+      // SMS gönderme başarısız olursa sendSMS fonksiyonu zaten hata mesajını gösteriyor
     } catch (error) {
-      showModal('Hata', 'SMS gönderilirken bir hata oluştu.', 'error');
+      console.error('Resend SMS error:', error);
+      showModal('Hata', 'SMS yeniden gönderilirken beklenmeyen bir hata oluştu.', 'error');
     }
   };
 

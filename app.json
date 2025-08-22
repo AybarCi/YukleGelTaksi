@@ -4,7 +4,7 @@
     "slug": "yukle-gel-taksi",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo-test1.png",
+    "icon": "./assets/images/logo1.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -28,6 +28,12 @@
     "android": {
       "package": "com.yuklegelltaksi.app",
       "versionCode": 1,
+      "icon": "./assets/images/logo1.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FFD700",
+        "monochromeImage": "./assets/images/adaptive-icon.png"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -36,7 +42,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+          "apiKey": "AIzaSyCrQmf3XUB_QRY4jkxQqIbRUbYAVkhyHHA"
         }
       }
     },
@@ -44,6 +50,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.yuklegelltaksi.app",
       "buildNumber": "1",
+      "icon": "./assets/images/logo1.png",
       "config": {
         "googleMapsApiKey": "AIzaSyBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
       }
