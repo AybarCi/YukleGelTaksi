@@ -296,10 +296,7 @@ export default function SettingsScreen() {
     router.push('/terms-of-service');
   };
 
-  const handleContactSupport = () => {
-    // TODO: Navigate to support screen
-    showModal('Bilgi', 'Destek sayfası yakında eklenecek.', 'info');
-  };
+
 
   const renderSettingItem = (
     title: string,
@@ -458,16 +455,7 @@ export default function SettingsScreen() {
           handleTermsOfService
         )}
 
-        {/* Support */}
-        {renderSectionHeader('Destek')}
-        {renderSettingItem(
-          'Müşteri Hizmetleri',
-          'Yardım ve destek alın',
-          'help-circle',
-          undefined,
-          undefined,
-          handleContactSupport
-        )}
+
 
         {/* App Info */}
         <View style={styles.appInfo}>

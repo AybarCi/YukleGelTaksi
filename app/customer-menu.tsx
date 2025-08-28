@@ -66,33 +66,6 @@ const CustomerMenuScreen = () => {
         router.push('/settings');
       }
     },
-    {
-      title: 'Çıkış Yap',
-      icon: 'logout',
-      iconType: 'MaterialIcons' as const,
-      onPress: () => {
-        showModal(
-          'Çıkış Yap',
-          'Hesabınızdan çıkış yapmak istediğinizden emin misiniz?',
-          'warning',
-          [
-            {
-              text: 'İptal',
-              style: 'cancel',
-              onPress: () => {}
-            },
-            {
-              text: 'Çıkış Yap',
-              style: 'destructive',
-              onPress: async () => {
-                await logout();
-                router.replace('/splash');
-              }
-            }
-          ]
-        );
-      }
-    },
   ];
 
   const handleAccountPress = () => {

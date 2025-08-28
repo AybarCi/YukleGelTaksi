@@ -147,22 +147,14 @@ const CustomerMenu: React.FC<CustomerMenuProps> = ({
                 onPress={item.onPress}
               >
                 {item.iconType === 'Ionicons' ? (
-                  <Ionicons
-                    name={item.icon as any}
-                    size={24}
-                    color={item.title === 'Çıkış Yap' ? '#EF4444' : '#6B7280'}
-                  />
+                  <Ionicons name={item.icon as any} size={24} color="#6B7280" />
                 ) : (
-                  <MaterialIcons
-                    name={item.icon as any}
-                    size={24}
-                    color={item.title === 'Çıkış Yap' ? '#EF4444' : '#6B7280'}
-                  />
+                  <MaterialIcons name={item.icon as any} size={24} color="#6B7280" />
                 )}
                 <Text style={{
                   marginLeft: 16,
                   fontSize: 16,
-                  color: item.title === 'Çıkış Yap' ? '#EF4444' : '#1F2937'
+                  color: '#1F2937'
                 }}>
                   {item.title}
                 </Text>

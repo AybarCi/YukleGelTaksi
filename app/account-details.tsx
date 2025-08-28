@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AccountDetailsScreen() {
-  const { user } = useAuth();
+  const { user, logout, showModal } = useAuth();
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Belirtilmemiş';
@@ -154,7 +154,31 @@ export default function AccountDetailsScreen() {
 
         {/* Account Actions */}
         <View style={styles.actionsSection}>
-          <TouchableOpacity style={styles.logoutButton}>
+          <TouchableOpacity 
+            style={styles.logoutButton}
+            onPress={() => {
+              showModal(
+                'Çıkış Yap',
+                'Hesabınızdan çıkış yapmak istediğinizden emin misiniz?',
+                'warning',
+                [
+                  {
+                    text: 'İptal',
+                    style: 'cancel',
+                    onPress: () => {}
+                  },
+                  {
+                    text: 'Çıkış Yap',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await logout();
+                      router.replace('/splash');
+                    }
+                  }
+                ]
+              );
+            }}
+          >
             <Ionicons name="log-out" size={20} color="#EF4444" />
             <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
           </TouchableOpacity>

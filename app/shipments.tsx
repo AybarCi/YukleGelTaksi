@@ -271,7 +271,14 @@ export default function ShipmentsScreen() {
           style={[styles.filterTab, filter === 'completed' && styles.activeFilterTab]}
           onPress={() => setFilter('completed')}
         >
-          <Text style={[styles.filterText, filter === 'completed' && styles.activeFilterText]}>Tamamlanan</Text>
+          <Text 
+            style={[styles.filterText, filter === 'completed' && styles.activeFilterText]}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
+          >
+            Tamamlanan
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -351,19 +358,21 @@ const styles = StyleSheet.create({
   filterTab: {
     flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     borderRadius: 20,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
+    minWidth: 0,
   },
   activeFilterTab: {
     backgroundColor: '#F59E0B',
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: '#6B7280',
+    textAlign: 'center',
   },
   activeFilterText: {
     color: '#FFFFFF',
