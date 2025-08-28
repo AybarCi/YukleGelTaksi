@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomModal from '../components/CustomModal';
 import { API_CONFIG } from '../config/api';
 import socketService from '../services/socketService';
+import { router } from 'expo-router';
 
 interface User {
   id: number;
@@ -477,26 +478,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const driverData = await driverStatusResponse.json();
         if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
           console.log('Driver approved after SMS verification');
+          // Onaylanmış ve aktif sürücü - dashboard'a yönlendir
+          router.replace('/driver-dashboard');
         } else {
           console.log('Driver not approved after SMS verification');
+          // Henüz onaylanmamış sürücü - durum ekranına yönlendir
+          router.replace('/driver-status');
         }
       } else if (driverStatusResponse.status === 404) {
         console.log('No driver record found after SMS verification');
+        // Sürücü kaydı yok - kayıt ekranına yönlendir
+        router.replace('/driver-registration');
       } else {
         console.log('Driver status check failed after SMS verification');
+        // Hata durumunda kayıt ekranına yönlendir
+        router.replace('/driver-registration');
       }
     } catch (error) {
       console.error('Error checking driver status after SMS verification:', error);
+      // Network hatası - kayıt ekranına yönlendir
+      router.replace('/driver-registration');
     }
   };
 
-  // Müşteri bilgi kontrolü yap - navigation will be handled by index.tsx
+  // Müşteri bilgi kontrolü yap ve yönlendir
   const checkCustomerInfoAndRedirect = (userData: User) => {
     // Ad/soyad eksikse user-info ekranına yönlendir
     if (!userData.full_name || userData.full_name.trim().length === 0) {
       console.log('User info incomplete');
+      router.replace('/user-info');
     } else {
       console.log('User info complete');
+      // Bilgiler tamamsa ana ekrana yönlendir
+      router.replace('/home');
     }
   };
 

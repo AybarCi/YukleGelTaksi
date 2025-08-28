@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
+import LocationInput, { LocationInputRef } from '../components/LocationInput';
 
 interface Driver {
   id: string;
@@ -36,15 +37,13 @@ interface Driver {
   name?: string;
 }
 
-export default function HomeScreen() {
-  console.log('🏠 [HOME] HomeScreen component başlatılıyor');
+function HomeScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  console.log('🏠 [HOME] Initial drivers state:', drivers);
   
   // Drivers state'inin güvenli olduğundan emin olmak için
-  const safeDrivers = Array.isArray(drivers) ? drivers : [];
+  const safeDrivers = useMemo(() => Array.isArray(drivers) ? drivers : [], [drivers]);
   
   // Yük bilgileri state'leri
   const [weight, setWeight] = useState('');
@@ -61,49 +60,51 @@ export default function HomeScreen() {
   const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
   const [isLocationLoading, setIsLocationLoading] = useState(true);
   
+  // Seçilen konum bilgilerini göstermek için modal state'i
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [selectedLocationInfo, setSelectedLocationInfo] = useState<{
+    address: string;
+    coordinates: { latitude: number; longitude: number };
+    type: 'pickup' | 'destination';
+  } | null>(null);
+  
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRefs = useRef<(TextInput | null)[]>([]);
+  const pickupLocationRef = useRef<LocationInputRef>(null);
+  const destinationLocationRef = useRef<LocationInputRef>(null);
+  const mapRef = useRef<any>(null);
   
   const { logout, showModal, user, token } = useAuth();
-  console.log('🏠 [HOME] Auth context loaded - user:', user?.id, 'token exists:', !!token);
-
-
 
   // Aktif input alanını scroll etmek için fonksiyon
-  const scrollToInput = (inputIndex: number) => {
+  const scrollToInput = useCallback((inputIndex: number) => {
     if (scrollViewRef.current && keyboardVisible) {
       const screenHeight = Dimensions.get('window').height;
-      const availableHeight = screenHeight - keyboardHeight - 150; // More padding
+      const availableHeight = screenHeight - keyboardHeight - 150;
       const inputHeight = 48;
       const labelHeight = 22;
       const marginBottom = 20;
-      const switchHeight = 56; // Switch container height
+      const switchHeight = 56;
       const titleHeight = 62;
       
       let targetOffset = titleHeight;
       
-      // Her input için offset hesapla
       if (inputIndex === 0) {
-        // Ağırlık input'u - en üstte
         targetOffset += labelHeight + inputHeight;
       } else if (inputIndex === 1) {
-        // Yükün konumu input'u
-        targetOffset += labelHeight + inputHeight + marginBottom; // Ağırlık
-        targetOffset += switchHeight + marginBottom; // Switch
-        targetOffset += labelHeight + inputHeight; // Pickup location
+        targetOffset += labelHeight + inputHeight + marginBottom;
+        targetOffset += switchHeight + marginBottom;
+        targetOffset += labelHeight + inputHeight;
       } else if (inputIndex === 2) {
-        // Varış noktası input'u
-        targetOffset += labelHeight + inputHeight + marginBottom; // Ağırlık
-        targetOffset += switchHeight + marginBottom; // Switch
-        targetOffset += labelHeight + inputHeight + marginBottom; // Pickup location
-        targetOffset += labelHeight + inputHeight; // Destination
+        targetOffset += labelHeight + inputHeight + marginBottom;
+        targetOffset += switchHeight + marginBottom;
+        targetOffset += labelHeight + inputHeight + marginBottom;
+        targetOffset += labelHeight + inputHeight;
       }
       
-      // Varış noktası için çok daha agresif scroll
       let scrollPosition;
       if (inputIndex === 2) {
-        // Varış noktası için özel hesaplama - klavyenin çok üstünde göster
-        scrollPosition = Math.max(0, targetOffset + 100); // Sabit offset ekle
+        scrollPosition = Math.max(0, targetOffset + 100);
       } else {
         scrollPosition = Math.max(0, targetOffset - (availableHeight * 0.4));
       }
@@ -113,51 +114,82 @@ export default function HomeScreen() {
         animated: true,
       });
     }
-  };
+  }, [keyboardVisible, keyboardHeight]);
+
+  const getCurrentLocation = useCallback(async (forceUpdate = false) => {
+    try {
+      setIsLocationLoading(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        showModal('Konum İzni', 'Konum izni verilmedi.', 'warning');
+        setIsLocationLoading(false);
+        return;
+      }
+      
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      
+      let shouldUpdateSocket = forceUpdate || !userLocation;
+      if (userLocation && !shouldUpdateSocket) {
+        const distance = calculateDistance(
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          location.coords.latitude,
+          location.coords.longitude
+        );
+        shouldUpdateSocket = distance > 0.05;
+      }
+      
+      setUserLocation(location);
+      
+      if (shouldUpdateSocket && socketService.isSocketConnected()) {
+        socketService.updateCustomerLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude
+        });
+      }
+      
+      if (useCurrentLocation) {
+        setPickupCoords({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude
+        });
+        setPickupLocation('Mevcut Konumum');
+      }
+      
+      setIsLocationLoading(false);
+    } catch (error) {
+      console.error('Konum hatası:', error);
+      showModal('Konum Hatası', 'Konum bilgisi alınamadı.', 'error');
+      setIsLocationLoading(false);
+    }
+  }, [userLocation, useCurrentLocation, showModal]);
 
   useEffect(() => {
-    console.log('🏠 [HOME] Component mount edildi, konum alınıyor...');
-    console.log('🏠 [HOME] useEffect başlangıcında drivers state:', drivers);
     const initializeApp = async () => {
-      // Sadece konumu al, sürücüler socket'ten gelecek
       await getCurrentLocation();
     };
     
     initializeApp();
     
-    // Socket bağlantısını token ile başlat
     if (token) {
-      console.log('🔌 [SOCKET] Token mevcut, socket bağlantısı başlatılıyor...');
-      console.log('🔌 [SOCKET] Drivers state socket başlatmadan önce:', drivers);
       socketService.connect(token);
     }
     
-    // Socket bağlantı durumu event'lerini dinle
     socketService.on('connection_error', (data: any) => {
       console.error('Socket bağlantı hatası:', data.error);
-      showModal('Bağlantı Hatası', 'Sunucuya bağlanırken bir hata oluştu. Lütfen internet bağlantınızı kontrol edin.', 'error');
+      showModal('Bağlantı Hatası', 'Sunucuya bağlanırken bir hata oluştu.', 'error');
     });
 
     socketService.on('max_reconnect_attempts_reached', () => {
-      console.log('Maksimum yeniden bağlanma denemesi aşıldı');
       showModal('Bağlantı Sorunu', 'Sunucuya bağlanılamıyor. Lütfen uygulamayı yeniden başlatın.', 'warning');
     });
 
-    // Socket event listener'larını kur
     socketService.on('driver_location_update', (data: any) => {
-      console.log('📡 [SOCKET] driver_location_update event alındı:', data);
       if (data && data.driverId && data.latitude && data.longitude) {
-        console.log('✅ [SOCKET] Sürücü konumu güncelleniyor:', {
-          driverId: data.driverId,
-          latitude: data.latitude,
-          longitude: data.longitude
-        });
         setDrivers(prevDrivers => {
-          console.log('🔄 [SOCKET] setDrivers çağrıldı - prevDrivers:', prevDrivers, 'type:', typeof prevDrivers, 'isArray:', Array.isArray(prevDrivers));
-          // Güvenli array kontrolü
           const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
-          console.log('🔄 [SOCKET] currentDrivers after safety check:', currentDrivers);
-          
           const updatedDrivers = [...currentDrivers];
           const driverIndex = updatedDrivers.findIndex(d => d && d.id === data.driverId);
           
@@ -169,7 +201,6 @@ export default function HomeScreen() {
               heading: data.heading || updatedDrivers[driverIndex].heading || 0,
             };
           } else {
-            // Yeni sürücü ekle
             updatedDrivers.push({
               id: data.driverId,
               latitude: data.latitude,
@@ -177,91 +208,47 @@ export default function HomeScreen() {
               heading: data.heading || 0,
             });
           }
-          console.log('🔄 [SOCKET] Sürücü listesi güncellendi, toplam:', updatedDrivers.length);
-          console.log('🔄 [SOCKET] Returning updatedDrivers:', updatedDrivers);
           return updatedDrivers;
         });
-      } else {
-        console.log('❌ [SOCKET] Geçersiz driver_location_update verisi:', data);
       }
     });
     
-    // Sürücü listesi güncellemelerini dinle
     socketService.on('nearbyDriversUpdate', (data: any) => {
-      console.log('📡 [SOCKET] nearbyDriversUpdate event alındı:', data);
-      
       try {
-        // Güvenli kontrol: data ve data.drivers var mı?
         if (!data) {
-          console.log('❌ [SOCKET] nearbyDriversUpdate verisi null/undefined');
           setDrivers([]);
           return;
         }
         
-        if (!data.drivers) {
-          console.log('❌ [SOCKET] nearbyDriversUpdate data.drivers null/undefined');
+        if (!data.drivers || !Array.isArray(data.drivers)) {
           setDrivers([]);
           return;
         }
         
-        if (!Array.isArray(data.drivers)) {
-          console.log('❌ [SOCKET] nearbyDriversUpdate data.drivers array değil:', typeof data.drivers);
-          setDrivers([]);
-          return;
-        }
+        const validDrivers = data.drivers.filter((driver: any) => {
+          return driver && 
+                 typeof driver === 'object' && 
+                 driver.id && 
+                 typeof driver.latitude === 'number' && 
+                 typeof driver.longitude === 'number';
+        });
         
-        if (data.drivers.length === 0) {
-          console.log('⚠️ [SOCKET] Yakında sürücü bulunamadı');
-          setDrivers([]);
-          return;
-        }
-        
-        console.log('✅ [SOCKET] Çevrimiçi sürücü listesi alındı, toplam:', data.drivers.length);
-        
-        // Ekstra güvenlik kontrolü - data.drivers'ın array olduğundan emin ol
-        const driversArray = Array.isArray(data.drivers) ? data.drivers : [];
-        
-        const validDrivers = driversArray
-          .filter((driver: any) => {
-            return driver && 
-                   typeof driver === 'object' && 
-                   (driver.id || driver.driver_id) && 
-                   driver.latitude !== undefined && 
-                   driver.longitude !== undefined;
-          })
-          .map((driver: any) => ({
-            id: String(driver.id || driver.driver_id),
-            latitude: Number(driver.latitude || driver.lat),
-            longitude: Number(driver.longitude || driver.lng),
-            heading: Number(driver.heading) || 0,
-            name: driver.name || driver.first_name || `Sürücü ${driver.id || driver.driver_id}`
-          }));
-        console.log('🎯 [SOCKET] Geçerli sürücü listesi:', validDrivers.length, 'sürücü');
-        console.log('📍 [SOCKET] Sürücü konumları:', validDrivers.map((d: Driver) => ({ id: d.id, lat: d.latitude, lng: d.longitude })));
-        console.log('🎯 [SOCKET] setDrivers çağrılıyor validDrivers ile:', validDrivers);
         setDrivers(validDrivers);
       } catch (error) {
-        console.log('❌ [SOCKET] nearbyDriversUpdate işleme hatası:', error);
-        console.log('❌ [SOCKET] Hata nedeniyle setDrivers([]) çağrılıyor');
+        console.error('nearbyDriversUpdate işleme hatası:', error);
         setDrivers([]);
       }
     });
     
-    // Sürücü bağlantı kesilmesi olayını dinle
     socketService.on('driver_disconnected', (data: any) => {
-      console.log('📡 [SOCKET] driver_disconnected event alındı:', data);
       if (data && data.driverId) {
-        console.log('🚫 [SOCKET] Sürücü bağlantısı kesildi, haritadan kaldırılıyor:', data.driverId);
         setDrivers(prevDrivers => {
           const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
-          const filteredDrivers = currentDrivers.filter(driver => driver.id !== data.driverId);
-          console.log('🔄 [SOCKET] Sürücü kaldırıldı, kalan sürücü sayısı:', filteredDrivers.length);
-          return filteredDrivers;
+          return currentDrivers.filter(driver => driver && driver.id !== data.driverId);
         });
       }
     });
-
-    // Sipariş durumu güncellemelerini dinle
+    
     socketService.on('order_accepted', (data: any) => {
       showModal('Sipariş Kabul Edildi', `Siparişiniz ${data.driverName} tarafından kabul edildi.`, 'success');
     });
@@ -271,30 +258,22 @@ export default function HomeScreen() {
     });
     
     socketService.on('orderStatusUpdate', (data: any) => {
-      console.log('Sipariş durumu güncellendi:', data);
-      showModal('Sipariş Güncellemesi', `Sipariş durumunuz: ${data.status}`, 'info');
+      showModal('Sipariş Güncellendi', `Sipariş durumu güncellendi: ${data.status}`, 'info');
     });
-
-    // Sürücü çevrimdışı olduğunda haritadan kaldır
+    
     socketService.on('driver_offline', (data: any) => {
-      console.log('📡 [SOCKET] driver_offline event alındı:', data);
       if (data && data.driverId) {
-        console.log('🚫 [SOCKET] Sürücü çevrimdışı oldu, haritadan kaldırılıyor:', data.driverId);
         setDrivers(prevDrivers => {
           const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
-          const updatedDrivers = currentDrivers.filter(driver => driver.id !== String(data.driverId));
-          console.log('🗑️ [SOCKET] Sürücü haritadan kaldırıldı. Kalan sürücü sayısı:', updatedDrivers.length);
-          return updatedDrivers;
+          return currentDrivers.filter(driver => driver && driver.id !== data.driverId);
         });
-      } else {
-        console.log('❌ [SOCKET] Geçersiz driver_offline verisi:', data);
       }
     });
-
+    
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardVisible(true);
       setKeyboardHeight(e.endCoordinates.height);
-      // Aktif input alanını scroll et
+      
       if (activeInputIndex !== null) {
         setTimeout(() => {
           scrollToInput(activeInputIndex);
@@ -307,9 +286,8 @@ export default function HomeScreen() {
       setKeyboardHeight(0);
       setActiveInputIndex(null);
     });
-
+    
     return () => {
-      // Socket event listener'larını temizle
       socketService.off('connection_error');
       socketService.off('max_reconnect_attempts_reached');
       socketService.off('driver_location_update');
@@ -319,112 +297,35 @@ export default function HomeScreen() {
       socketService.off('order_status_update');
       socketService.off('orderStatusUpdate');
       socketService.off('driver_offline');
-      
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, [token]);
+  }, [user?.id]);
   
   useEffect(() => {
-    if (useCurrentLocation) {
-      // Switch açıldığında forceUpdate=true ile konum güncellemesini zorla
-      getCurrentLocation(true);
-    } else {
+    if (useCurrentLocation && userLocation) {
+      setPickupCoords({
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude
+      });
+      setPickupLocation('Mevcut Konumum');
+    } else if (!useCurrentLocation) {
       setPickupCoords(null);
       setPickupLocation('');
     }
-  }, [useCurrentLocation]);
+  }, [useCurrentLocation, userLocation]);
   
-  const handleCurrentLocationToggle = (value: boolean) => {
-    setUseCurrentLocation(value);
-  };
-  
-  const handlePickupLocationSelect = (data: any, details: any) => {
-    if (details?.geometry?.location) {
-      setPickupCoords({
-        latitude: details.geometry.location.lat,
-        longitude: details.geometry.location.lng
-      });
-      setPickupLocation(data.description);
-    }
-  };
-  
-  const handleDestinationLocationSelect = (data: any, details: any) => {
-    if (details?.geometry?.location) {
-      setDestinationCoords({
-        latitude: details.geometry.location.lat,
-        longitude: details.geometry.location.lng
-      });
-      setDestinationLocation(data.description);
-    }
-  };
-
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('İzin Gerekli', 'Fotoğraf seçmek için galeri erişim izni gereklidir.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setCargoImage(result.assets[0].uri);
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('İzin Gerekli', 'Fotoğraf çekmek için kamera erişim izni gereklidir.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setCargoImage(result.assets[0].uri);
-    }
-  };
-
-  const showImagePicker = () => {
-    Alert.alert(
-      'Yük Fotoğrafı',
-      'Yükünüzün fotoğrafını nasıl eklemek istiyorsunuz?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        { text: 'Galeriden Seç', onPress: pickImage },
-        { text: 'Fotoğraf Çek', onPress: takePhoto },
-      ]
-    );
-  };
-
-  const removeImage = () => {
-    setCargoImage(null);
-  };
-
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // Dünya'nın yarıçapı (km)
+  const calculateDistance = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
-    return Math.round(distance * 10) / 10; // 1 ondalık basamağa yuvarla
-  };
-
+    return R * c;
+  }, []);
+  
   useEffect(() => {
     if (pickupCoords && destinationCoords) {
       const dist = calculateDistance(
@@ -439,7 +340,7 @@ export default function HomeScreen() {
     }
   }, [pickupCoords, destinationCoords]);
   
-  const handleCreateOrder = async () => {
+  const handleCreateOrder = useCallback(async () => {
     if (!weight || !pickupCoords || !destinationCoords) {
       showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
       return;
@@ -459,9 +360,8 @@ export default function HomeScreen() {
        };
       
       await socketService.createOrder(orderData);
-      showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu. Yakınlardaki sürücüler bilgilendirildi.', 'success');
+      showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu.', 'success');
       
-      // Formu temizle
       setWeight('');
       setNotes('');
       setCargoImage(null);
@@ -473,82 +373,135 @@ export default function HomeScreen() {
       
     } catch (error) {
       console.error('Sipariş oluşturma hatası:', error);
-      showModal('Hata', 'Sipariş oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.', 'error');
+      showModal('Hata', 'Sipariş oluşturulurken bir hata oluştu.', 'error');
     }
-  };
+  }, [weight, pickupCoords, destinationCoords, pickupLocation, destinationLocation, distance, showModal]);
 
-  const getCurrentLocation = async (forceUpdate = false) => {
+  const handleCurrentLocationToggle = useCallback((value: boolean) => {
+    setUseCurrentLocation(value);
+  }, []);
+
+  const handlePickupLocationSelect = useCallback((location: any) => {
+    setPickupCoords({
+      latitude: location.geometry.location.lat,
+      longitude: location.geometry.location.lng
+    });
+    
+    setPickupLocation(location.description);
+    
+    setSelectedLocationInfo({
+      address: location.description,
+      coordinates: {
+        latitude: location.geometry.location.lat,
+        longitude: location.geometry.location.lng
+      },
+      type: 'pickup'
+    });
+    
+    setLocationModalVisible(true);
+    
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: location.geometry.location.lat,
+        longitude: location.geometry.location.lng,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      }, 1000);
+    }
+  }, []);
+
+  const handleDestinationLocationSelect = useCallback((location: any) => {
+    setDestinationCoords({
+      latitude: location.geometry.location.lat,
+      longitude: location.geometry.location.lng
+    });
+    
+    setDestinationLocation(location.description);
+    
+    setSelectedLocationInfo({
+      address: location.description,
+      coordinates: {
+        latitude: location.geometry.location.lat,
+        longitude: location.geometry.location.lng
+      },
+      type: 'destination'
+    });
+    
+    setLocationModalVisible(true);
+    
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: location.geometry.location.lat,
+        longitude: location.geometry.location.lng,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      }, 1000);
+    }
+  }, []);
+
+  const handleImagePicker = useCallback(() => {
+    Alert.alert(
+      'Fotoğraf Ekle',
+      'Yük fotoğrafını nasıl eklemek istiyorsunuz?',
+      [
+        {
+          text: 'İptal',
+          style: 'cancel',
+        },
+        {
+          text: 'Kameradan Çek',
+          onPress: () => pickImage('camera'),
+        },
+        {
+          text: 'Galeriden Seç',
+          onPress: () => pickImage('gallery'),
+        },
+      ]
+    );
+  }, []);
+
+  const pickImage = useCallback(async (source: 'camera' | 'gallery') => {
     try {
-      console.log('🗺️ [CUSTOMER LOCATION] Konum alınmaya başlandı...');
-      setIsLocationLoading(true);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('❌ [CUSTOMER LOCATION] Konum izni verilmedi');
-        showModal('Konum İzni', 'Konum izni verilmedi.', 'warning');
-        setIsLocationLoading(false);
-        return;
-      }
+      let result;
       
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      console.log('✅ [CUSTOMER LOCATION] Konum alındı:', {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude
-      });
-      
-      // Önceki konum ile karşılaştır
-      let shouldUpdateSocket = forceUpdate || !userLocation;
-      if (userLocation && !shouldUpdateSocket) {
-        const distance = calculateDistance(
-          userLocation.coords.latitude,
-          userLocation.coords.longitude,
-          location.coords.latitude,
-          location.coords.longitude
-        );
-        // 50 metreden fazla değişiklik varsa güncelle
-        shouldUpdateSocket = distance > 0.05; // 0.05 km = 50 metre
-      }
-      
-      setUserLocation(location);
-      
-      // Sadece önemli konum değişikliklerinde socket'e gönder
-      if (shouldUpdateSocket && socketService.isSocketConnected()) {
-        console.log('📡 [CUSTOMER LOCATION] Önemli konum değişikliği, socket ile gönderiliyor...');
-        socketService.updateCustomerLocation({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          showModal('İzin Gerekli', 'Kamera kullanımı için izin gerekli.', 'warning');
+          return;
+        }
+        
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
         });
-      } else if (!socketService.isSocketConnected()) {
-        console.log('❌ [CUSTOMER LOCATION] Socket bağlantısı yok, konum gönderilemedi');
       } else {
-        console.log('📍 [CUSTOMER LOCATION] Küçük konum değişikliği, socket güncellemesi atlandı');
-      }
-      
-      // Eğer mevcut konum kullanılacaksa pickup koordinatlarını ayarla
-      if (useCurrentLocation) {
-        console.log('📍 [CUSTOMER LOCATION] Pickup koordinatları ayarlandı');
-        setPickupCoords({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          showModal('İzin Gerekli', 'Galeri erişimi için izin gerekli.', 'warning');
+          return;
+        }
+        
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
         });
-        setPickupLocation('Mevcut Konumum');
       }
       
-      setIsLocationLoading(false);
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setCargoImage(result.assets[0].uri);
+      }
     } catch (error) {
-      console.error('❌ [CUSTOMER LOCATION] Konum hatası:', error);
-      showModal('Konum Hatası', 'Konum bilgisi alınamadı.', 'error');
-      setIsLocationLoading(false);
+      console.error('Resim seçme hatası:', error);
+      showModal('Hata', 'Resim seçilirken bir hata oluştu.', 'error');
     }
-  };
+  }, [showModal]);
 
-  const updateDriverLocations = () => {
-    // Bu fonksiyon artık useEffect içinde socket event listener olarak kullanılıyor
-    // Gerekirse manuel güncelleme için kullanılabilir
-  };
-
-  const menuItems = [
+  const menuItems = useMemo(() => [
     {
       title: 'Destek',
       icon: 'headset',
@@ -576,9 +529,9 @@ export default function HomeScreen() {
         router.push('/shipments');
       }
     },
-  ];
+  ], [showModal]);
 
-  const bottomMenuItems = [
+  const bottomMenuItems = useMemo(() => [
     {
       title: 'YükleGel Taksi Kampanyalar',
       icon: 'card-giftcard',
@@ -643,23 +596,15 @@ export default function HomeScreen() {
         );
       }
     },
-  ];
-// Render
-  console.log('🎨 [RENDER] Render başlıyor - drivers state:', safeDrivers, 'length:', safeDrivers.length);
-  console.log('🎨 [RENDER] userLocation:', userLocation);
-  console.log('🎨 [RENDER] user:', user);
-  console.log('🎨 [RENDER] isLocationLoading:', isLocationLoading);
-  
+  ], [showModal, logout]);
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
       
-      {/* Full Screen Map */}
       <View style={styles.fullMapContainer}>
           {(() => {
-             console.log('🗺️ [MAP] Render koşulu kontrol ediliyor - isLocationLoading:', isLocationLoading);
              if (isLocationLoading) {
-               console.log('📍 [MAP] Loading gösteriliyor');
                return (
                  <View style={styles.loadingContainer}>
                    <ActivityIndicator size="large" color="#F59E0B" />
@@ -667,24 +612,17 @@ export default function HomeScreen() {
                  </View>
                );
              } else {
-               console.log('🗺️ [MAP] MapView render edilecek - userLocation var:', !!userLocation);
-               console.log('🗺️ [MAP] MapView render öncesi drivers:', drivers, 'length:', drivers?.length);
                return (
-                 <MapView
-                   provider={PROVIDER_GOOGLE}
-                   style={styles.fullMap}
-                   initialRegion={{
-                     latitude: (userLocation?.coords.latitude || 41.0082) - 0.002,
-                     longitude: userLocation?.coords.longitude || 28.9784,
-                     latitudeDelta: 0.008,
-                     longitudeDelta: 0.006,
-                   }}
-                   region={{
-                     latitude: (userLocation?.coords.latitude || 41.0082) - 0.002,
-                     longitude: userLocation?.coords.longitude || 28.9784,
-                     latitudeDelta: 0.008,
-                     longitudeDelta: 0.006,
-                   }}
+                   <MapView
+                     ref={mapRef}
+                     provider={PROVIDER_GOOGLE}
+                     style={styles.fullMap}
+                     initialRegion={{
+                       latitude: (userLocation?.coords.latitude || 41.0082) - 0.002,
+                       longitude: userLocation?.coords.longitude || 28.9784,
+                       latitudeDelta: 0.008,
+                       longitudeDelta: 0.006,
+                     }}
                    showsUserLocation={true}
                    showsMyLocationButton={true}
                    followsUserLocation={true}
@@ -701,55 +639,31 @@ export default function HomeScreen() {
                      }
                    }}
                    onMapReady={() => {
-                     console.log('🗺️ [MAP] Harita hazır, müşteri konumu:', userLocation ? {
-                       latitude: userLocation.coords.latitude,
-                       longitude: userLocation.coords.longitude
-                     } : 'Konum alınmamış');
-                   }}
+                       // Harita hazır
+                     }}
                  >
-                   {/* Driver markers */}
-                   {(() => {
-                     console.log('🗺️ [MAP RENDER] Sürücü marker\'ları render ediliyor, toplam:', safeDrivers.length);
-                     console.log('🗺️ [MAP RENDER] Drivers state:', safeDrivers);
-                     console.log('🚗 [MAP] Sürücü markerları render ediliyor - drivers:', safeDrivers);
-                     
-                     // Güvenli kontrol: safeDrivers boşsa null döndür
-                     if (safeDrivers.length === 0) {
-                       console.log('⚠️ [MAP RENDER] Drivers verisi mevcut değil veya boş');
+                   {safeDrivers.length === 0 ? null : safeDrivers.map((driver) => {
+                     if (!driver || typeof driver !== 'object' || !driver.id || 
+                         typeof driver.latitude !== 'number' || typeof driver.longitude !== 'number') {
                        return null;
                      }
-                     
-                     console.log('🚗 [MAP] Drivers var ve length > 0, mapping başlıyor');
-                     return safeDrivers.map((driver) => {
-                       console.log('🚗 [MAP] Driver render ediliyor:', driver);
-                       // Her driver için güvenlik kontrolü
-                       if (!driver || typeof driver !== 'object' || !driver.id || 
-                           typeof driver.latitude !== 'number' || typeof driver.longitude !== 'number') {
-                         console.log('⚠️ [MAP RENDER] Geçersiz sürücü verisi atlanıyor:', driver);
-                         return null;
-                       }
-                       console.log('✅ [MAP] Geçerli sürücü marker render ediliyor:', { id: driver.id, lat: driver.latitude, lng: driver.longitude });
-                       
-                       console.log('📍 [MAP RENDER] Sürücü marker render ediliyor:', { id: driver.id, lat: driver.latitude, lng: driver.longitude });
-                       return (
-                         <Marker
-                           key={driver.id}
-                           coordinate={{
-                             latitude: driver.latitude,
-                             longitude: driver.longitude,
-                           }}
-                           title={driver.name || `Sürücü ${driver.id}`}
-                           description="Müsait sürücü"
-                         >
-                           <View style={styles.driverMarker}>
-                             <MaterialIcons name="local-shipping" size={20} color="#FFFFFF" />
-                           </View>
-                         </Marker>
-                       );
-                     });
-                   })()}
+                     return (
+                       <Marker
+                         key={driver.id}
+                         coordinate={{
+                           latitude: driver.latitude,
+                           longitude: driver.longitude,
+                         }}
+                         title={driver.name || `Sürücü ${driver.id}`}
+                         description="Müsait sürücü"
+                       >
+                         <View style={styles.driverMarker}>
+                           <MaterialIcons name="local-shipping" size={20} color="#FFFFFF" />
+                         </View>
+                       </Marker>
+                     );
+                   })}
                    
-                   {/* Pickup location marker */}
                    {pickupCoords && (
                      <Marker
                        coordinate={pickupCoords}
@@ -762,7 +676,6 @@ export default function HomeScreen() {
                      </Marker>
                    )}
                    
-                   {/* Destination location marker */}
                    {destinationCoords && (
                      <Marker
                        coordinate={destinationCoords}
@@ -770,362 +683,348 @@ export default function HomeScreen() {
                        description="Yükün teslim edileceği adres"
                      >
                        <View style={styles.destinationMarker}>
-                         <Ionicons name="navigate" size={16} color="#FFFFFF" />
+                         <Ionicons name="flag" size={16} color="#FFFFFF" />
                        </View>
                      </Marker>
                    )}
                    
-                   {/* Rota çizgisi */}
                    {pickupCoords && destinationCoords && (
                      <Polyline
                        coordinates={[pickupCoords, destinationCoords]}
                        strokeColor="#F59E0B"
-                       strokeWidth={4}
+                       strokeWidth={3}
                        lineDashPattern={[5, 5]}
                      />
                    )}
                  </MapView>
                );
              }
-           })()}
-        
-        {/* Floating Menu Button */}
-        <TouchableOpacity 
-          style={styles.floatingMenuButton}
-          onPress={() => setMenuVisible(true)}
-        >
-          <Ionicons name="menu" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-      
-      {/* Bottom Form Sheet */}
-      <View 
-        style={[
-          styles.bottomSheet,
-          keyboardVisible && {
-            maxHeight: Dimensions.get('window').height - keyboardHeight,
-            paddingBottom: 0,
+           })()
           }
-        ]}
-      >
-        <View style={styles.bottomSheetHandle} />
-        <ScrollView 
-          ref={scrollViewRef}
-          style={[
-            styles.formContainer,
-            keyboardVisible && { 
-              maxHeight: Dimensions.get('window').height - keyboardHeight - 50,
-              flex: 1 
-            }
-          ]} 
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[
-            styles.scrollContent,
-            keyboardVisible && { paddingBottom: 10 }
-          ]}
-          bounces={true}
-          scrollEventThrottle={16}
-          nestedScrollEnabled={true}
-          automaticallyAdjustKeyboardInsets={true}
-          contentInsetAdjustmentBehavior="automatic"
-        >
-        <View style={styles.formTitleContainer}>
-          <Text style={styles.formTitle}>Yük Bilgileri</Text>
-        </View>
-        
-        {/* Ağırlık */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Ağırlık (kg)</Text>
-          <View style={styles.inputWithIcon}>
-            <MaterialIcons name="fitness-center" size={20} color="#6B7280" style={styles.inputIcon} />
-            <TextInput
-              ref={(ref) => { inputRefs.current[0] = ref; }}
-              style={styles.input}
-              value={weight}
-              onChangeText={setWeight}
-              placeholder="Örn: 25"
-              keyboardType="numeric"
-              returnKeyType="send"
-              returnKeyLabel="Bitti"
-              autoComplete="off"
-              autoCorrect={false}
-              onFocus={() => {
-                setActiveInputIndex(0);
-                setTimeout(() => scrollToInput(0), 100);
-              }}
-              onSubmitEditing={() => Keyboard.dismiss()}
-              blurOnSubmit={true}
-            />
-          </View>
-        </View>
-        
-        {/* Mevcut Konum Switch */}
-        <View style={styles.switchContainer}>
-          <Text style={styles.switchLabel}>Yük mevcut konumumda</Text>
-          <Switch
-            value={useCurrentLocation}
-            onValueChange={handleCurrentLocationToggle}
-            trackColor={{ false: '#E5E7EB', true: '#FCD34D' }}
-            thumbColor={useCurrentLocation ? '#F59E0B' : '#9CA3AF'}
-          />
-        </View>
-        
-        {/* Yükün Konumu */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Yükün Konumu</Text>
-          {!useCurrentLocation ? (
-            <View style={styles.placesContainer}>
-              <GooglePlacesAutocomplete
-                placeholder="Yükün alınacağı adresi girin"
-                predefinedPlaces={[]}
-                onPress={(data, details = null) => {
-                  if (details) {
-                    const coords = {
-                      latitude: details.geometry.location.lat,
-                      longitude: details.geometry.location.lng,
-                    };
-                    setPickupCoords(coords);
-                    setPickupLocation(data.description);
-                    
-                    // Mesafe hesapla
-                    if (destinationCoords) {
-                      const dist = calculateDistance(
-                        coords.latitude,
-                        coords.longitude,
-                        destinationCoords.latitude,
-                        destinationCoords.longitude
-                      );
-                      setDistance(parseFloat(dist.toFixed(1)));
-                    }
-                  }
-                }}
-                query={{
-                  key: 'AIzaSyBvOkBwGyiwHXelLqGHnqQZ8vQHzMvrzQs',
-                  language: 'tr',
-                  components: 'country:tr',
-                }}
-                fetchDetails={true}
-                styles={{
-                  container: styles.placesContainer,
-                  textInput: styles.placesInput,
-                  listView: styles.placesList,
-                  row: {
-                    backgroundColor: '#FFFFFF',
-                    padding: 13,
-                    height: 44,
-                    flexDirection: 'row',
-                  },
-                  separator: {
-                    height: 0.5,
-                    backgroundColor: '#E5E7EB',
-                  },
-                  description: {
-                    fontWeight: 'bold',
-                    color: '#000000',
-                  },
-                  predefinedPlacesDescription: {
-                    color: '#1faadb',
-                  },
-                }}
-                textInputProps={{
-                  onFocus: () => {
-                    setActiveInputIndex(1);
-                    setTimeout(() => scrollToInput(1), 100);
-                  },
-                  returnKeyType: 'search',
-                  returnKeyLabel: 'Ara',
-                }}
-                enablePoweredByContainer={false}
-                debounce={200}
-              />
-            </View>
-          ) : (
-            <View style={styles.disabledInput}>
-              <Ionicons name="location" size={20} color="#9CA3AF" style={styles.inputIcon} />
-              <Text style={styles.disabledInputText}>Mevcut Konumum</Text>
-            </View>
-          )}
-        </View>
-        
-        {/* Varış Noktası */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Varış Noktası</Text>
-          <View style={styles.placesContainer}>
-            <GooglePlacesAutocomplete
-              placeholder="Yükün teslim edileceği adresi girin"
-              predefinedPlaces={[]}
-              onPress={(data, details = null) => {
-                if (details) {
-                  const coords = {
-                    latitude: details.geometry.location.lat,
-                    longitude: details.geometry.location.lng,
-                  };
-                  setDestinationCoords(coords);
-                  setDestinationLocation(data.description);
-                  
-                  // Mesafe hesapla
-                  if (pickupCoords) {
-                    const dist = calculateDistance(
-                      pickupCoords.latitude,
-                      pickupCoords.longitude,
-                      coords.latitude,
-                      coords.longitude
-                    );
-                    setDistance(parseFloat(dist.toFixed(1)));
-                  }
-                }
-              }}
-              query={{
-                key: 'AIzaSyBvOkBwGyiwHXelLqGHnqQZ8vQHzMvrzQs',
-                language: 'tr',
-                components: 'country:tr',
-              }}
-              fetchDetails={true}
-              styles={{
-                container: styles.placesContainer,
-                textInput: styles.placesInput,
-                listView: styles.placesList,
-                row: {
-                  backgroundColor: '#FFFFFF',
-                  padding: 13,
-                  height: 44,
-                  flexDirection: 'row',
-                },
-                separator: {
-                  height: 0.5,
-                  backgroundColor: '#E5E7EB',
-                },
-                description: {
-                  fontWeight: 'bold',
-                  color: '#000000',
-                },
-                predefinedPlacesDescription: {
-                  color: '#1faadb',
-                },
-              }}
-              textInputProps={{
-                onFocus: () => {
-                  setActiveInputIndex(2);
-                  setTimeout(() => scrollToInput(2), 300);
-                },
-                returnKeyType: 'search',
-                returnKeyLabel: 'Ara',
-              }}
-              enablePoweredByContainer={false}
-              debounce={200}
-            />
-          </View>
-          {distance && (
-            <View style={styles.distanceInfo}>
-              <Ionicons name="location" size={16} color="#10B981" />
-              <Text style={styles.distanceText}>Mesafe: {distance} km</Text>
-            </View>
-          )}
-        </View>
-        
-        {/* Yük Fotoğrafı */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Yük Fotoğrafı</Text>
-          {cargoImage ? (
-            <View style={styles.imageContainer}>
-              <Image source={{ uri: cargoImage }} style={styles.cargoImage} />
-              <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
-                <Ionicons name="close-circle" size={24} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.addImageButton} onPress={showImagePicker}>
-              <Ionicons name="camera" size={24} color="#6B7280" />
-              <Text style={styles.addImageText}>Yük fotoğrafı ekle</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        {/* Sipariş Oluştur Butonu */}
-        <TouchableOpacity style={styles.createOrderButton} onPress={handleCreateOrder}>
-          <Text style={styles.createOrderButtonText}>Sipariş Oluştur</Text>
-        </TouchableOpacity>
-        </ScrollView>
       </View>
 
-      {/* Menu Modal */}
+      <TouchableOpacity
+        style={styles.floatingMenuButton}
+        onPress={() => setMenuVisible(true)}
+      >
+        <Ionicons name="menu" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      <View style={styles.bottomSheet}>
+        <View style={styles.bottomSheetHandle} />
+        
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.formContainer}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.formTitleContainer}>
+              <Text style={styles.formTitle}>Yük Taşıma Siparişi</Text>
+              {keyboardVisible && (
+                <TouchableOpacity
+                  style={styles.keyboardDismissButton}
+                  onPress={() => Keyboard.dismiss()}
+                >
+                  <Text style={styles.keyboardDismissText}>Klavyeyi Kapat</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Ağırlığı (kg)</Text>
+              <TextInput
+                ref={(ref) => { inputRefs.current[0] = ref; }}
+                style={[
+                  {
+                    borderWidth: 1,
+                    borderColor: '#D1D5DB',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 16,
+                    backgroundColor: '#FFFFFF',
+                  },
+                  activeInputIndex === 0 && { borderColor: '#F59E0B', borderWidth: 2 }
+                ]}
+                placeholder="Örn: 25"
+                value={weight}
+                onChangeText={setWeight}
+                keyboardType="numeric"
+                onFocus={() => setActiveInputIndex(0)}
+                onBlur={() => setActiveInputIndex(null)}
+              />
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: '#F3F4F6',
+                padding: 16,
+                borderRadius: 8,
+                marginBottom: 16
+              }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: '#1F2937' }}>Mevcut Konumumu Kullan</Text>
+                <Switch
+                  value={useCurrentLocation}
+                  onValueChange={handleCurrentLocationToggle}
+                  trackColor={{ false: '#D1D5DB', true: '#FCD34D' }}
+                  thumbColor={useCurrentLocation ? '#F59E0B' : '#9CA3AF'}
+                />
+              </View>
+            </View>
+
+            {!useCurrentLocation && (
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yükün Konumu</Text>
+                <LocationInput
+                   ref={pickupLocationRef}
+                   placeholder="Yükün alınacağı adresi girin"
+                   onLocationSelect={handlePickupLocationSelect}
+                   onFocus={() => setActiveInputIndex(1)}
+                 />
+              </View>
+            )}
+
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Varış Noktası</Text>
+              <LocationInput
+                 ref={destinationLocationRef}
+                 placeholder="Yükün teslim edileceği adresi girin"
+                 onLocationSelect={handleDestinationLocationSelect}
+                 onFocus={() => setActiveInputIndex(2)}
+               />
+            </View>
+
+            {distance && (
+              <View style={styles.distanceInfo}>
+                <Ionicons name="location-outline" size={20} color="#F59E0B" />
+                <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: '600', color: '#1F2937' }}>
+                  Mesafe: {distance.toFixed(1)} km
+                </Text>
+                <Text style={{ marginLeft: 8, fontSize: 14, color: '#6B7280' }}>
+                  (Tahmini Ücret: ₺{distance ? Math.round(distance * 15) : 0})
+                </Text>
+              </View>
+            )}
+
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Fotoğrafı (Opsiyonel)</Text>
+              <TouchableOpacity
+                style={{
+                  borderWidth: 2,
+                  borderColor: '#D1D5DB',
+                  borderStyle: 'dashed',
+                  borderRadius: 8,
+                  padding: 20,
+                  alignItems: 'center',
+                  backgroundColor: '#F9FAFB'
+                }}
+                onPress={handleImagePicker}
+              >
+                {cargoImage ? (
+                  <View style={styles.imageContainer}>
+                    <Image source={{ uri: cargoImage }} style={{ width: 100, height: 100, borderRadius: 8 }} />
+                    <TouchableOpacity
+                      style={{
+                        position: 'absolute',
+                        top: -8,
+                        right: -8,
+                        backgroundColor: '#EF4444',
+                        borderRadius: 12,
+                        width: 24,
+                        height: 24,
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onPress={() => setCargoImage(null)}
+                    >
+                      <Ionicons name="close" size={16} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <>
+                    <Ionicons name="camera" size={32} color="#9CA3AF" />
+                    <Text style={{ marginTop: 8, fontSize: 14, color: '#6B7280' }}>Yük fotoğrafı ekle</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Notlar (Opsiyonel)</Text>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#D1D5DB',
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 16,
+                  backgroundColor: '#FFFFFF',
+                  height: 80,
+                  textAlignVertical: 'top'
+                }}
+                placeholder="Yük hakkında özel notlarınız..."
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.createOrderButton,
+                (!weight || !pickupCoords || !destinationCoords) && { opacity: 0.5 }
+              ]}
+              onPress={handleCreateOrder}
+              disabled={!weight || !pickupCoords || !destinationCoords}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>Sipariş Oluştur</Text>
+            </TouchableOpacity>
+
+            <View style={{ height: 100 }} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
+
       <Modal
         visible={menuVisible}
         animationType="slide"
-        transparent
+        transparent={true}
         onRequestClose={() => setMenuVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.menuContainer}>
-            <View style={styles.menuHeader}>
-              <View style={styles.profileSection}>
-                <View style={styles.profileImage}>
-                  <Ionicons name="person" size={32} color="#FCD34D" />
-                </View>
-                <View style={styles.profileInfo}>
-                  <Text style={styles.userName}>{user?.full_name || 'Kullanıcı'}</Text>
-                  <TouchableOpacity 
-                    style={styles.accountButton}
-                    onPress={() => {
-                      setMenuVisible(false);
-                      router.push('/account-details');
-                    }}
-                  >
-                    <Text style={styles.accountButtonText}>Hesap Detayları</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setMenuVisible(false)}
-              >
-                <Ionicons name="close" size={24} color="#000000" />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1F2937' }}>Menü</Text>
+              <TouchableOpacity onPress={() => setMenuVisible(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.menuContent}>
-              {/* Top Menu Items */}
-              <View style={styles.topMenuItems}>
-                {menuItems.map((item, index) => (
-                  <TouchableOpacity 
-                    key={index}
-                    style={styles.topMenuItem}
-                    onPress={item.onPress}
-                  >
-                    <View style={styles.topMenuIcon}>
-                      {item.iconType === 'Ionicons' ? (
-                        <Ionicons name={item.icon as any} size={24} color="#000000" />
-                      ) : (
-                        <MaterialIcons name={item.icon as any} size={24} color="#000000" />
-                      )}
-                    </View>
-                    <Text style={styles.topMenuText}>{item.title}</Text>
-                  </TouchableOpacity>
-                ))}
+            <View style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <View style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 25,
+                  backgroundColor: '#F59E0B',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>
+                    {user?.full_name?.charAt(0) || 'U'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#1F2937' }}>{user?.full_name || 'Kullanıcı'}</Text>
+                  <Text style={{ fontSize: 14, color: '#6B7280' }}>{user?.email}</Text>
+                </View>
               </View>
+            </View>
 
-              {/* Bottom Menu Items */}
-              <View style={styles.bottomMenuItems}>
-                {bottomMenuItems.map((item, index) => (
-                  <TouchableOpacity 
-                    key={index}
-                    style={styles.bottomMenuItem}
-                    onPress={item.onPress}
-                  >
-                    <View style={styles.bottomMenuIcon}>
-                      {item.iconType === 'Ionicons' ? (
-                        <Ionicons name={item.icon as any} size={20} color="#6B7280" />
-                      ) : (
-                        <MaterialIcons name={item.icon as any} size={20} color="#6B7280" />
-                      )}
-                    </View>
-                    <Text style={styles.bottomMenuText}>{item.title}</Text>
-                    <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {menuItems.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 16,
+                    paddingHorizontal: 16,
+                    borderBottomWidth: 1,
+                    borderBottomColor: '#F3F4F6'
+                  }}
+                  onPress={item.onPress}
+                >
+                  {item.iconType === 'Ionicons' ? (
+                    <Ionicons name={item.icon as any} size={24} color="#6B7280" />
+                  ) : (
+                    <MaterialIcons name={item.icon as any} size={24} color="#6B7280" />
+                  )}
+                  <Text style={{ marginLeft: 16, fontSize: 16, color: '#1F2937' }}>{item.title}</Text>
+                </TouchableOpacity>
+              ))}
+
+              <View style={{ height: 20 }} />
+
+              {bottomMenuItems.map((item, index) => (
+                <TouchableOpacity
+                  key={`bottom-${index}`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 16,
+                    paddingHorizontal: 16,
+                    borderBottomWidth: index < bottomMenuItems.length - 1 ? 1 : 0,
+                    borderBottomColor: '#F3F4F6'
+                  }}
+                  onPress={item.onPress}
+                >
+                  {item.iconType === 'Ionicons' ? (
+                    <Ionicons name={item.icon as any} size={24} color={item.title === 'Çıkış Yap' ? '#EF4444' : '#6B7280'} />
+                  ) : (
+                    <MaterialIcons name={item.icon as any} size={24} color={item.title === 'Çıkış Yap' ? '#EF4444' : '#6B7280'} />
+                  )}
+                  <Text style={{
+                    marginLeft: 16,
+                    fontSize: 16,
+                    color: item.title === 'Çıkış Yap' ? '#EF4444' : '#1F2937'
+                  }}>
+                    {item.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={locationModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setLocationModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            margin: 20,
+            borderRadius: 12,
+            padding: 20,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#1F2937' }}>
+              {selectedLocationInfo?.type === 'pickup' ? 'Yükün Konumu' : 'Varış Noktası'}
+            </Text>
+            <Text style={{ fontSize: 16, marginBottom: 20, color: '#6B7280' }}>
+              {selectedLocationInfo?.address}
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#F59E0B',
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  borderRadius: 8
+                }}
+                onPress={() => setLocationModalVisible(false)}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Tamam</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1139,26 +1038,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingTop: 60,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
+    paddingTop: 50,
     paddingBottom: 10,
     backgroundColor: '#FFFFFF',
-    zIndex: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   menuButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFD700',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    padding: 8,
   },
   fullMapContainer: {
     flex: 1,
@@ -1171,20 +1062,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 60,
     left: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFD700',
-    justifyContent: 'center',
+    backgroundColor: '#F59E0B',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
     alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    zIndex: 1000,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   bottomSheet: {
     position: 'absolute',
@@ -1194,410 +1082,136 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingTop: 8,
-    maxHeight: '50%',
-    elevation: 10,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -4 },
+    height: '60%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 4,
+    elevation: 5,
   },
   bottomSheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#D1D5DB',
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 16,
   },
   mapPlaceholder: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    padding: 20,
-  },
-  mapPlaceholderTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000000',
-    marginBottom: 8,
-  },
-  mapPlaceholderText: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 32,
+    justifyContent: 'center',
   },
   driversInfo: {
-    alignItems: 'center',
-  },
-  driversInfoText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 16,
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 8,
+    padding: 12,
   },
   driverInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    elevation: 1,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  driverText: {
     fontSize: 14,
-    color: '#374151',
-    marginLeft: 8,
+    color: '#1F2937',
+    marginBottom: 4,
   },
   driverMarker: {
+    backgroundColor: '#10B981',
+    borderRadius: 20,
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FCD34D',
-    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    justifyContent: 'center',
+    borderWidth: 3,
     borderColor: '#FFFFFF',
-    elevation: 3,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   pickupMarker: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#10B981',
-    justifyContent: 'center',
+    backgroundColor: '#3B82F6',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    elevation: 3,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   destinationMarker: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     backgroundColor: '#EF4444',
-    justifyContent: 'center',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    elevation: 3,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   formContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    flex: 1,
   },
   scrollContent: {
-    flexGrow: 1,
+    padding: 20,
     paddingBottom: 40,
   },
   formTitleContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   formTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#000000',
+    color: '#1F2937',
   },
   keyboardDismissButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
+    borderRadius: 6,
   },
   keyboardDismissText: {
     fontSize: 12,
     color: '#6B7280',
-    marginLeft: 4,
     fontWeight: '500',
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  inputWithIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    height: 48,
-    fontSize: 16,
-    color: '#000000',
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-  },
-  switchLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  placesContainer: {
-    flex: 0,
-  },
-  placesInput: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    fontSize: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  placesList: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  disabledInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 48,
-    paddingHorizontal: 12,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  disabledInputText: {
-    fontSize: 16,
-    color: '#9CA3AF',
-    marginLeft: 8,
   },
   createOrderButton: {
     backgroundColor: '#F59E0B',
-    paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 8,
+    padding: 16,
     alignItems: 'center',
     marginTop: 20,
-    marginBottom: 20,
-  },
-  createOrderButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   imageContainer: {
     position: 'relative',
-    alignItems: 'center',
-  },
-  cargoImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 2,
-    elevation: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  addImageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 120,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-  },
-  addImageText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginLeft: 8,
-    fontWeight: '500',
   },
   distanceInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#F0FDF4',
+    backgroundColor: '#FEF3C7',
+    padding: 12,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-  },
-  distanceText: {
-    fontSize: 14,
-    color: '#059669',
-    fontWeight: '600',
-    marginLeft: 6,
+    marginBottom: 20,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
   menuContainer: {
-    flex: 1,
     backgroundColor: '#FFFFFF',
-    marginTop: 60,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-  },
-  menuHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  profileSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  profileImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FEF3C7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000000',
-    marginBottom: 4,
-  },
-  accountButton: {
-    alignSelf: 'flex-start',
-  },
-  accountButtonText: {
-    fontSize: 14,
-    color: '#3B82F6',
-    fontWeight: '500',
-    textDecorationLine: 'underline',
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  menuContent: {
-    flex: 1,
-  },
-  topMenuItems: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  topMenuItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  topMenuIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FEF3C7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  topMenuText: {
-    fontSize: 12,
-    color: '#374151',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  bottomMenuItems: {
-    paddingVertical: 16,
-  },
-  bottomMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  bottomMenuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F9FAFB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  bottomMenuText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '500',
+    maxHeight: '80%',
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
   },
   loadingText: {
     marginTop: 16,
@@ -1606,3 +1220,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+export default HomeScreen;
