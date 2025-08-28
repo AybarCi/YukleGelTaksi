@@ -8,12 +8,14 @@ import {
   RefreshControl,
   Alert,
   Image,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../config/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Review {
   id: number;
@@ -40,6 +42,8 @@ interface RatingStats {
 }
 
 export default function DriverReviewsScreen() {
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = Dimensions.get('window');
   const [reviews, setReviews] = useState<Review[]>([]);
   const [stats, setStats] = useState<RatingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,14 +189,14 @@ export default function DriverReviewsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
         <Text style={styles.loadingText}>Yükleniyor...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       
       {/* Header */}

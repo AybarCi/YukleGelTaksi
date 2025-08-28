@@ -4,15 +4,19 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PrivacyPolicy = () => {
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = Dimensions.get('window');
+  
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -86,7 +90,7 @@ const PrivacyPolicy = () => {
           </Text>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 

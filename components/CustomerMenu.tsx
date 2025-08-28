@@ -5,10 +5,11 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
+  Dimensions,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface MenuItem {
   title: string;
@@ -35,8 +36,12 @@ const CustomerMenu: React.FC<CustomerMenuProps> = ({
   bottomMenuItems,
   onAccountPress,
 }) => {
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = Dimensions.get('window');
+  const maxScrollHeight = screenHeight * 0.5;
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.content}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -97,7 +102,7 @@ const CustomerMenu: React.FC<CustomerMenuProps> = ({
             </View>
           </View>
 
-          <ScrollView style={{ maxHeight: 400 }}>
+          <ScrollView style={{ maxHeight: maxScrollHeight }}>
             {menuItems.map((item, index) => (
               <TouchableOpacity
                 key={index}
@@ -165,7 +170,7 @@ const CustomerMenu: React.FC<CustomerMenuProps> = ({
             ))}
           </ScrollView>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

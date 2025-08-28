@@ -8,12 +8,14 @@ import {
   Switch,
   Alert,
   Linking,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../config/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface DriverSettings {
   notifications_enabled: boolean;
@@ -28,6 +30,8 @@ interface DriverSettings {
 }
 
 export default function DriverSettingsScreen() {
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = Dimensions.get('window');
   const [settings, setSettings] = useState<DriverSettings>({
     notifications_enabled: true,
     location_sharing: true,
@@ -180,14 +184,14 @@ export default function DriverSettingsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
         <Text style={styles.loadingText}>Yükleniyor...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       
       {/* Header */}
