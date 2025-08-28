@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -29,6 +30,7 @@ import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
 import LocationInput, { LocationInputRef } from '../components/LocationInput';
 
+
 interface Driver {
   id: string;
   latitude: number;
@@ -38,7 +40,7 @@ interface Driver {
 }
 
 function HomeScreen() {
-  const [menuVisible, setMenuVisible] = useState(false);
+
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   
@@ -75,6 +77,8 @@ function HomeScreen() {
   const mapRef = useRef<any>(null);
   
   const { logout, showModal, user, token } = useAuth();
+
+
 
   // Aktif input alanını scroll etmek için fonksiyon
   const scrollToInput = useCallback((inputIndex: number) => {
@@ -501,102 +505,7 @@ function HomeScreen() {
     }
   }, [showModal]);
 
-  const menuItems = useMemo(() => [
-    {
-      title: 'Destek',
-      icon: 'headset',
-      iconType: 'Ionicons',
-      onPress: () => {
-        setMenuVisible(false);
-        showModal('Destek', 'Destek sayfası yakında eklenecek.', 'info');
-      }
-    },
-    {
-      title: 'Ödeme',
-      icon: 'credit-card',
-      iconType: 'MaterialIcons',
-      onPress: () => {
-        setMenuVisible(false);
-        showModal('Ödeme', 'Ödeme sayfası yakında eklenecek.', 'info');
-      }
-    },
-    {
-      title: 'Taşımalar',
-      icon: 'local-shipping',
-      iconType: 'MaterialIcons',
-      onPress: () => {
-        setMenuVisible(false);
-        router.push('/shipments');
-      }
-    },
-  ], [showModal]);
 
-  const bottomMenuItems = useMemo(() => [
-    {
-      title: 'YükleGel Taksi Kampanyalar',
-      icon: 'card-giftcard',
-      iconType: 'MaterialIcons',
-      onPress: () => {
-        setMenuVisible(false);
-        showModal('Kampanyalar', 'Kampanyalar sayfası yakında eklenecek.', 'info');
-      }
-    },
-    {
-      title: 'Kampanyalar',
-      icon: 'card-giftcard',
-      iconType: 'MaterialIcons',
-      onPress: () => {
-        setMenuVisible(false);
-        showModal('Kampanyalar', 'Kampanyalar sayfası yakında eklenecek.', 'info');
-      }
-    },
-    {
-      title: 'Aracımı Paylaşmak İstiyorum',
-      icon: 'car',
-      iconType: 'Ionicons',
-      onPress: () => {
-        setMenuVisible(false);
-        showModal('Araç Paylaşımı', 'Araç paylaşımı sayfası yakında eklenecek.', 'info');
-      }
-    },
-    {
-      title: 'Ayarlar',
-      icon: 'settings',
-      iconType: 'Ionicons',
-      onPress: () => {
-        setMenuVisible(false);
-        router.push('/settings');
-      }
-    },
-    {
-      title: 'Çıkış Yap',
-      icon: 'logout',
-      iconType: 'MaterialIcons',
-      onPress: () => {
-        setMenuVisible(false);
-        showModal(
-          'Çıkış Yap',
-          'Hesabınızdan çıkış yapmak istediğinizden emin misiniz?',
-          'warning',
-          [
-            {
-              text: 'İptal',
-              style: 'cancel',
-              onPress: () => {}
-            },
-            {
-              text: 'Çıkış Yap',
-              style: 'destructive',
-              onPress: async () => {
-                await logout();
-                router.replace('/splash');
-              }
-            }
-          ]
-        );
-      }
-    },
-  ], [showModal, logout]);
 
   return (
     <View style={styles.container}>
@@ -705,7 +614,7 @@ function HomeScreen() {
 
       <TouchableOpacity
         style={styles.floatingMenuButton}
-        onPress={() => setMenuVisible(true)}
+        onPress={() => router.push('/customer-menu')}
       >
         <Ionicons name="menu" size={24} color="#FFFFFF" />
       </TouchableOpacity>
@@ -894,99 +803,7 @@ function HomeScreen() {
         </KeyboardAvoidingView>
       </View>
 
-      <Modal
-        visible={menuVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.menuContainer}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1F2937' }}>Menü</Text>
-              <TouchableOpacity onPress={() => setMenuVisible(false)}>
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
 
-            <View style={{ marginBottom: 20 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <View style={{
-                  width: 50,
-                  height: 50,
-                  borderRadius: 25,
-                  backgroundColor: '#F59E0B',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 12
-                }}>
-                  <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>
-                    {user?.full_name?.charAt(0) || 'U'}
-                  </Text>
-                </View>
-                <View>
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#1F2937' }}>{user?.full_name || 'Kullanıcı'}</Text>
-                  <Text style={{ fontSize: 14, color: '#6B7280' }}>{user?.email}</Text>
-                </View>
-              </View>
-            </View>
-
-            <ScrollView style={{ maxHeight: 400 }}>
-              {menuItems.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: 16,
-                    paddingHorizontal: 16,
-                    borderBottomWidth: 1,
-                    borderBottomColor: '#F3F4F6'
-                  }}
-                  onPress={item.onPress}
-                >
-                  {item.iconType === 'Ionicons' ? (
-                    <Ionicons name={item.icon as any} size={24} color="#6B7280" />
-                  ) : (
-                    <MaterialIcons name={item.icon as any} size={24} color="#6B7280" />
-                  )}
-                  <Text style={{ marginLeft: 16, fontSize: 16, color: '#1F2937' }}>{item.title}</Text>
-                </TouchableOpacity>
-              ))}
-
-              <View style={{ height: 20 }} />
-
-              {bottomMenuItems.map((item, index) => (
-                <TouchableOpacity
-                  key={`bottom-${index}`}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: 16,
-                    paddingHorizontal: 16,
-                    borderBottomWidth: index < bottomMenuItems.length - 1 ? 1 : 0,
-                    borderBottomColor: '#F3F4F6'
-                  }}
-                  onPress={item.onPress}
-                >
-                  {item.iconType === 'Ionicons' ? (
-                    <Ionicons name={item.icon as any} size={24} color={item.title === 'Çıkış Yap' ? '#EF4444' : '#6B7280'} />
-                  ) : (
-                    <MaterialIcons name={item.icon as any} size={24} color={item.title === 'Çıkış Yap' ? '#EF4444' : '#6B7280'} />
-                  )}
-                  <Text style={{
-                    marginLeft: 16,
-                    fontSize: 16,
-                    color: item.title === 'Çıkış Yap' ? '#EF4444' : '#1F2937'
-                  }}>
-                    {item.title}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={locationModalVisible}
@@ -994,7 +811,12 @@ function HomeScreen() {
         transparent={true}
         onRequestClose={() => setLocationModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
           <View style={{
             backgroundColor: '#FFFFFF',
             margin: 20,
@@ -1195,18 +1017,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 20,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  menuContainer: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
-  },
+
   loadingContainer: {
     flex: 1,
     alignItems: 'center',

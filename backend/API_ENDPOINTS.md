@@ -48,6 +48,56 @@ Content-Type: application/json
 }
 ```
 
+### Hesabı Dondur/Aktifleştir
+```
+POST /api/users/freeze-account
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "freeze": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Hesabınız başarıyla donduruldu",
+  "is_active": false
+}
+```
+
+### Hesap Durumunu Kontrol Et
+```
+GET /api/users/freeze-account
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "is_active": false,
+  "is_frozen": true
+}
+```
+
+### Hesabı Sil
+```
+DELETE /api/users/delete-account
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Hesabınız başarıyla silindi"
+}
+```
+
 ## Address Management Endpoints
 
 ### Adresleri Listele

@@ -63,31 +63,69 @@ export default function SettingsScreen() {
   };
 
   const handleNotificationToggle = (value: boolean) => {
-    setNotificationsEnabled(value);
-    saveSettings({ notifications: value });
     if (!value) {
-      // Disable all notification types when main toggle is off
-      setSoundEnabled(false);
-      setVibrationEnabled(false);
-      setMarketingEnabled(false);
-      saveSettings({ 
-        notifications: value, 
-        sound: false, 
-        vibration: false, 
-        marketing: false 
-      });
+      // Bildirimler kapatılırken detaylı uyarı modalı göster
+      showModal(
+        'Bildirimler Kapatılıyor',
+        'Bildirimleri kapatıldığında aşağıdaki önemli bilgileri kaçırabilirsiniz:\n\n• Sipariş durumu güncellemeleri\n• Sürücü atama bildirimleri\n• Sipariş onay/red bildirimleri\n• Ödeme ve fatura bildirimleri\n• Acil durum bildirimleri\n• Promosyon ve kampanya fırsatları\n\nBildirimler olmadan uygulamayı etkin şekilde kullanmanız zorlaşabilir.\n\nYine de kapatmak istediğinizden emin misiniz?',
+        'warning',
+        [
+          { 
+            text: 'İptal', 
+            style: 'cancel', 
+            onPress: () => {} 
+          },
+          {
+            text: 'Kapat',
+            style: 'destructive',
+            onPress: () => {
+              setNotificationsEnabled(false);
+              // Disable all notification types when main toggle is off
+              setSoundEnabled(false);
+              setVibrationEnabled(false);
+              setMarketingEnabled(false);
+              saveSettings({ 
+                notifications: false, 
+                sound: false, 
+                vibration: false, 
+                marketing: false 
+              });
+            }
+          }
+        ]
+      );
+    } else {
+      setNotificationsEnabled(true);
+      saveSettings({ notifications: true });
     }
   };
 
   const handleLocationToggle = (value: boolean) => {
-    setLocationEnabled(value);
-    saveSettings({ location: value });
     if (!value) {
-      Alert.alert(
-        'Konum İzni',
-        'Konum izni kapatıldığında bazı özellikler düzgün çalışmayabilir.',
-        [{ text: 'Tamam' }]
+      // Konum izni kapatılırken detaylı uyarı modalı göster
+      showModal(
+        'Konum İzni Kapatılıyor',
+        'Konum izni kapatıldığında aşağıdaki özellikler çalışmayacaktır:\n\n• Mevcut konumunuzu otomatik tespit edemeyiz\n• Size en yakın sürücüleri bulamayız\n• Sipariş takibi yapamayız\n• Tahmini varış süresi hesaplayamayız\n\nBu uygulama konum tabanlı hizmet verdiği için konum izni kritik öneme sahiptir.\n\nYine de kapatmak istediğinizden emin misiniz?',
+        'warning',
+        [
+          { 
+            text: 'İptal', 
+            style: 'cancel', 
+            onPress: () => {} 
+          },
+          {
+            text: 'Kapat',
+            style: 'destructive',
+            onPress: () => {
+              setLocationEnabled(false);
+              saveSettings({ location: false });
+            }
+          }
+        ]
       );
+    } else {
+      setLocationEnabled(true);
+      saveSettings({ location: true });
     }
   };
 
@@ -111,68 +149,151 @@ export default function SettingsScreen() {
   };
 
   const handleFreezeAccount = () => {
-    Alert.alert(
-      'Hesabı Dondur',
-      isAccountFrozen 
-        ? 'Hesabınızı aktif hale getirmek istediğinizden emin misiniz?'
-        : 'Hesabınızı dondurmak istediğinizden emin misiniz? Bu işlem geri alınabilir.',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: isAccountFrozen ? 'Aktifleştir' : 'Dondur',
-          style: isAccountFrozen ? 'default' : 'destructive',
-          onPress: () => {
-            const newStatus = !isAccountFrozen;
-            setIsAccountFrozen(newStatus);
-            saveSettings({ accountFrozen: newStatus });
-            showModal(
-              'Başarılı',
-              newStatus 
-                ? 'Hesabınız donduruldu. Tekrar aktifleştirmek için bu sayfadan işlem yapabilirsiniz.'
-                : 'Hesabınız aktifleştirildi.',
-              'success'
-            );
+    if (isAccountFrozen) {
+      // Hesap aktifleştirme için basit alert kullan
+      Alert.alert(
+        'Hesabı Aktifleştir',
+        'Hesabınızı aktif hale getirmek istediğinizden emin misiniz?',
+        [
+          { text: 'İptal', style: 'cancel' },
+          {
+            text: 'Aktifleştir',
+            onPress: async () => {
+              try {
+                const token = await AsyncStorage.getItem('userToken');
+                if (!token) {
+                  showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+                  return;
+                }
+
+                const response = await fetch('http://localhost:3001/api/users/freeze-account', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  },
+                  body: JSON.stringify({ freeze: false })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                  setIsAccountFrozen(false);
+                  saveSettings({ accountFrozen: false });
+                  showModal(
+                    'Başarılı',
+                    data.message,
+                    'success'
+                  );
+                } else {
+                  showModal('Hata', data.error || 'Bir hata oluştu', 'error');
+                }
+              } catch (error) {
+                console.error('Hesap aktifleştirme hatası:', error);
+                showModal('Hata', 'Bağlantı hatası oluştu', 'error');
+              }
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    } else {
+      // Hesap dondurma için özel modal kullan
+       showModal(
+         'Hesabı Dondur',
+         'Hesabınızı dondurduğunuzda otomatik çıkış yapılacaktır. Bir dahaki girişinizde tekrar hesabınızı onaylamanız gerekecektir.\n\nDevam etmek istediğinizden emin misiniz?',
+         'warning',
+         [
+           { text: 'İptal', style: 'cancel', onPress: () => {} },
+           {
+             text: 'Dondur',
+             style: 'destructive',
+             onPress: async () => {
+               try {
+                 const token = await AsyncStorage.getItem('userToken');
+                 if (!token) {
+                   showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+                   return;
+                 }
+
+                 const response = await fetch('http://localhost:3001/api/users/delete-account', {
+                 method: 'DELETE',
+                 headers: {
+                   'Content-Type': 'application/json',
+                   'Authorization': `Bearer ${token}`
+                 }
+               });
+
+                 const data = await response.json();
+
+                 if (response.ok && data.success) {
+                   // Başarılı response alındıysa logout yap
+                   await logout();
+                 } else {
+                   showModal('Hata', data.error || 'Bir hata oluştu', 'error');
+                 }
+               } catch (error) {
+                 console.error('Hesap dondurma hatası:', error);
+                 showModal('Hata', 'Bağlantı hatası oluştu', 'error');
+               }
+             }
+           }
+         ]
+       );
+    }
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
+    showModal(
       'Hesabı Sil',
-      'Hesabınızı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz ve tüm verileriniz silinecektir.',
+      'Hesabınızı sildiğinizde tüm verileriniz kalıcı olarak silinecek ve otomatik çıkış yapılacaktır. Bu işlem geri alınamaz.\n\nDevam etmek istediğinizden emin misiniz?',
+      'warning',
       [
-        { text: 'İptal', style: 'cancel' },
+        { text: 'İptal', style: 'cancel', onPress: () => {} },
         {
           text: 'Sil',
           style: 'destructive',
-          onPress: () => {
-            // TODO: Implement account deletion API call
-            showModal(
-              'Bilgi',
-              'Hesap silme işlemi için müşteri hizmetleri ile iletişime geçiniz.',
-              'info'
-            );
-          },
-        },
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('userToken');
+              if (!token) {
+                showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+                return;
+              }
+
+              const response = await fetch('http://localhost:3001/api/users/delete-account', {
+                method: 'DELETE',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+
+              const data = await response.json();
+
+              if (response.ok && data.success) {
+                // Başarılı response alındıysa logout yap
+                await logout();
+              } else {
+                showModal('Hata', data.error || 'Bir hata oluştu', 'error');
+              }
+            } catch (error) {
+              console.error('Hesap silme hatası:', error);
+              showModal('Hata', 'Bağlantı hatası oluştu', 'error');
+            }
+          }
+        }
       ]
     );
   };
 
-  const handleChangePassword = () => {
-    // TODO: Navigate to change password screen
-    showModal('Bilgi', 'Şifre değiştirme sayfası yakında eklenecek.', 'info');
-  };
+
 
   const handlePrivacyPolicy = () => {
-    // TODO: Navigate to privacy policy screen
-    showModal('Bilgi', 'Gizlilik politikası sayfası yakında eklenecek.', 'info');
+    router.push('/privacy-policy');
   };
 
   const handleTermsOfService = () => {
-    // TODO: Navigate to terms of service screen
-    showModal('Bilgi', 'Kullanım şartları sayfası yakında eklenecek.', 'info');
+    router.push('/terms-of-service');
   };
 
   const handleContactSupport = () => {
@@ -301,14 +422,6 @@ export default function SettingsScreen() {
 
         {/* Account Settings */}
         {renderSectionHeader('Hesap Ayarları')}
-        {renderSettingItem(
-          'Şifre Değiştir',
-          'Hesap şifrenizi güncelleyin',
-          'key',
-          undefined,
-          undefined,
-          handleChangePassword
-        )}
         {renderSettingItem(
           isAccountFrozen ? 'Hesabı Aktifleştir' : 'Hesabı Dondur',
           isAccountFrozen ? 'Hesabınızı tekrar aktif hale getirin' : 'Hesabınızı geçici olarak dondurun',

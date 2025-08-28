@@ -123,12 +123,12 @@ export default function DriverSettingsScreen() {
     );
   };
 
-  const openPrivacyPolicy = () => {
-    Linking.openURL('https://yuklegelTaksi.com/privacy');
+  const handlePrivacyPolicy = () => {
+    router.push('/privacy-policy');
   };
 
-  const openTermsOfService = () => {
-    Linking.openURL('https://yuklegelTaksi.com/terms');
+  const handleTermsOfService = () => {
+    router.push('/terms-of-service');
   };
 
   const openSupport = () => {
@@ -278,13 +278,13 @@ export default function DriverSettingsScreen() {
             'Gizlilik Politikası',
             'Gizlilik politikamızı inceleyin',
             'shield-checkmark',
-            openPrivacyPolicy
+            handlePrivacyPolicy
           )}
           {renderActionItem(
             'Kullanım Şartları',
             'Hizmet şartlarımızı okuyun',
             'document-text',
-            openTermsOfService
+            handleTermsOfService
           )}
         </View>
 

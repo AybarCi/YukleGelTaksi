@@ -154,16 +154,9 @@ export default function AccountDetailsScreen() {
 
         {/* Account Actions */}
         <View style={styles.actionsSection}>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="create" size={20} color="#F59E0B" />
-            <Text style={styles.actionButtonText}>Profil Düzenle</Text>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="lock-closed" size={20} color="#F59E0B" />
-            <Text style={styles.actionButtonText}>Şifre Değiştir</Text>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          <TouchableOpacity style={styles.logoutButton}>
+            <Ionicons name="log-out" size={20} color="#EF4444" />
+            <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -330,5 +323,22 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontWeight: '500',
     marginLeft: 12,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    color: '#EF4444',
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
