@@ -493,7 +493,7 @@ export default function DriverDashboardScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.menuButton} onPress={() => setMenuVisible(true)}>
+        <TouchableOpacity style={styles.menuButton} onPress={() => router.push('/driver-menu')}>
           <Ionicons name="menu" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
