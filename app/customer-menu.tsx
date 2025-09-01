@@ -12,7 +12,7 @@ const CustomerMenuScreen = () => {
       icon: 'headset',
       iconType: 'Ionicons' as const,
       onPress: () => {
-        showModal('Destek', 'Destek sayfası yakında eklenecek.', 'info');
+        router.push('/customer-support');
       }
     },
     {

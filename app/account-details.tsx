@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,21 @@ import {
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
+  Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AccountDetailsScreen() {
   const { user, logout, showModal } = useAuth();
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Belirtilmemiş';
@@ -25,16 +32,154 @@ export default function AccountDetailsScreen() {
     });
   };
 
-  const getUserType = (type: string) => {
-    switch (type) {
-      case 'passenger':
-        return 'Müşteri';
-      case 'driver':
-        return 'Sürücü';
-      default:
-        return 'Belirtilmemiş';
+  // Load profile image on component mount
+  useEffect(() => {
+    loadProfileImage();
+  }, []);
+
+  const loadProfileImage = async () => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) return;
+
+      const response = await fetch('http://192.168.1.12:3001/api/customer/profile/photo', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data.profile_image_url) {
+          const fullImageUrl = `http://192.168.1.12:3001${data.data.profile_image_url}`;
+          setProfileImage(fullImageUrl);
+        } else {
+          setProfileImage(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading profile image:', error);
     }
   };
+
+  const pickImage = async () => {
+    try {
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        showModal('İzin Gerekli', 'Fotoğraf seçmek için galeri erişim izni gereklidir.', 'warning');
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      showModal('Hata', 'Fotoğraf seçilirken bir hata oluştu.', 'error');
+    }
+  };
+
+  const uploadImage = async (imageUri: string) => {
+    try {
+      setIsUploading(true);
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      if (!token) {
+        showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+        return;
+      }
+
+      // Create form data
+      const formData = new FormData();
+      formData.append('photo', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'profile.jpg',
+      } as any);
+
+      const response = await fetch('http://192.168.1.12:3001/api/customer/profile/photo', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Reload profile image to ensure it's displayed
+        await loadProfileImage();
+        showModal('Başarılı', 'Profil fotoğrafınız başarıyla güncellendi.', 'success');
+      } else {
+        showModal('Hata', data.error || 'Fotoğraf yüklenirken bir hata oluştu.', 'error');
+      }
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        showModal('Hata', 'Fotoğraf yüklenirken bir hata oluştu.', 'error');
+      } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeProfileImage = async () => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      if (!token) {
+        showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+        return;
+      }
+
+      Alert.alert(
+        'Profil Fotoğrafını Sil',
+        'Profil fotoğrafınızı silmek istediğinizden emin misiniz?',
+        [
+          { text: 'İptal', style: 'cancel' },
+          {
+            text: 'Sil',
+            style: 'destructive',
+            onPress: async () => {
+              const response = await fetch('http://192.168.1.12:3001/api/customer/profile/photo', {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+              });
+
+              const data = await response.json();
+
+              if (response.ok && data.success) {
+                setProfileImage(null);
+                showModal('Başarılı', 'Profil fotoğrafınız başarıyla silindi.', 'success');
+              } else {
+                showModal('Hata', data.error || 'Fotoğraf silinirken bir hata oluştu.', 'error');
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error removing image:', error);
+      showModal('Hata', 'Fotoğraf silinirken bir hata oluştu.', 'error');
+    }
+  };
+
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -55,11 +200,38 @@ export default function AccountDetailsScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Profile Section */}
         <View style={styles.profileSection}>
-          <View style={styles.profileImage}>
-            <Ionicons name="person" size={48} color="#FCD34D" />
-          </View>
+          <TouchableOpacity 
+            style={styles.profileImageContainer}
+            onPress={pickImage}
+            disabled={isUploading}
+          >
+            {profileImage ? (
+              <Image source={{ uri: profileImage }} style={styles.profileImagePhoto} />
+            ) : (
+              <View style={styles.profileImage}>
+                <Ionicons name="person" size={48} color="#FCD34D" />
+              </View>
+            )}
+            {isUploading && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              </View>
+            )}
+            <View style={styles.cameraIcon}>
+              <Ionicons name="camera" size={16} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+          
+          {profileImage && (
+            <TouchableOpacity 
+              style={styles.removePhotoButton}
+              onPress={removeProfileImage}
+            >
+              <Text style={styles.removePhotoText}>Fotoğrafı Kaldır</Text>
+            </TouchableOpacity>
+          )}
+          
           <Text style={styles.userName}>{user?.full_name || 'Kullanıcı'}</Text>
-          <Text style={styles.userType}>{getUserType(user?.user_type || '')}</Text>
         </View>
 
         {/* Account Information */}
@@ -228,14 +400,53 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
+  profileImageContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
   profileImage: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#1F2937',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+  },
+  profileImagePhoto: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 40,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FCD34D',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removePhotoButton: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  removePhotoText: {
+    color: '#EF4444',
+    fontSize: 12,
+    textAlign: 'center',
   },
   userName: {
     fontSize: 24,
@@ -243,11 +454,7 @@ const styles = StyleSheet.create({
     color: '#000000',
     marginBottom: 4,
   },
-  userType: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
+
   infoSection: {
     paddingVertical: 24,
     paddingHorizontal: 20,
