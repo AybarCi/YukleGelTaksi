@@ -9,6 +9,8 @@ import {
   Alert,
   Image,
   Dimensions,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -17,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../config/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 
 interface DriverProfile {
   id: number;
@@ -40,6 +43,8 @@ export default function DriverProfileScreen() {
   const { height: screenHeight } = Dimensions.get('window');
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
     loadDriverProfile();
@@ -97,6 +102,131 @@ export default function DriverProfileScreen() {
     }
   };
 
+  const selectProfilePhoto = async () => {
+    try {
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert('İzin Gerekli', 'Fotoğraf seçmek için galeri erişim izni gerekli');
+        return;
+      }
+
+      // Show action sheet
+      Alert.alert(
+        'Profil Fotoğrafı Seç',
+        'Fotoğrafı nereden seçmek istiyorsunuz?',
+        [
+          {
+            text: 'Kamera',
+            onPress: () => openCamera(),
+          },
+          {
+            text: 'Galeri',
+            onPress: () => openGallery(),
+          },
+          {
+            text: 'İptal',
+            style: 'cancel',
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Photo selection error:', error);
+      Alert.alert('Hata', 'Fotoğraf seçilirken bir hata oluştu');
+    }
+  };
+
+  const openCamera = async () => {
+    try {
+      const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (cameraPermission.granted === false) {
+        Alert.alert('İzin Gerekli', 'Kamera kullanmak için izin gerekli');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfilePhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      Alert.alert('Hata', 'Kamera açılırken bir hata oluştu');
+    }
+  };
+
+  const openGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfilePhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Gallery error:', error);
+      Alert.alert('Hata', 'Galeri açılırken bir hata oluştu');
+    }
+  };
+
+  const uploadProfilePhoto = async (imageUri: string) => {
+    try {
+      setUploadingPhoto(true);
+      
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        Alert.alert('Hata', 'Oturum bilgisi bulunamadı');
+        return;
+      }
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('profile_photo', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'profile_photo.jpg',
+      } as any);
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/upload-profile-photo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Update profile state with new image
+        setProfile(prev => prev ? {
+          ...prev,
+          profile_image: result.data.profile_image
+        } : null);
+        
+        setShowSuccessModal(true);
+      } else {
+        Alert.alert('Hata', result.error || 'Fotoğraf yüklenirken bir hata oluştu');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      Alert.alert('Hata', 'Fotoğraf yüklenirken bir hata oluştu');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
 
 
   if (loading) {
@@ -126,13 +256,47 @@ export default function DriverProfileScreen() {
       <ScrollView style={styles.content}>
         {/* Profile Image */}
         <View style={styles.profileImageContainer}>
-          <View style={styles.profileImage}>
-            {profile?.profile_image ? (
-              <Image source={{ uri: profile.profile_image }} style={styles.profileImageImg} />
+          <TouchableOpacity 
+            style={styles.profileImageWrapper}
+            onPress={selectProfilePhoto}
+            disabled={uploadingPhoto}
+          >
+            <View style={styles.profileImage}>
+              {profile?.profile_image && profile.profile_image.trim() !== '' ? (
+                (() => {
+                  // Ensure proper URL formatting
+                  const imagePath = profile.profile_image.startsWith('/') ? profile.profile_image : `/api/files/${profile.profile_image}`;
+                  const imageUrl = `${API_CONFIG.BASE_URL}${imagePath}`;
+                  console.log('Profile image URL:', imageUrl);
+                  console.log('Profile image value:', profile.profile_image);
+                  console.log('API_CONFIG.BASE_URL:', API_CONFIG.BASE_URL);
+                  return (
+                    <Image 
+                      source={{ uri: imageUrl }} 
+                      style={styles.profileImageImg}
+                      onError={(error) => {
+                        console.log('Image load error:', error);
+                        console.log('Failed URL:', imageUrl);
+                      }}
+                    />
+                  );
+                })()
+              ) : (
+                <Ionicons name="person" size={60} color="#FFD700" />
+              )}
+            </View>
+            
+            {/* Upload indicator or camera icon */}
+            {uploadingPhoto ? (
+              <View style={styles.uploadIndicator}>
+                <ActivityIndicator size="small" color="#FFD700" />
+              </View>
             ) : (
-              <Ionicons name="person" size={60} color="#FFD700" />
+              <View style={styles.cameraIcon}>
+                <Ionicons name="camera" size={20} color="#FFFFFF" />
+              </View>
             )}
-          </View>
+          </TouchableOpacity>
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={20} color="#FCD34D" />
             <Text style={styles.ratingText}>{profile?.rating?.toFixed(1) || '0.0'}</Text>
@@ -204,6 +368,32 @@ export default function DriverProfileScreen() {
 
 
       </ScrollView>
+      
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSuccessModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalIconContainer}>
+              <Ionicons name="checkmark-circle" size={60} color="#10B981" />
+            </View>
+            <Text style={styles.modalTitle}>Başarılı!</Text>
+            <Text style={styles.modalMessage}>
+              Profil fotoğrafınız başarıyla güncellendi.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setShowSuccessModal(false)}
+            >
+              <Text style={styles.modalButtonText}>Tamam</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -256,6 +446,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 30,
   },
+  profileImageWrapper: {
+    position: 'relative',
+    marginBottom: 12,
+  },
   profileImage: {
     width: 120,
     height: 120,
@@ -263,12 +457,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
   },
   profileImageImg: {
     width: 120,
     height: 120,
     borderRadius: 60,
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFD700',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  uploadIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#FFD700',
   },
   ratingContainer: {
     flexDirection: 'row',
@@ -367,5 +586,56 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    alignItems: 'center',
+    marginHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalIconContainer: {
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000000',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 25,
+    lineHeight: 22,
+  },
+  modalButton: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 40,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 120,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
 });
