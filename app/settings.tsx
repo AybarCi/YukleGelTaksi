@@ -30,35 +30,108 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      const settings = await AsyncStorage.getItem('userSettings');
-      if (settings) {
-        const parsedSettings = JSON.parse(settings);
-        setNotificationsEnabled(parsedSettings.notifications ?? true);
-        setLocationEnabled(parsedSettings.location ?? true);
-        setMarketingEnabled(parsedSettings.marketing ?? false);
-        setSoundEnabled(parsedSettings.sound ?? true);
-        setVibrationEnabled(parsedSettings.vibration ?? true);
-        setIsAccountFrozen(parsedSettings.accountFrozen ?? false);
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        console.error('Token bulunamadı');
+        return;
+      }
+
+      const response = await fetch('http://192.168.1.134:3001/api/customer/settings', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.status === 401) {
+        showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+        await logout();
+        return;
+      }
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        const settings = data.data;
+        setNotificationsEnabled(settings.notifications_enabled ?? true);
+        setLocationEnabled(settings.location_enabled ?? true);
+        setMarketingEnabled(settings.marketing_enabled ?? false);
+        setSoundEnabled(settings.sound_enabled ?? true);
+        setVibrationEnabled(settings.vibration_enabled ?? true);
+        setIsAccountFrozen(settings.accountFrozen ?? false);
+      } else {
+        console.error('Ayarlar yüklenirken hata:', data.error);
+        // Fallback to default values
+        setNotificationsEnabled(true);
+        setLocationEnabled(true);
+        setMarketingEnabled(false);
+        setSoundEnabled(true);
+        setVibrationEnabled(true);
+        setIsAccountFrozen(false);
       }
     } catch (error) {
       console.error('Ayarlar yüklenirken hata:', error);
+      // Fallback to default values
+      setNotificationsEnabled(true);
+      setLocationEnabled(true);
+      setMarketingEnabled(false);
+      setSoundEnabled(true);
+      setVibrationEnabled(true);
+      setIsAccountFrozen(false);
     }
   };
 
   const saveSettings = async (newSettings: any) => {
     try {
-      const currentSettings = {
-        notifications: notificationsEnabled,
-        location: locationEnabled,
-        marketing: marketingEnabled,
-        sound: soundEnabled,
-        vibration: vibrationEnabled,
-        accountFrozen: isAccountFrozen,
-        ...newSettings,
-      };
-      await AsyncStorage.setItem('userSettings', JSON.stringify(currentSettings));
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+        return;
+      }
+
+      // Map frontend keys to backend keys
+      const settingsToSave: any = {};
+      if (newSettings.notifications !== undefined) {
+        settingsToSave.notifications_enabled = newSettings.notifications;
+      }
+      if (newSettings.location !== undefined) {
+        settingsToSave.location_enabled = newSettings.location;
+      }
+      if (newSettings.marketing !== undefined) {
+        settingsToSave.marketing_enabled = newSettings.marketing;
+      }
+      if (newSettings.sound !== undefined) {
+        settingsToSave.sound_enabled = newSettings.sound;
+      }
+      if (newSettings.vibration !== undefined) {
+        settingsToSave.vibration_enabled = newSettings.vibration;
+      }
+
+      const response = await fetch('http://192.168.1.134:3001/api/customer/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(settingsToSave)
+      });
+
+      if (response.status === 401) {
+        showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
+        await logout();
+        return;
+      }
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        console.error('Ayarlar kaydedilirken hata:', data.error);
+        showModal('Hata', 'Ayarlar kaydedilirken bir hata oluştu.', 'error');
+      }
     } catch (error) {
       console.error('Ayarlar kaydedilirken hata:', error);
+      showModal('Hata', 'Bağlantı hatası oluştu.', 'error');
     }
   };
 
@@ -318,7 +391,7 @@ export default function SettingsScreen() {
       >
         <View style={styles.settingLeft}>
           <View style={[styles.settingIcon, disabled && styles.disabledIcon]}>
-            <IconComponent name={icon as any} size={20} color={disabled ? '#9CA3AF' : '#F59E0B'} />
+            <IconComponent name={icon as any} size={20} color={disabled ? '#9CA3AF' : '#FFD700'} />
           </View>
           <View style={styles.settingText}>
             <Text style={[styles.settingTitle, disabled && styles.disabledText]}>{title}</Text>
@@ -329,8 +402,8 @@ export default function SettingsScreen() {
           <Switch
             value={value}
             onValueChange={onToggle}
-            trackColor={{ false: '#E5E7EB', true: '#FED7AA' }}
-            thumbColor={value ? '#F59E0B' : '#9CA3AF'}
+            trackColor={{ false: '#D1D5DB', true: '#FFD700' }}
+            thumbColor={value ? '#FFD700' : '#9CA3AF'}
             disabled={disabled}
           />
         ) : (

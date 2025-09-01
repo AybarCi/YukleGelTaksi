@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_CONFIG } from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
+import CustomModal from '../components/CustomModal';
 interface DriverSettings {
   notifications_enabled: boolean;
   location_sharing_enabled: boolean;
@@ -45,6 +46,7 @@ export default function DriverSettingsScreen() {
     vibration_enabled: true,
   });
   const [loading, setLoading] = useState(true);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -136,25 +138,17 @@ export default function DriverSettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Çıkış Yap',
-      'Hesabınızdan çıkış yapmak istediğinizden emin misiniz?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Çıkış Yap',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await logout();
-              router.replace('/');
-            } catch (error) {
-              console.error('Logout error:', error);
-            }
-          },
-        },
-      ]
-    );
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = async () => {
+    try {
+      await logout();
+      router.replace('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+    setShowLogoutModal(false);
   };
 
   const handlePrivacyPolicy = () => {
@@ -315,6 +309,26 @@ export default function DriverSettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <CustomModal
+         visible={showLogoutModal}
+         onClose={() => setShowLogoutModal(false)}
+         title="Çıkış Yap"
+         message="Hesabınızdan çıkış yapmak istediğinizden emin misiniz?"
+         type="warning"
+         buttons={[
+           {
+             text: 'İptal',
+             onPress: () => setShowLogoutModal(false),
+             style: 'cancel'
+           },
+           {
+             text: 'Çıkış Yap',
+             onPress: confirmLogout,
+             style: 'destructive'
+           }
+         ]}
+       />
     </View>
   );
 }

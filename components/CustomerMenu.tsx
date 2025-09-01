@@ -61,7 +61,7 @@ const CustomerMenu: React.FC<CustomerMenuProps> = ({
                 width: 50,
                 height: 50,
                 borderRadius: 25,
-                backgroundColor: '#F59E0B',
+                backgroundColor: '#FFD700',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginRight: 12
@@ -91,7 +91,7 @@ const CustomerMenu: React.FC<CustomerMenuProps> = ({
                 >
                   <Text style={{
                     fontSize: 14,
-                    color: '#F59E0B',
+                    color: '#FFD700',
                     fontWeight: '500',
                     textDecorationLine: 'underline'
                   }}>

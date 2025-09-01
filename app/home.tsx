@@ -516,7 +516,7 @@ function HomeScreen() {
              if (isLocationLoading) {
                return (
                  <View style={styles.loadingContainer}>
-                   <ActivityIndicator size="large" color="#F59E0B" />
+                   <ActivityIndicator size="large" color="#FFD700" />
                    <Text style={styles.loadingText}>Konum alınıyor...</Text>
                  </View>
                );
@@ -600,7 +600,7 @@ function HomeScreen() {
                    {pickupCoords && destinationCoords && (
                      <Polyline
                        coordinates={[pickupCoords, destinationCoords]}
-                       strokeColor="#F59E0B"
+                       strokeColor="#FFD700"
                        strokeWidth={3}
                        lineDashPattern={[5, 5]}
                      />
@@ -658,7 +658,7 @@ function HomeScreen() {
                     fontSize: 16,
                     backgroundColor: '#FFFFFF',
                   },
-                  activeInputIndex === 0 && { borderColor: '#F59E0B', borderWidth: 2 }
+                  activeInputIndex === 0 && { borderColor: '#FFD700', borderWidth: 2 }
                 ]}
                 placeholder="Örn: 25"
                 value={weight}
@@ -684,7 +684,7 @@ function HomeScreen() {
                   value={useCurrentLocation}
                   onValueChange={handleCurrentLocationToggle}
                   trackColor={{ false: '#D1D5DB', true: '#FCD34D' }}
-                  thumbColor={useCurrentLocation ? '#F59E0B' : '#9CA3AF'}
+                  thumbColor={useCurrentLocation ? '#FFD700' : '#9CA3AF'}
                 />
               </View>
             </View>
@@ -713,7 +713,7 @@ function HomeScreen() {
 
             {distance && (
               <View style={styles.distanceInfo}>
-                <Ionicons name="location-outline" size={20} color="#F59E0B" />
+                <Ionicons name="location-outline" size={20} color="#FFD700" />
                 <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: '600', color: '#1F2937' }}>
                   Mesafe: {distance.toFixed(1)} km
                 </Text>
@@ -884,7 +884,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 60,
     left: 20,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#FFD700',
     borderRadius: 25,
     width: 50,
     height: 50,
@@ -1000,7 +1000,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   createOrderButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#FFD700',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',

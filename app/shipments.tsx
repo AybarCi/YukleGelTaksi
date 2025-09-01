@@ -113,7 +113,7 @@ export default function ShipmentsScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return '#F59E0B';
+        return '#FFD700';
       case 'accepted':
         return '#3B82F6';
       case 'in_progress':
@@ -166,7 +166,7 @@ export default function ShipmentsScreen() {
     <TouchableOpacity key={shipment.id} style={styles.shipmentCard}>
       <View style={styles.shipmentHeader}>
         <View style={styles.shipmentId}>
-          <MaterialIcons name="local-shipping" size={20} color="#F59E0B" />
+          <MaterialIcons name="local-shipping" size={20} color="#FFD700" />
           <Text style={styles.shipmentIdText}>#{shipment.id}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(shipment.status) + '20' }]}>
@@ -230,7 +230,7 @@ export default function ShipmentsScreen() {
       <SafeAreaView style={styles.container}>
         <StatusBar style="dark" />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#F59E0B" />
+          <ActivityIndicator size="large" color="#FFD700" />
           <Text style={styles.loadingText}>Taşımalar yükleniyor...</Text>
         </View>
       </SafeAreaView>
@@ -287,7 +287,7 @@ export default function ShipmentsScreen() {
         style={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#F59E0B']} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FFD700']} />
         }
       >
         {filteredShipments.length > 0 ? (
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   activeFilterTab: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#FFD700',
   },
   filterText: {
     fontSize: 13,
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   createOrderButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#FFD700',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,

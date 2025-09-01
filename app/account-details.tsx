@@ -136,7 +136,7 @@ export default function AccountDetailsScreen() {
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <View style={styles.statIcon}>
-                <Ionicons name="time" size={24} color="#F59E0B" />
+                <Ionicons name="time" size={24} color="#FFD700" />
               </View>
               <Text style={styles.statValue}>-</Text>
               <Text style={styles.statLabel}>Toplam Sipariş</Text>
@@ -144,7 +144,7 @@ export default function AccountDetailsScreen() {
             
             <View style={styles.statItem}>
               <View style={styles.statIcon}>
-                <Ionicons name="star" size={24} color="#F59E0B" />
+                <Ionicons name="star" size={24} color="#FFD700" />
               </View>
               <Text style={styles.statValue}>-</Text>
               <Text style={styles.statLabel}>Ortalama Puan</Text>
