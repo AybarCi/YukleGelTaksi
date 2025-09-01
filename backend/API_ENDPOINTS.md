@@ -239,12 +239,12 @@ Authorization: Bearer <token>
 
 ### Tüm Sürücüleri Listele
 ```
-GET /api/drivers
+GET http://192.168.1.134:3001/api/drivers
 ```
 
 ### Sürücü Kaydet
 ```
-POST /api/drivers/register
+POST http://192.168.1.134:3001/api/drivers/register
 Content-Type: application/json
 
 {

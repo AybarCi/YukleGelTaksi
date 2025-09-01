@@ -50,19 +50,17 @@ const DriverMenuScreen = () => {
       title: 'Yardım ve Destek',
       subtitle: 'SSS ve destek talebi oluşturun',
       icon: 'help-circle-outline',
-      onPress: () => router.push('/settings'),
+      onPress: () => router.push('/driver-support'),
     },
   ];
 
-  const bottomMenuItems = [
-    {
-      title: 'Çıkış Yap',
-      subtitle: 'Hesabınızdan çıkış yapın',
-      icon: 'log-out-outline',
-      color: '#EF4444',
-      onPress: handleLogout,
-    },
-  ];
+  const bottomMenuItems: Array<{
+    title: string;
+    subtitle: string;
+    icon: string;
+    color?: string;
+    onPress: () => void;
+  }> = [];
 
   const handleProfilePress = () => {
     router.push('/driver-profile');

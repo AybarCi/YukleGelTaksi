@@ -63,13 +63,15 @@ export default function DriverProfileScreen() {
 
       if (response.ok) {
         const result = await response.json();
+        console.log('API Response:', result); // Debug log
         if (result.success && result.exists && result.data) {
           const data = result.data;
+          console.log('Profile data:', data); // Debug log
           setProfile({
             id: data.id,
             first_name: data.first_name,
             last_name: data.last_name,
-            phone_number: data.phone,
+            phone_number: data.phone_number || data.phone || '',
             email: data.email || '',
             license_number: data.license_number || '',
             vehicle_plate: data.vehicle_plate || '',
@@ -99,7 +101,7 @@ export default function DriverProfileScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+      <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Yükleniyor...</Text>
       </View>
     );
@@ -117,8 +119,8 @@ export default function DriverProfileScreen() {
         >
           <Ionicons name="arrow-back" size={24} color="#000000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profil Bilgileri</Text>
-        <View style={styles.editButton} />
+        <Text style={styles.headerTitle}>Sürücü Profili</Text>
+        <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content}>
@@ -128,7 +130,7 @@ export default function DriverProfileScreen() {
             {profile?.profile_image ? (
               <Image source={{ uri: profile.profile_image }} style={styles.profileImageImg} />
             ) : (
-              <Ionicons name="person" size={60} color="#10B981" />
+              <Ionicons name="person" size={60} color="#FFD700" />
             )}
           </View>
           <View style={styles.ratingContainer}>
@@ -192,7 +194,7 @@ export default function DriverProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Durum</Text>
           <View style={styles.statusContainer}>
-            <View style={[styles.statusBadge, { backgroundColor: profile?.is_active ? '#10B981' : '#EF4444' }]}>
+            <View style={[styles.statusBadge, { backgroundColor: profile?.is_active ? '#FFD700' : '#EF4444' }]}>
               <Text style={styles.statusText}>
                 {profile?.is_active ? 'Aktif' : 'Pasif'}
               </Text>
@@ -223,12 +225,10 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 60,
+    justifyContent: 'space-between',
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
@@ -245,13 +245,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
   },
-  editButton: {
+  placeholder: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F0FDF4',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   content: {
     flex: 1,
@@ -362,7 +357,7 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     flex: 1,
-    backgroundColor: '#10B981',
+    backgroundColor: '#FFD700',
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',

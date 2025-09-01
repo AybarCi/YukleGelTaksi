@@ -14,9 +14,8 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_CONFIG } from '../config/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import { API_CONFIG } from '../config/api';
 interface Review {
   id: number;
   customer_name: string;
@@ -171,7 +170,7 @@ export default function DriverReviewsScreen() {
       <View style={styles.tripInfo}>
         <View style={styles.tripRoute}>
           <View style={styles.routePoint}>
-            <Ionicons name="radio-button-on" size={12} color="#10B981" />
+            <Ionicons name="radio-button-on" size={12} color="#FFD700" />
             <Text style={styles.routeText} numberOfLines={1}>
               {review.pickup_address}
             </Text>
@@ -189,7 +188,7 @@ export default function DriverReviewsScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+      <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Yükleniyor...</Text>
       </View>
     );
@@ -309,10 +308,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
@@ -414,7 +411,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
   },
   activeFilterTab: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#FFD700',
   },
   filterTabContent: {
     flexDirection: 'row',

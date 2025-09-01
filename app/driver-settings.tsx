@@ -14,9 +14,9 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_CONFIG } from '../config/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import { API_CONFIG } from '../config/api';
+import { useAuth } from '../contexts/AuthContext';
 interface DriverSettings {
   notifications_enabled: boolean;
   location_sharing: boolean;
@@ -30,8 +30,9 @@ interface DriverSettings {
 }
 
 export default function DriverSettingsScreen() {
-  const insets = useSafeAreaInsets();
   const { height: screenHeight } = Dimensions.get('window');
+  const { logout } = useAuth();
+  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<DriverSettings>({
     notifications_enabled: true,
     location_sharing: true,
@@ -118,9 +119,12 @@ export default function DriverSettingsScreen() {
           text: 'Çıkış Yap',
           style: 'destructive',
           onPress: async () => {
-            await AsyncStorage.removeItem('auth_token');
-            await AsyncStorage.removeItem('userType');
-            router.replace('/splash');
+            try {
+              await logout();
+              router.replace('/');
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
           },
         },
       ]
@@ -148,7 +152,7 @@ export default function DriverSettingsScreen() {
   ) => (
     <View style={styles.settingItem}>
       <View style={styles.settingInfo}>
-        <Ionicons name={icon as any} size={24} color="#10B981" />
+        <Ionicons name={icon as any} size={24} color="#FFD700" />
         <View style={styles.settingText}>
           <Text style={styles.settingTitle}>{title}</Text>
           <Text style={styles.settingSubtitle}>{subtitle}</Text>
@@ -157,7 +161,7 @@ export default function DriverSettingsScreen() {
       <Switch
         value={value}
         onValueChange={onToggle}
-        trackColor={{ false: '#D1D5DB', true: '#10B981' }}
+        trackColor={{ false: '#D1D5DB', true: '#FFD700' }}
         thumbColor={value ? '#FFFFFF' : '#FFFFFF'}
       />
     </View>
@@ -168,7 +172,7 @@ export default function DriverSettingsScreen() {
     subtitle: string,
     icon: string,
     onPress: () => void,
-    color: string = '#10B981'
+    color: string = '#FFD700'
   ) => (
     <TouchableOpacity style={styles.actionItem} onPress={onPress}>
       <View style={styles.settingInfo}>
@@ -184,7 +188,7 @@ export default function DriverSettingsScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+      <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Yükleniyor...</Text>
       </View>
     );
@@ -337,10 +341,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },

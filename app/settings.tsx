@@ -166,7 +166,7 @@ export default function SettingsScreen() {
                   return;
                 }
 
-                const response = await fetch('http://localhost:3001/api/users/freeze-account', {
+                const response = await fetch('http://192.168.1.134:3001/api/users/freeze-account', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -215,7 +215,7 @@ export default function SettingsScreen() {
                    return;
                  }
 
-                 const response = await fetch('http://localhost:3001/api/users/delete-account', {
+                 const response = await fetch('http://192.168.1.134:3001/api/users/delete-account', {
                  method: 'DELETE',
                  headers: {
                    'Content-Type': 'application/json',
@@ -260,7 +260,7 @@ export default function SettingsScreen() {
                 return;
               }
 
-              const response = await fetch('http://localhost:3001/api/users/delete-account', {
+              const response = await fetch('http://192.168.1.134:3001/api/users/delete-account', {
                 method: 'DELETE',
                 headers: {
                   'Content-Type': 'application/json',

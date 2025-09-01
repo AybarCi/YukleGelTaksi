@@ -146,7 +146,7 @@ export default function DriverStatusScreen() {
     if (driverStatus.is_approved && driverStatus.is_active) {
       return {
         icon: 'checkmark-circle',
-        color: '#10B981',
+        color: '#FFD700',
         title: 'Başvurunuz Onaylandı!',
         description: 'Artık sürücü olarak çalışmaya başlayabilirsiniz.',
         actionText: 'Sürücü Paneline Git',
@@ -155,7 +155,7 @@ export default function DriverStatusScreen() {
     } else if (driverStatus.is_approved && !driverStatus.is_active) {
       return {
         icon: 'pause-circle',
-        color: '#F59E0B',
+        color: '#FFD700',
         title: 'Hesabınız Askıda',
         description: 'Hesabınız geçici olarak askıya alınmış. Destek ile iletişime geçin.',
         actionText: 'Destek ile İletişim',
@@ -164,7 +164,7 @@ export default function DriverStatusScreen() {
     } else {
       return {
         icon: 'time',
-        color: '#F59E0B',
+        color: '#FFD700',
         title: 'Başvurunuz İnceleniyor',
         description: 'Başvurunuz yönetici tarafından inceleniyor. Lütfen bekleyin.',
         actionText: 'Durumu Yenile',
@@ -213,7 +213,7 @@ export default function DriverStatusScreen() {
         <TouchableOpacity 
           style={[
             styles.actionButton,
-            { backgroundColor: statusInfo.canContinue ? '#10B981' : statusInfo.color },
+            { backgroundColor: statusInfo.canContinue ? '#FFD700' : statusInfo.color },
             isRefreshing && !statusInfo.canContinue && styles.disabledButton
           ]}
           onPress={() => {

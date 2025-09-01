@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_CONFIG } from '../config/api';
 
 interface OrderHistory {
@@ -30,6 +31,7 @@ interface OrderHistory {
 }
 
 export default function DriverOrderHistoryScreen() {
+  const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState<OrderHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,11 +100,11 @@ export default function DriverOrderHistoryScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
-        return '#10B981';
+        return '#FFD700';
       case 'cancelled':
         return '#EF4444';
       case 'in_progress':
-        return '#F59E0B';
+        return '#FFD700';
       default:
         return '#6B7280';
     }
@@ -135,7 +137,7 @@ export default function DriverOrderHistoryScreen() {
 
       <View style={styles.addressContainer}>
         <View style={styles.addressRow}>
-          <Ionicons name="radio-button-on" size={16} color="#10B981" />
+          <Ionicons name="radio-button-on" size={16} color="#FFD700" />
           <Text style={styles.addressText} numberOfLines={2}>
             {order.pickup_address}
           </Text>
@@ -159,7 +161,7 @@ export default function DriverOrderHistoryScreen() {
           <Text style={styles.detailText}>{formatDuration(order.duration)}</Text>
         </View>
         <View style={styles.detailItem}>
-          <Ionicons name="cash" size={16} color="#10B981" />
+          <Ionicons name="cash" size={16} color="#FFD700" />
           <Text style={styles.fareText}>₺{order.fare.toFixed(2)}</Text>
         </View>
         {order.rating && (
@@ -180,7 +182,7 @@ export default function DriverOrderHistoryScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       
       {/* Header */}
@@ -264,10 +266,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
@@ -304,10 +304,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   activeFilterTab: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#FFD700',
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#6B7280',
   },
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
   fareText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#10B981',
+    color: '#FFD700',
     marginLeft: 4,
   },
   noteContainer: {

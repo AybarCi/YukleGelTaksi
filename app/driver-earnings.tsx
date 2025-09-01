@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_CONFIG } from '../config/api';
 
 const { width } = Dimensions.get('window');
@@ -39,6 +40,7 @@ interface DailyEarning {
 }
 
 export default function DriverEarningsScreen() {
+  const insets = useSafeAreaInsets();
   const [earnings, setEarnings] = useState<EarningsData | null>(null);
   const [dailyEarnings, setDailyEarnings] = useState<DailyEarning[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,7 +192,7 @@ export default function DriverEarningsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       
       {/* Header */}
@@ -250,8 +252,8 @@ export default function DriverEarningsScreen() {
         <View style={styles.statsGrid}>
           {earnings && (
             <>
-              {renderStatCard('Net Kazanç', formatCurrency(earnings.net_earnings), 'wallet', '#10B981')}
-              {renderStatCard('Komisyon Oranı', `%${(earnings.commission_rate * 100).toFixed(1)}`, 'pie-chart', '#F59E0B')}
+              {renderStatCard('Net Kazanç', formatCurrency(earnings.net_earnings), 'wallet', '#FFD700')}
+              {renderStatCard('Komisyon Oranı', `%${(earnings.commission_rate * 100).toFixed(1)}`, 'pie-chart', '#FFD700')}
               {renderStatCard('Toplam Sefer', earnings.total_trips.toString(), 'car', '#3B82F6')}
               {renderStatCard('Ortalama Ücret', formatCurrency(earnings.average_fare), 'trending-up', '#8B5CF6')}
             </>
@@ -305,10 +307,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
   },
   activePeriodTab: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#FFD700',
   },
   periodText: {
     fontSize: 14,
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   mainEarnings: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#10B981',
+    color: '#FFD700',
     marginBottom: 16,
   },
   mainStats: {
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
   dailyEarningsText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#10B981',
+    color: '#FFD700',
     marginBottom: 4,
   },
   dailyHoursText: {

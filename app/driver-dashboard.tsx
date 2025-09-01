@@ -414,11 +414,11 @@ export default function DriverDashboardScreen() {
   const renderCustomerItem = ({ item }: { item: Customer }) => {
     const getStatusColor = (status: string) => {
       switch (status) {
-        case 'waiting': return '#F59E0B';
-        case 'accepted': return '#10B981';
+        case 'waiting': return '#FFD700';
+        case 'accepted': return '#FFD700';
         case 'in_progress': return '#3B82F6';
         case 'completed': return '#6B7280';
-        default: return '#F59E0B';
+        default: return '#FFD700';
       }
     };
 
@@ -446,7 +446,7 @@ export default function DriverDashboardScreen() {
         
         <View style={styles.locationInfo}>
           <View style={styles.locationRow}>
-            <Ionicons name="location" size={16} color="#10B981" />
+            <Ionicons name="location" size={16} color="#FFD700" />
             <Text style={styles.locationText}>Alış: {item.pickup_location}</Text>
           </View>
           <View style={styles.locationRow}>
@@ -478,21 +478,8 @@ export default function DriverDashboardScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.driverInfo}>
-          {driverInfo && (
-            <Text style={styles.driverName}>
-              {`${driverInfo.first_name} ${driverInfo.last_name}`}
-            </Text>
-          )}
-          <TouchableOpacity
-            style={[styles.statusButton, { backgroundColor: isOnline ? '#10B981' : '#EF4444' }]}
-            onPress={toggleOnlineStatus}
-          >
-            <Text style={styles.statusButtonText}>
-              {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <View style={styles.placeholder} />
+        <Text style={styles.headerTitle}>Sürücü Paneli</Text>
         <TouchableOpacity style={styles.menuButton} onPress={() => router.push('/driver-menu')}>
           <Ionicons name="menu" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -573,7 +560,7 @@ export default function DriverDashboardScreen() {
              <View style={styles.menuHeader}>
                <View style={styles.profileSection}>
                  <View style={styles.profileImage}>
-                   <Ionicons name="person" size={32} color="#10B981" />
+                   <Ionicons name="person" size={32} color="#FFD700" />
                  </View>
                  <View style={styles.profileInfo}>
                    {driverInfo && (
@@ -586,7 +573,7 @@ export default function DriverDashboardScreen() {
                      <Text style={styles.ratingText}>4.8</Text>
                      <Text style={styles.ratingCount}>(127 değerlendirme)</Text>
                    </View>
-                   <View style={[styles.statusBadgeMenu, { backgroundColor: isOnline ? '#10B981' : '#EF4444' }]}>
+                   <View style={[styles.statusBadgeMenu, { backgroundColor: isOnline ? '#FFD700' : '#EF4444' }]}>
                      <Text style={styles.statusBadgeText}>
                        {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
                      </Text>
@@ -737,6 +724,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  placeholder: {
+    width: 40,
   },
   driverInfo: {
     flex: 1,
@@ -969,10 +972,10 @@ const styles = StyleSheet.create({
   fareText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#10B981',
+    color: '#FFD700',
   },
   acceptButton: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#FFD700',
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
