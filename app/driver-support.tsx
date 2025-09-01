@@ -7,14 +7,16 @@ import {
   ScrollView,
   SafeAreaView,
   TextInput,
-  Alert,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_CONFIG } from '../config/api';
 
 interface FAQItem {
   id: string;
@@ -32,13 +34,14 @@ interface SupportCategory {
 }
 
 export default function DriverSupportScreen() {
-  const { user } = useAuth();
+  const { user, showModal } = useAuth();
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [expandedFAQ, setExpandedFAQ] = useState<string | null>(null);
   const [supportMessage, setSupportMessage] = useState('');
   const [selectedIssueType, setSelectedIssueType] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const faqData: FAQItem[] = [
     {
@@ -98,9 +101,10 @@ export default function DriverSupportScreen() {
       icon: 'chatbubbles',
       description: 'Destek ekibimizle anında konuşun',
       action: () => {
-        Alert.alert(
+        showModal(
           'Canlı Destek',
           'Canlı destek özelliği yakında aktif olacak. Şimdilik telefon veya e-posta ile iletişime geçebilirsiniz.',
+          'info',
           [{ text: 'Tamam' }]
         );
       }
@@ -111,9 +115,10 @@ export default function DriverSupportScreen() {
       icon: 'call',
       description: '7/24 telefon desteği',
       action: () => {
-        Alert.alert(
+        showModal(
           'Telefon Desteği',
           'Destek hattımızı aramak istediğinizden emin misiniz?',
+          'info',
           [
             { text: 'İptal', style: 'cancel' },
             { text: 'Ara', onPress: () => Linking.openURL('tel:+905001234567') }
@@ -166,26 +171,61 @@ export default function DriverSupportScreen() {
     return matchesSearch && matchesCategory;
   });
 
-  const handleSendSupportMessage = () => {
+  const handleSendSupportMessage = async () => {
     if (!selectedIssueType || !supportMessage.trim()) {
-      Alert.alert('Hata', 'Lütfen sorun türünü seçin ve mesajınızı yazın.');
+      showModal('Hata', 'Lütfen sorun türünü seçin ve mesajınızı yazın.', 'error');
       return;
     }
 
-    // Simulate sending support message
-    Alert.alert(
-      'Destek Talebi Gönderildi',
-      'Destek talebiniz başarıyla gönderildi. En kısa sürede size dönüş yapacağız.',
-      [
-        {
-          text: 'Tamam',
-          onPress: () => {
-            setSupportMessage('');
-            setSelectedIssueType('');
-          }
-        }
-      ]
-    );
+    setIsSubmitting(true);
+
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        showModal('Hata', 'Oturum bilgisi bulunamadı', 'error');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/support-tickets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          issue_type: selectedIssueType,
+          subject: `${selectedIssueType.charAt(0).toUpperCase() + selectedIssueType.slice(1)} Sorunu`,
+          message: supportMessage.trim(),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        showModal(
+          'Destek Talebi Gönderildi',
+          'Destek talebiniz başarıyla gönderildi. En kısa sürede size dönüş yapacağız.',
+          'success',
+          [
+            {
+              text: 'Tamam',
+              onPress: () => {
+                setSupportMessage('');
+                setSelectedIssueType('');
+              }
+            }
+          ]
+        );
+      } else {
+        showModal('Hata', result.error || 'Destek talebi gönderilemedi', 'error');
+      }
+    } catch (error) {
+      console.error('Destek talebi gönderme hatası:', error);
+      showModal('Hata', 'Destek talebi gönderilirken bir hata oluştu', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderFAQItem = (item: FAQItem) => {
@@ -290,11 +330,18 @@ export default function DriverSupportScreen() {
             />
 
             <TouchableOpacity
-              style={styles.sendButton}
+              style={[styles.sendButton, isSubmitting && styles.sendButtonDisabled]}
               onPress={handleSendSupportMessage}
+              disabled={isSubmitting}
             >
-              <Ionicons name="send" size={20} color="#FFFFFF" />
-              <Text style={styles.sendButtonText}>Gönder</Text>
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="send" size={20} color="#FFFFFF" />
+              )}
+              <Text style={styles.sendButtonText}>
+                {isSubmitting ? 'Gönderiliyor...' : 'Gönder'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -499,6 +546,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFD700',
     paddingVertical: 12,
     borderRadius: 8,
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#D1D5DB',
   },
   sendButtonText: {
     fontSize: 16,

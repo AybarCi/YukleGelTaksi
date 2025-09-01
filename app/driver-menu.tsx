@@ -41,6 +41,12 @@ const DriverMenuScreen = () => {
       onPress: () => router.push('/driver-reviews'),
     },
     {
+      title: 'Destek Taleplerim',
+      subtitle: 'Destek taleplerini takip edin ve yanıtları görün',
+      icon: 'chatbubbles-outline',
+      onPress: () => router.push('/driver-support-tickets'),
+    },
+    {
       title: 'Ayarlar',
       subtitle: 'Uygulama ayarlarını düzenleyin',
       icon: 'settings-outline',
