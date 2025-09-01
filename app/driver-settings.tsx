@@ -19,7 +19,7 @@ import { API_CONFIG } from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
 interface DriverSettings {
   notifications_enabled: boolean;
-  location_sharing: boolean;
+  location_sharing_enabled: boolean;
   auto_accept_orders: boolean;
   working_hours_start: string;
   working_hours_end: string;
@@ -35,7 +35,7 @@ export default function DriverSettingsScreen() {
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<DriverSettings>({
     notifications_enabled: true,
-    location_sharing: true,
+    location_sharing_enabled: true,
     auto_accept_orders: false,
     working_hours_start: '08:00',
     working_hours_end: '22:00',
@@ -58,7 +58,7 @@ export default function DriverSettingsScreen() {
         return;
       }
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/driver/settings`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/settings`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -67,8 +67,18 @@ export default function DriverSettingsScreen() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
+        const result = await response.json();
+        if (result.success && result.data) {
+          setSettings({
+            ...settings,
+            notifications_enabled: result.data.notifications_enabled,
+            sound_enabled: result.data.sound_enabled,
+            vibration_enabled: result.data.vibration_enabled,
+            location_sharing_enabled: result.data.location_sharing_enabled,
+          });
+        }
+      } else {
+        console.error('Failed to load settings:', response.status);
       }
     } catch (error) {
       console.error('Settings load error:', error);
@@ -88,7 +98,7 @@ export default function DriverSettingsScreen() {
       const updatedSettings = { ...settings, [key]: value };
       setSettings(updatedSettings);
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/driver/settings`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/settings`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -97,7 +107,23 @@ export default function DriverSettingsScreen() {
         body: JSON.stringify({ [key]: value }),
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          // Update with server response to ensure consistency
+          setSettings({
+            ...settings,
+            notifications_enabled: result.data.notifications_enabled,
+            sound_enabled: result.data.sound_enabled,
+            vibration_enabled: result.data.vibration_enabled,
+            location_sharing_enabled: result.data.location_sharing_enabled,
+          });
+        } else {
+          // Revert on error
+          setSettings(settings);
+          Alert.alert('Hata', result.message || 'Ayar güncellenemedi');
+        }
+      } else {
         // Revert on error
         setSettings(settings);
         Alert.alert('Hata', 'Ayar güncellenemedi');
@@ -242,8 +268,8 @@ export default function DriverSettingsScreen() {
             'Konum Paylaşımı',
             'Müşterilerle konum paylaşımı',
             'location',
-            settings.location_sharing,
-            (value) => updateSetting('location_sharing', value)
+            settings.location_sharing_enabled,
+            (value) => updateSetting('location_sharing_enabled', value)
           )}
 
         </View>
