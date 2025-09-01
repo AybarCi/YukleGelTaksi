@@ -139,9 +139,7 @@ export default function DriverSettingsScreen() {
     router.push('/terms-of-service');
   };
 
-  const openSupport = () => {
-    Linking.openURL('mailto:support@yuklegelTaksi.com');
-  };
+
 
   const renderSettingItem = (
     title: string,
@@ -247,41 +245,14 @@ export default function DriverSettingsScreen() {
             settings.location_sharing,
             (value) => updateSetting('location_sharing', value)
           )}
-          {renderSettingItem(
-            'Otomatik Kabul',
-            'Siparişleri otomatik kabul et',
-            'checkmark-circle',
-            settings.auto_accept_orders,
-            (value) => updateSetting('auto_accept_orders', value)
-          )}
+
         </View>
 
-        {/* Account Settings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hesap</Text>
-          {renderActionItem(
-            'Profil Bilgileri',
-            'Kişisel ve araç bilgilerinizi düzenleyin',
-            'person',
-            () => router.push('/driver-profile')
-          )}
-          {renderActionItem(
-            'Şifre Değiştir',
-            'Hesap şifrenizi güncelleyin',
-            'key',
-            () => {}
-          )}
-        </View>
 
-        {/* Support & Legal */}
+
+        {/* Legal */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Destek ve Yasal</Text>
-          {renderActionItem(
-            'Yardım ve Destek',
-            'Sorularınız için bizimle iletişime geçin',
-            'help-circle',
-            openSupport
-          )}
+          <Text style={styles.sectionTitle}>Yasal</Text>
           {renderActionItem(
             'Gizlilik Politikası',
             'Gizlilik politikamızı inceleyin',

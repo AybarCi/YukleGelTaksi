@@ -60,5 +60,12 @@ BEGIN
 END
 GO
 
+IF NOT EXISTS (SELECT * FROM system_settings WHERE setting_key = 'driver_commission_rate')
+BEGIN
+    INSERT INTO system_settings (setting_key, setting_value, setting_type, description, category, created_by)
+    VALUES ('driver_commission_rate', '15', 'number', 'Sürücü komisyon oranı (yüzde)', 'driver_management', 'system');
+END
+GO
+
 PRINT 'Default system settings inserted successfully';
 GO

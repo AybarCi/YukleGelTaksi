@@ -55,41 +55,63 @@ export default function DriverEarningsScreen() {
     try {
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
-        Alert.alert('Hata', 'Oturum bilgisi bulunamadı');
+        // Token yoksa sessizce boş veri göster
+        setEarnings(null);
+        setDailyEarnings([]);
         return;
       }
 
-      const [earningsResponse, dailyResponse] = await Promise.all([
-        fetch(`${API_CONFIG.BASE_URL}/api/driver/earnings`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }),
-        fetch(`${API_CONFIG.BASE_URL}/api/driver/earnings/daily?period=${selectedPeriod}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        })
-      ]);
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/driver/earnings?period=${selectedPeriod}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-      if (earningsResponse.ok) {
-        const earningsData = await earningsResponse.json();
+      if (response.ok) {
+        const data = await response.json();
+        
+        // API'den gelen veriyi mevcut interface'e uyarla
+        const stats = data.stats || {};
+        const earningsData: EarningsData = {
+          total_earnings: stats.total_earnings || 0,
+          today_earnings: stats.today_earnings || 0,
+          week_earnings: stats.week_earnings || 0,
+          month_earnings: stats.month_earnings || 0,
+          total_trips: stats.total_trips || 0,
+          today_trips: stats.today_trips || 0,
+          week_trips: stats.week_trips || 0,
+          month_trips: stats.month_trips || 0,
+          average_fare: stats.average_fare || 0,
+          commission_rate: stats.commission_rate || 0,
+          net_earnings: stats.net_earnings || 0,
+        };
+        
         setEarnings(earningsData);
+        
+        // Günlük kazançları ayarla
+        if (data.daily_summary && Array.isArray(data.daily_summary)) {
+          const dailyData: DailyEarning[] = data.daily_summary.map((item: any) => ({
+            date: item.date,
+            earnings: item.total_amount || 0,
+            trips: item.trip_count || 0,
+            hours_worked: 8, // API'de hours_worked yoksa varsayılan değer
+          }));
+          setDailyEarnings(dailyData);
+        } else {
+          setDailyEarnings([]);
+        }
       } else {
-        Alert.alert('Hata', 'Kazanç bilgileri alınamadı');
-      }
-
-      if (dailyResponse.ok) {
-        const dailyData = await dailyResponse.json();
-        setDailyEarnings(dailyData);
+        // Hata durumunda sessizce boş veri göster
+        setEarnings(null);
+        setDailyEarnings([]);
       }
     } catch (error) {
       console.error('Earnings load error:', error);
-      Alert.alert('Hata', 'Bir hata oluştu');
+      // Hata durumunda sessizce boş veri göster
+      setEarnings(null);
+      setDailyEarnings([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -45,7 +45,8 @@ export default function DriverOrderHistoryScreen() {
     try {
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
-        Alert.alert('Hata', 'Oturum bilgisi bulunamadı');
+        // Token yoksa sessizce boş liste göster
+        setOrders([]);
         return;
       }
 
@@ -59,13 +60,15 @@ export default function DriverOrderHistoryScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        setOrders(data);
+        setOrders(data || []);
       } else {
-        Alert.alert('Hata', 'Sipariş geçmişi alınamadı');
+        // Tüm hata durumlarında sessizce boş liste göster
+        setOrders([]);
       }
     } catch (error) {
       console.error('Order history load error:', error);
-      Alert.alert('Hata', 'Bir hata oluştu');
+      // Sessizce boş liste göster, kullanıcıya hata mesajı verme
+      setOrders([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
