@@ -28,7 +28,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
-import LocationInput, { LocationInputRef } from '../components/LocationInput';
+import YukKonumuInput, { YukKonumuInputRef } from '../components/YukKonumuInput';
+import VarisNoktasiInput, { VarisNoktasiInputRef } from '../components/VarisNoktasiInput';
 
 
 interface Driver {
@@ -56,6 +57,8 @@ function HomeScreen() {
   const [destinationCoords, setDestinationCoords] = useState<{latitude: number, longitude: number} | null>(null);
   const [cargoImage, setCargoImage] = useState<string | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
+  const [routeDuration, setRouteDuration] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -72,8 +75,8 @@ function HomeScreen() {
   
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRefs = useRef<(TextInput | null)[]>([]);
-  const pickupLocationRef = useRef<LocationInputRef>(null);
-  const destinationLocationRef = useRef<LocationInputRef>(null);
+  const pickupLocationRef = useRef<YukKonumuInputRef>(null);
+  const destinationLocationRef = useRef<VarisNoktasiInputRef>(null);
   const mapRef = useRef<any>(null);
   
   const { logout, showModal, user, token } = useAuth();
@@ -155,11 +158,27 @@ function HomeScreen() {
       }
       
       if (useCurrentLocation) {
-        setPickupCoords({
+        const coords = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude
-        });
+        };
+        setPickupCoords(coords);
         setPickupLocation('Mevcut Konumum');
+        
+        // Haritayı mevcut konuma animasyon ile götür
+        if (mapRef.current) {
+          const screenHeight = Dimensions.get('window').height;
+          const bottomSheetHeight = screenHeight * 0.6;
+          const offsetRatio = (bottomSheetHeight / 2) / screenHeight;
+          const latitudeOffset = 0.008 * offsetRatio * 0.8;
+          
+          mapRef.current.animateToRegion({
+            latitude: coords.latitude - latitudeOffset,
+            longitude: coords.longitude,
+            latitudeDelta: 0.008,
+            longitudeDelta: 0.006,
+          }, 1500);
+        }
       }
       
       setIsLocationLoading(false);
@@ -308,11 +327,27 @@ function HomeScreen() {
   
   useEffect(() => {
     if (useCurrentLocation && userLocation) {
-      setPickupCoords({
+      const coords = {
         latitude: userLocation.coords.latitude,
         longitude: userLocation.coords.longitude
-      });
+      };
+      setPickupCoords(coords);
       setPickupLocation('Mevcut Konumum');
+      
+      // Haritayı mevcut konuma animasyon ile götür
+      if (mapRef.current) {
+        const screenHeight = Dimensions.get('window').height;
+        const bottomSheetHeight = screenHeight * 0.6;
+        const offsetRatio = (bottomSheetHeight / 2) / screenHeight;
+        const latitudeOffset = 0.008 * offsetRatio * 0.8;
+        
+        mapRef.current.animateToRegion({
+          latitude: coords.latitude - latitudeOffset,
+          longitude: coords.longitude,
+          latitudeDelta: 0.008,
+          longitudeDelta: 0.006,
+        }, 1500);
+      }
     } else if (!useCurrentLocation) {
       setPickupCoords(null);
       setPickupLocation('');
@@ -329,20 +364,166 @@ function HomeScreen() {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   }, []);
+
+  // Google Directions API ile gerçek araç yolu rotası alma
+  const getDirectionsRoute = useCallback(async (origin: {latitude: number, longitude: number}, destination: {latitude: number, longitude: number}) => {
+    try {
+      const GOOGLE_MAPS_API_KEY = 'AIzaSyBh078SvpaOnhvq5QGkGJ4hQV-Z0mpI81M';
+      
+      const originStr = `${origin.latitude},${origin.longitude}`;
+      const destinationStr = `${destination.latitude},${destination.longitude}`;
+      
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&key=${GOOGLE_MAPS_API_KEY}&mode=driving&departure_time=now&traffic_model=best_guess`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status === 'OK' && data.routes.length > 0) {
+        const route = data.routes[0];
+        const leg = route.legs[0];
+        
+        // Polyline decode etme fonksiyonu
+        const decodePolyline = (encoded: string) => {
+          const points = [];
+          let index = 0;
+          const len = encoded.length;
+          let lat = 0;
+          let lng = 0;
+          
+          while (index < len) {
+            let b;
+            let shift = 0;
+            let result = 0;
+            do {
+              b = encoded.charCodeAt(index++) - 63;
+              result |= (b & 0x1f) << shift;
+              shift += 5;
+            } while (b >= 0x20);
+            const dlat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+            lat += dlat;
+            
+            shift = 0;
+            result = 0;
+            do {
+              b = encoded.charCodeAt(index++) - 63;
+              result |= (b & 0x1f) << shift;
+              shift += 5;
+            } while (b >= 0x20);
+            const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+            lng += dlng;
+            
+            points.push({
+              latitude: lat / 1e5,
+              longitude: lng / 1e5,
+            });
+          }
+          return points;
+        };
+        
+        const coordinates = decodePolyline(route.overview_polyline.points);
+        setRouteCoordinates(coordinates);
+        
+        // Gerçek mesafe ve süre bilgilerini al
+        const realDistance = leg.distance.value / 1000; // metre'den km'ye
+        setDistance(realDistance);
+        
+        // Trafik durumunu da içeren süre bilgisi
+        const duration = leg.duration_in_traffic ? leg.duration_in_traffic.text : leg.duration.text;
+        setRouteDuration(duration);
+        
+        return {
+          coordinates,
+          distance: realDistance,
+          duration: duration
+        };
+      } else {
+        console.error('Directions API error:', data.status);
+        // Hata durumunda kuş bakışı rotaya geri dön
+        setRouteCoordinates([origin, destination]);
+        const fallbackDistance = calculateDistance(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+        setDistance(fallbackDistance);
+        setRouteDuration(null);
+      }
+    } catch (error) {
+      console.error('Directions API fetch error:', error);
+      // Hata durumunda kuş bakışı rotaya geri dön
+      setRouteCoordinates([origin, destination]);
+      const fallbackDistance = calculateDistance(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+      setDistance(fallbackDistance);
+      setRouteDuration(null);
+    }
+  }, [calculateDistance]);
+
+  const calculateZoomLevel = useCallback((distance: number) => {
+    // Mesafeye göre zoom seviyesi hesapla - optimize edilmiş değerler
+    if (distance <= 1) {
+      return { latitudeDelta: 0.008, longitudeDelta: 0.006 }; // Çok yakın mesafe
+    } else if (distance <= 5) {
+      return { latitudeDelta: 0.025, longitudeDelta: 0.02 }; // Yakın mesafe
+    } else if (distance <= 15) {
+      return { latitudeDelta: 0.08, longitudeDelta: 0.06 }; // Orta mesafe
+    } else if (distance <= 50) {
+      return { latitudeDelta: 0.25, longitudeDelta: 0.2 }; // Uzak mesafe
+    } else if (distance <= 100) {
+      return { latitudeDelta: 0.5, longitudeDelta: 0.4 }; // Çok uzak mesafe
+    } else {
+      return { latitudeDelta: 1.0, longitudeDelta: 0.8 }; // Aşırı uzak mesafe
+    }
+  }, []);
+
+  // BottomSheet yüksekliğini hesaba katarak harita ortalama fonksiyonu
+  const animateToRegionWithOffset = useCallback((latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number) => {
+    if (!mapRef.current) return;
+    
+    const screenHeight = Dimensions.get('window').height;
+    const bottomSheetHeight = screenHeight * 0.6; // %60 yükseklik
+    const visibleMapHeight = screenHeight - bottomSheetHeight;
+    
+    // Görünür harita alanının ortasına konumlandırmak için offset hesapla
+    const offsetRatio = (bottomSheetHeight / 2) / screenHeight;
+    const latitudeOffset = latitudeDelta * offsetRatio * 0.8; // Biraz daha yukarı kaydır
+    
+    mapRef.current.animateToRegion({
+      latitude: latitude - latitudeOffset,
+      longitude: longitude,
+      latitudeDelta: latitudeDelta,
+      longitudeDelta: longitudeDelta,
+    }, 1500);
+  }, []);
+
+  const animateToShowBothPoints = useCallback((pickup: any, destination: any) => {
+    if (!mapRef.current || !pickup || !destination) return;
+
+    const distance = calculateDistance(
+      pickup.latitude,
+      pickup.longitude,
+      destination.latitude,
+      destination.longitude
+    );
+
+    const zoomLevel = calculateZoomLevel(distance);
+    
+    // İki nokta arasındaki orta noktayı hesapla
+    const centerLat = (pickup.latitude + destination.latitude) / 2;
+    const centerLng = (pickup.longitude + destination.longitude) / 2;
+
+    // BottomSheet offset'i ile animasyon yap
+    animateToRegionWithOffset(centerLat, centerLng, zoomLevel.latitudeDelta, zoomLevel.longitudeDelta);
+  }, [calculateDistance, calculateZoomLevel, animateToRegionWithOffset]);
   
   useEffect(() => {
     if (pickupCoords && destinationCoords) {
-      const dist = calculateDistance(
-        pickupCoords.latitude,
-        pickupCoords.longitude,
-        destinationCoords.latitude,
-        destinationCoords.longitude
-      );
-      setDistance(dist);
+      // Google Directions API ile gerçek araç yolu rotası al
+      getDirectionsRoute(pickupCoords, destinationCoords);
+      
+      // Her iki noktayı da gösteren harita animasyonu
+      animateToShowBothPoints(pickupCoords, destinationCoords);
     } else {
       setDistance(null);
+      setRouteCoordinates([]);
+      setRouteDuration(null);
     }
-  }, [pickupCoords, destinationCoords]);
+  }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints]);
   
   const handleCreateOrder = useCallback(async () => {
     if (!weight || !pickupCoords || !destinationCoords) {
@@ -386,18 +567,26 @@ function HomeScreen() {
   }, []);
 
   const handlePickupLocationSelect = useCallback((location: any) => {
-    setPickupCoords({
-      latitude: location.geometry.location.lat,
-      longitude: location.geometry.location.lng
-    });
+    console.log('=== PICKUP LOCATION SELECT ===');
+    console.log('handlePickupLocationSelect called with:', location);
+    console.log('Coordinates:', location.coordinates);
     
-    setPickupLocation(location.description);
+    const coords = {
+      latitude: location.coordinates.latitude,
+      longitude: location.coordinates.longitude
+    };
+    
+    console.log('Setting pickupCoords to:', coords);
+    setPickupCoords(coords);
+    
+    console.log('Setting pickupLocation to:', location.address);
+    setPickupLocation(location.address);
     
     setSelectedLocationInfo({
-      address: location.description,
+      address: location.address,
       coordinates: {
-        latitude: location.geometry.location.lat,
-        longitude: location.geometry.location.lng
+        latitude: location.coordinates.latitude,
+        longitude: location.coordinates.longitude
       },
       type: 'pickup'
     });
@@ -405,28 +594,39 @@ function HomeScreen() {
     setLocationModalVisible(true);
     
     if (mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: location.geometry.location.lat,
-        longitude: location.geometry.location.lng,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }, 1000);
+      console.log('Animating map to pickup location');
+      // Eğer destination da varsa, her iki noktayı göster
+      if (destinationCoords) {
+        animateToShowBothPoints(coords, destinationCoords);
+      } else {
+        // Sadece pickup noktasını göster
+        animateToRegionWithOffset(location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+      }
     }
-  }, []);
+    console.log('=== END PICKUP LOCATION SELECT ===');
+  }, [destinationCoords, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const handleDestinationLocationSelect = useCallback((location: any) => {
-    setDestinationCoords({
-      latitude: location.geometry.location.lat,
-      longitude: location.geometry.location.lng
-    });
+    console.log('=== DESTINATION LOCATION SELECT ===');
+    console.log('handleDestinationLocationSelect called with:', location);
+    console.log('Coordinates:', location.coordinates);
     
-    setDestinationLocation(location.description);
+    const coords = {
+      latitude: location.coordinates.latitude,
+      longitude: location.coordinates.longitude
+    };
+    
+    console.log('Setting destinationCoords to:', coords);
+    setDestinationCoords(coords);
+    
+    console.log('Setting destinationLocation to:', location.address);
+    setDestinationLocation(location.address);
     
     setSelectedLocationInfo({
-      address: location.description,
+      address: location.address,
       coordinates: {
-        latitude: location.geometry.location.lat,
-        longitude: location.geometry.location.lng
+        latitude: location.coordinates.latitude,
+        longitude: location.coordinates.longitude
       },
       type: 'destination'
     });
@@ -434,14 +634,17 @@ function HomeScreen() {
     setLocationModalVisible(true);
     
     if (mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: location.geometry.location.lat,
-        longitude: location.geometry.location.lng,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }, 1000);
+      console.log('Animating map to destination location');
+      // Eğer pickup da varsa, her iki noktayı göster
+      if (pickupCoords) {
+        animateToShowBothPoints(pickupCoords, coords);
+      } else {
+        // Sadece destination noktasını göster
+        animateToRegionWithOffset(location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+      }
     }
-  }, []);
+    console.log('=== END DESTINATION LOCATION SELECT ===');
+  }, [pickupCoords, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const handleImagePicker = useCallback(() => {
     Alert.alert(
@@ -538,6 +741,7 @@ function HomeScreen() {
                    userLocationPriority="high"
                    userLocationUpdateInterval={3000}
                    userLocationAnnotationTitle="Konumunuz"
+                   showsTraffic={true}
                    zoomEnabled={true}
                    scrollEnabled={true}
                    pitchEnabled={true}
@@ -574,35 +778,38 @@ function HomeScreen() {
                    })}
                    
                    {pickupCoords && (
+                     console.log('Rendering pickup marker with coords:', pickupCoords),
                      <Marker
+                       key={`pickup-${pickupCoords.latitude}-${pickupCoords.longitude}`}
                        coordinate={pickupCoords}
                        title="Yükün Konumu"
                        description="Yükün alınacağı adres"
                      >
                        <View style={styles.pickupMarker}>
-                         <Ionicons name="location" size={16} color="#FFFFFF" />
+                         <MaterialIcons name="inventory" size={20} color="#FFFFFF" />
                        </View>
                      </Marker>
                    )}
                    
                    {destinationCoords && (
+                     console.log('Rendering destination marker with coords:', destinationCoords),
                      <Marker
+                       key={`destination-${destinationCoords.latitude}-${destinationCoords.longitude}`}
                        coordinate={destinationCoords}
                        title="Varış Noktası"
                        description="Yükün teslim edileceği adres"
                      >
                        <View style={styles.destinationMarker}>
-                         <Ionicons name="flag" size={16} color="#FFFFFF" />
+                         <MaterialIcons name="flag" size={20} color="#FFFFFF" />
                        </View>
                      </Marker>
                    )}
                    
-                   {pickupCoords && destinationCoords && (
+                   {routeCoordinates.length > 0 && (
                      <Polyline
-                       coordinates={[pickupCoords, destinationCoords]}
-                       strokeColor="#FFD700"
-                       strokeWidth={3}
-                       lineDashPattern={[5, 5]}
+                       coordinates={routeCoordinates}
+                       strokeColor="#FF6B35"
+                       strokeWidth={6}
                      />
                    )}
                  </MapView>
@@ -691,23 +898,19 @@ function HomeScreen() {
 
             {!useCurrentLocation && (
               <View style={{ marginBottom: 20 }}>
-                <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yükün Konumu</Text>
-                <LocationInput
-                   ref={pickupLocationRef}
-                   placeholder="Yükün alınacağı adresi girin"
-                   onLocationSelect={handlePickupLocationSelect}
-                   onFocus={() => setActiveInputIndex(1)}
+                <YukKonumuInput
+                    ref={pickupLocationRef}
+                    onLocationSelect={handlePickupLocationSelect}
+                    onFocus={() => setActiveInputIndex(1)}
                  />
               </View>
             )}
 
             <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Varış Noktası</Text>
-              <LocationInput
-                 ref={destinationLocationRef}
-                 placeholder="Yükün teslim edileceği adresi girin"
-                 onLocationSelect={handleDestinationLocationSelect}
-                 onFocus={() => setActiveInputIndex(2)}
+              <VarisNoktasiInput
+                  ref={destinationLocationRef}
+                  onLocationSelect={handleDestinationLocationSelect}
+                  onFocus={() => setActiveInputIndex(2)}
                />
             </View>
 
@@ -951,24 +1154,34 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   pickupMarker: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
+    backgroundColor: '#F59E0B',
+    borderRadius: 18,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   destinationMarker: {
-    backgroundColor: '#EF4444',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
+    backgroundColor: '#10B981',
+    borderRadius: 18,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   formContainer: {
     flex: 1,

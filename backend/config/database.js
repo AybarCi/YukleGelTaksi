@@ -6,7 +6,7 @@ class DatabaseConnection {
   constructor() {
     this.pool = null;
     this.config = {
-      server: process.env.DB_SERVER || 'localhost',
+      server: process.env.DB_SERVER || '192.168.1.134',
       user: process.env.DB_USER || 'sa',
       password: process.env.DB_PASSWORD || 'Ca090353--',
       database: process.env.DB_NAME || 'yuklegeltaksidb',

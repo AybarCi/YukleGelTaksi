@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useRef } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Alert } from 'react-native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { Ionicons } from '@expo/vector-icons';
 import { API_CONFIG } from '../config/api';
@@ -61,23 +61,48 @@ const LocationInput = forwardRef<LocationInputRef, LocationInputProps>(
 
           textInputProps={{
             onFocus: () => {
+              console.log('🎯 LocationInput onFocus triggered');
+              Alert.alert('Focus', 'Input focus oldu!');
               onFocus();
+            },
+            onChangeText: (text) => {
+              console.log('📝 LocationInput onChangeText:', text);
             },
             returnKeyType: 'search',
             returnKeyLabel: 'Ara',
           }}
           onPress={(data, details = null) => {
-            console.log('🔍 GooglePlacesAutocomplete onPress triggered:', { data, details });
+            console.log('🔍 GooglePlacesAutocomplete onPress triggered - RAW DATA:', data);
+            console.log('🔍 GooglePlacesAutocomplete onPress triggered - RAW DETAILS:', details);
+            Alert.alert('TEST', 'LocationInput onPress çalıştı! Details: ' + (details ? 'VAR' : 'YOK'));
+            
+            let location;
+            
+            if (details && details.geometry && details.geometry.location) {
+              // API key geçerli, detaylar var
+              location = {
+                address: details.formatted_address || data.description,
+                coordinates: {
+                  latitude: details.geometry.location.lat,
+                  longitude: details.geometry.location.lng,
+                },
+              };
+              console.log('📍 Location with details:', location);
+            } else {
+              // API key geçersiz veya details yok, sadece data kullan
+              location = {
+                address: data.description || data.structured_formatting?.main_text || 'Bilinmeyen Adres',
+                coordinates: {
+                  latitude: 0, // Koordinat bilgisi yok
+                  longitude: 0,
+                },
+              };
+              console.log('📍 Location without details (API key issue?):', location);
+            }
+            
+            onLocationSelect?.(location);
+            
             if (details) {
-               const location = {
-                 address: details.formatted_address || data.description,
-                 coordinates: {
-                   latitude: details.geometry.location.lat,
-                   longitude: details.geometry.location.lng,
-                 },
-               };
-               console.log('📍 Location object created:', location);
-               onLocationSelect?.(location);
               
               // Input alanını seçilen adresle güncelle
                if (googlePlacesRef.current) {
@@ -107,7 +132,19 @@ const LocationInput = forwardRef<LocationInputRef, LocationInputProps>(
           }}
           fetchDetails={true}
           disableScroll={true}
-          minLength={3}
+          minLength={2}
+          onFail={(error) => {
+            console.log('❌ GooglePlacesAutocomplete onFail:', error);
+            Alert.alert('Hata', 'Google Places API hatası: ' + JSON.stringify(error));
+          }}
+          onNotFound={() => {
+            console.log('🔍 GooglePlacesAutocomplete onNotFound');
+            Alert.alert('Bulunamadı', 'Konum bulunamadı');
+          }}
+          requestUrl={{
+            url: 'https://maps.googleapis.com/maps/api/place/autocomplete/json',
+            useOnPlatform: 'web',
+          }}
           styles={{
             container: styles.placesContainer,
             textInput: styles.placesInput,

@@ -42,7 +42,7 @@ export default function AccountDetailsScreen() {
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) return;
 
-      const response = await fetch('http://192.168.1.12:3001/api/customer/profile/photo', {
+      const response = await fetch('http://192.168.1.134:3001/api/customer/profile/photo', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -53,7 +53,7 @@ export default function AccountDetailsScreen() {
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data.profile_image_url) {
-          const fullImageUrl = `http://192.168.1.12:3001${data.data.profile_image_url}`;
+          const fullImageUrl = `http://192.168.1.134:3001${data.data.profile_image_url}`;
           setProfileImage(fullImageUrl);
         } else {
           setProfileImage(null);
@@ -109,7 +109,7 @@ export default function AccountDetailsScreen() {
         name: 'profile.jpg',
       } as any);
 
-      const response = await fetch('http://192.168.1.12:3001/api/customer/profile/photo', {
+      const response = await fetch('http://192.168.1.134:3001/api/customer/profile/photo', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -153,7 +153,7 @@ export default function AccountDetailsScreen() {
             text: 'Sil',
             style: 'destructive',
             onPress: async () => {
-              const response = await fetch('http://192.168.1.12:3001/api/customer/profile/photo', {
+              const response = await fetch('http://192.168.1.134:3001/api/customer/profile/photo', {
                 method: 'DELETE',
                 headers: {
                   'Authorization': `Bearer ${token}`,

@@ -27,6 +27,9 @@ app.prepare().then(() => {
   // Socket.IO server'ı başlat
   const socketServer = new SocketServer(server);
   
+  // Global olarak erişilebilir yap
+  global.socketServer = socketServer;
+  
   console.log('Socket.IO server initialized');
   console.log(`Connected drivers: ${socketServer.getConnectedDriversCount()}`);
   console.log(`Connected customers: ${socketServer.getConnectedCustomersCount()}`);

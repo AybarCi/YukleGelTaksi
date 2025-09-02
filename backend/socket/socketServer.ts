@@ -290,7 +290,7 @@ class SocketServer {
     }
   }
 
-  private async broadcastOrderToNearbyDrivers(orderId: number, orderData: OrderData) {
+  public async broadcastOrderToNearbyDrivers(orderId: number, orderData: OrderData) {
     try {
       // Sistem ayarlarından değerleri al
       const systemSettings = SystemSettingsService.getInstance();
