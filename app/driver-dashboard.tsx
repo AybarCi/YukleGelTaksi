@@ -29,7 +29,7 @@ interface Customer {
   destination: string;
   distance: string;
   estimated_fare: number;
-  status: 'waiting' | 'accepted' | 'in_progress' | 'completed';
+  status: 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed';
   created_at: string;
 }
 
@@ -55,6 +55,8 @@ interface OrderData {
   customerId: number;
   customerName?: string;
   customerPhone?: string;
+  distance?: number;
+  estimatedArrival?: number;
 }
 
 export default function DriverDashboardScreen() {
@@ -101,14 +103,55 @@ export default function DriverDashboardScreen() {
       // Socket event listener'ları
       socketService.on('new_order', (orderData: OrderData) => {
         console.log('New order received:', orderData);
-        // Yeni sipariş geldiğinde customers listesini güncelle
-        loadCustomers();
+        
+        // OrderData'yı Customer formatına dönüştür
+        const newCustomer: Customer = {
+          id: orderData.id,
+          name: orderData.customerName || 'Müşteri',
+          phone: orderData.customerPhone || 'Bilinmiyor',
+          pickup_location: orderData.pickupAddress,
+          destination: orderData.destinationAddress,
+          distance: orderData.distance ? `${orderData.distance.toFixed(1)} km` : 'Hesaplanıyor...',
+          estimated_fare: orderData.estimatedPrice,
+          status: 'waiting',
+          created_at: new Date().toISOString(),
+        };
+        
+        // Yeni siparişi customers listesine ekle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          // Aynı ID'li sipariş varsa güncelle, yoksa ekle
+          const existingIndex = currentCustomers.findIndex(c => c.id === newCustomer.id);
+          if (existingIndex >= 0) {
+            const updated = [...currentCustomers];
+            updated[existingIndex] = newCustomer;
+            return updated;
+          } else {
+            return [newCustomer, ...currentCustomers];
+          }
+        });
       });
       
       socketService.on('order_cancelled', (orderId: number) => {
         console.log('Order cancelled:', orderId);
         // İptal edilen siparişi listeden kaldır
         setCustomers(prev => (prev || []).filter(customer => customer.id !== orderId));
+      });
+      
+      // Müşteri siparişi onayladığında
+      socketService.on('order_confirmed_by_customer', (data: { orderId: number, customerInfo: any }) => {
+        console.log('Müşteri siparişi onayladı:', data);
+        // Siparişi listeden kaldır ve başarı mesajı göster
+        setCustomers(prev => (prev || []).filter(customer => customer.id !== data.orderId));
+        // TODO: Başarı mesajı modal'ı göster
+      });
+      
+      // Müşteri siparişi reddetti
+      socketService.on('order_rejected_by_customer', (data: { orderId: number, reason?: string }) => {
+        console.log('Müşteri siparişi reddetti:', data);
+        // Siparişi listeden kaldır
+        setCustomers(prev => (prev || []).filter(customer => customer.id !== data.orderId));
+        // TODO: Bilgilendirme mesajı göster
       });
       
       // Server konum güncellemesi istediğinde mevcut konumu gönder
@@ -144,6 +187,27 @@ export default function DriverDashboardScreen() {
           } catch (error) {
             console.error('Konum alınırken hata:', error);
           }
+        }
+      });
+      
+      // Sipariş durumu güncellemelerini dinle
+      socketService.on('order_status_update', (data: { orderId: number, status: string }) => {
+        console.log('Sipariş durumu güncellendi:', data);
+        
+        // İlgili siparişi customers listesinde güncelle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          return currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              return { ...customer, status: data.status as Customer['status'] };
+            }
+            return customer;
+          });
+        });
+        
+        // Sipariş tamamlandıysa listeden kaldır
+        if (data.status === 'completed' || data.status === 'cancelled') {
+          setCustomers(prev => (prev || []).filter(customer => customer.id !== data.orderId));
         }
       });
     }
@@ -296,34 +360,12 @@ export default function DriverDashboardScreen() {
 
   const loadCustomers = async () => {
     try {
-      // Mock data - gerçek API'den gelecek
-      const mockCustomers: Customer[] = [
-        {
-          id: 1,
-          name: 'Ahmet Yılmaz',
-          phone: '+90 532 123 4567',
-          pickup_location: 'Taksim Meydanı',
-          destination: 'Atatürk Havalimanı',
-          distance: '45 km',
-          estimated_fare: 120,
-          status: 'waiting',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          name: 'Fatma Demir',
-          phone: '+90 533 987 6543',
-          pickup_location: 'Kadıköy İskele',
-          destination: 'Levent Metro',
-          distance: '25 km',
-          estimated_fare: 75,
-          status: 'waiting',
-          created_at: new Date().toISOString(),
-        },
-      ];
-      setCustomers(mockCustomers);
+      // Gerçek sipariş verileri socket'ten gelecek
+      // Bu fonksiyon artık sadece mevcut siparişleri temizlemek için kullanılıyor
+      // Yeni siparişler 'new_order' socket event'i ile gelecek
+      console.log('Mevcut sipariş listesi temizlendi, yeni siparişler socket üzerinden gelecek');
     } catch (error) {
-      showModal('Hata', 'Müşteri listesi alınırken hata oluştu.', 'error');
+      console.error('Sipariş listesi yüklenirken hata:', error);
     }
   };
 
@@ -379,14 +421,30 @@ export default function DriverDashboardScreen() {
         {
           text: 'Kabul Et',
           onPress: () => {
-            setCustomers(prev =>
-              prev.map(customer =>
-                customer.id === customerId
-                  ? { ...customer, status: 'accepted' }
-                  : customer
-              )
-            );
-            showModal('Başarılı', 'Müşteri kabul edildi!', 'success');
+            // Socket üzerinden sipariş kabul et
+            socketService.acceptOrder(customerId);
+          },
+        },
+      ]
+    );
+  };
+
+  const updateOrderStatus = (orderId: number, status: 'started' | 'completed') => {
+    const statusText = status === 'started' ? 'Yük Alındı' : 'Teslim Edildi';
+    const confirmText = status === 'started' ? 'Yükü aldığınızı onaylıyor musunuz?' : 'Yükü teslim ettiğinizi onaylıyor musunuz?';
+    
+    showModal(
+      statusText,
+      confirmText,
+      'warning',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Onayla',
+          onPress: () => {
+            // Socket üzerinden sipariş durumu güncelle
+            socketService.updateOrderStatus(orderId, status);
+            showModal('Başarılı', `Sipariş durumu güncellendi: ${statusText}`, 'success');
           },
         },
       ]
@@ -416,6 +474,7 @@ export default function DriverDashboardScreen() {
       switch (status) {
         case 'waiting': return '#FFD700';
         case 'accepted': return '#FFD700';
+        case 'confirmed': return '#10B981';
         case 'in_progress': return '#3B82F6';
         case 'completed': return '#6B7280';
         default: return '#FFD700';
@@ -426,6 +485,7 @@ export default function DriverDashboardScreen() {
       switch (status) {
         case 'waiting': return 'Bekliyor';
         case 'accepted': return 'Kabul Edildi';
+        case 'confirmed': return 'Onaylandı';
         case 'in_progress': return 'Devam Ediyor';
         case 'completed': return 'Tamamlandı';
         default: return 'Bekliyor';
@@ -467,6 +527,30 @@ export default function DriverDashboardScreen() {
           >
             <Text style={styles.acceptButtonText}>Kabul Et</Text>
           </TouchableOpacity>
+        )}
+        
+        {item.status === 'confirmed' && (
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.startButton]}
+              onPress={() => updateOrderStatus(item.id, 'started')}
+            >
+              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Yük Aldım</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {item.status === 'in_progress' && (
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.completeButton]}
+              onPress={() => updateOrderStatus(item.id, 'completed')}
+            >
+              <Ionicons name="flag" size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Teslim Ettim</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     );
@@ -993,5 +1077,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#9CA3AF',
     marginTop: 12,
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  startButton: {
+    backgroundColor: '#10B981',
+  },
+  completeButton: {
+    backgroundColor: '#EF4444',
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginLeft: 8,
   },
 });

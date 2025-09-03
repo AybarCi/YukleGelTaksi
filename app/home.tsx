@@ -18,6 +18,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -79,9 +80,134 @@ function HomeScreen() {
   const destinationLocationRef = useRef<VarisNoktasiInputRef>(null);
   const mapRef = useRef<any>(null);
   
-  const { logout, showModal, user, token } = useAuth();
+  const { logout, showModal, user, token, refreshAuthToken } = useAuth();
 
+  // Confirm code modal için state
+  const [confirmCodeModalVisible, setConfirmCodeModalVisible] = useState(false);
+  const [confirmCode, setConfirmCode] = useState('');
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [userConfirmCode, setUserConfirmCode] = useState('');
 
+  // Cancel order modal için state
+  const [cancelOrderModalVisible, setCancelOrderModalVisible] = useState(false);
+  const [cancelConfirmCode, setCancelConfirmCode] = useState('');
+  const [userCancelCode, setUserCancelCode] = useState('');
+  const [cancellationFee, setCancellationFee] = useState(0);
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+
+  // Mevcut sipariş durumu
+  const [currentOrder, setCurrentOrder] = useState<any>(null);
+
+  // Confirm code modal'ını göster
+  const showConfirmCodeModal = useCallback((orderId: string, code: string) => {
+    setCurrentOrderId(orderId);
+    setConfirmCode(code);
+    setConfirmCodeModalVisible(true);
+  }, []);
+
+  // Doğrulama kodunu kontrol et
+  const handleConfirmCode = useCallback(() => {
+    if (!currentOrderId || !userConfirmCode) {
+      showModal('Hata', 'Lütfen doğrulama kodunu girin.', 'error');
+      return;
+    }
+
+    // Socket üzerinden confirm code doğrulama gönder
+    const success = socketService.verifyConfirmCode(parseInt(currentOrderId), userConfirmCode);
+    
+    if (!success) {
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+    }
+  }, [userConfirmCode, currentOrderId, showModal]);
+
+  // Sipariş iptal etme modalını göster
+  const showCancelOrderModal = useCallback((orderId: string, code: string, fee: number) => {
+    setCancelOrderId(orderId);
+    setCancelConfirmCode(code);
+    setCancellationFee(fee);
+    setCancelOrderModalVisible(true);
+  }, []);
+
+  // Sipariş iptal etme işlemi
+  const handleCancelOrder = useCallback(() => {
+    if (!cancelOrderId || !userCancelCode) {
+      showModal('Hata', 'Lütfen doğrulama kodunu girin.', 'error');
+      return;
+    }
+
+    // Socket üzerinden cancel order doğrulama gönder
+    const success = socketService.cancelOrderWithCode(parseInt(cancelOrderId), userCancelCode);
+    
+    if (!success) {
+      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+    }
+  }, [userCancelCode, cancelOrderId, showModal]);
+
+  // Sipariş iptal etme başlatma
+  const initiateCancelOrder = useCallback(async () => {
+    try {
+      const existingOrder = await AsyncStorage.getItem('currentOrder');
+      if (existingOrder) {
+        const orderInfo = JSON.parse(existingOrder);
+        
+        // Socket üzerinden iptal işlemini başlat
+        const success = socketService.cancelOrder(orderInfo.orderId);
+        
+        if (!success) {
+          showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+        }
+      } else {
+        showModal('Hata', 'Aktif sipariş bulunamadı.', 'error');
+      }
+    } catch (error) {
+      console.error('Cancel order error:', error);
+      showModal('Hata', 'Sipariş iptal edilirken bir hata oluştu.', 'error');
+    }
+  }, [showModal]);
+
+  // AsyncStorage'dan mevcut sipariş bilgilerini kontrol et
+  const checkExistingOrder = useCallback(async () => {
+    try {
+      const existingOrder = await AsyncStorage.getItem('currentOrder');
+      if (existingOrder) {
+        const orderInfo = JSON.parse(existingOrder);
+        
+        // API'den sipariş durumunu kontrol et
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/orders/${orderInfo.orderId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.order) {
+            // Sipariş hala aktif ise bilgileri form alanlarına set et
+            if (['pending', 'accepted', 'started'].includes(result.order.status)) {
+              setCurrentOrder(result.order);
+              setPickupLocation(orderInfo.pickupAddress);
+              setDestinationLocation(orderInfo.destinationAddress);
+              setWeight(orderInfo.weight.toString());
+              setDistance(orderInfo.distance);
+              setCargoImage(orderInfo.cargoImage);
+              setNotes(orderInfo.notes || '');
+              
+              showModal('Devam Eden Sipariş', `Devam eden siparişiniz bulundu. Durum: ${result.order.status}`, 'info');
+            } else {
+              // Sipariş tamamlanmış veya iptal edilmişse AsyncStorage'ı temizle
+              setCurrentOrder(null);
+              await AsyncStorage.removeItem('currentOrder');
+            }
+          }
+        } else {
+          // API'den sipariş bulunamadıysa AsyncStorage'ı temizle
+          await AsyncStorage.removeItem('currentOrder');
+        }
+      }
+    } catch (error) {
+      console.error('Mevcut sipariş kontrol hatası:', error);
+    }
+  }, [showModal]);
 
   // Aktif input alanını scroll etmek için fonksiyon
   const scrollToInput = useCallback((inputIndex: number) => {
@@ -195,6 +321,7 @@ function HomeScreen() {
     };
     
     initializeApp();
+    checkExistingOrder();
     
     if (token) {
       socketService.connect(token);
@@ -273,15 +400,104 @@ function HomeScreen() {
     });
     
     socketService.on('order_accepted', (data: any) => {
-      showModal('Sipariş Kabul Edildi', `Siparişiniz ${data.driverName} tarafından kabul edildi.`, 'success');
+      // Hammaliye bilgisi ile yeniden hesaplanmış sipariş bilgisini göster
+      const { driver, estimatedArrival, updatedPrice, laborCost } = data;
+      const message = `Siparişiniz ${driver.name} tarafından kabul edildi.\n\nSürücü Bilgileri:\n${driver.vehicle}\nTahmini Varış: ${estimatedArrival} dakika\n\nGüncellenmiş Fiyat:\nTaşıma Ücreti: ${updatedPrice - laborCost} TL\nHammaliye: ${laborCost} TL\nToplam: ${updatedPrice} TL\n\nOnaylıyor musunuz?`;
+      
+      Alert.alert(
+        'Sipariş Kabul Edildi',
+        message,
+        [
+          {
+            text: 'İptal',
+            style: 'cancel',
+            onPress: () => {
+               // Sipariş iptal edildi socket event'i gönder
+               socketService.rejectOrder(data.orderId);
+             }
+          },
+          {
+            text: 'Onayla',
+            onPress: () => {
+               // Müşteri onayladı, socket room oluştur
+               socketService.confirmOrder(data.orderId);
+               showModal('Sipariş Onaylandı', 'Sürücünüz yola çıkıyor. Canlı takip başlatılıyor.', 'success');
+             }
+          }
+        ]
+      );
     });
     
     socketService.on('order_status_update', (data: any) => {
-      showModal('Sipariş Durumu', `Sipariş durumu: ${data.status}`, 'info');
+      console.log('Order status updated:', data);
+      
+      let message = '';
+      switch (data.status) {
+        case 'started':
+          message = 'Sürücü yükünüzü aldı ve yola çıktı.';
+          Alert.alert('Sipariş Durumu', message);
+          break;
+        case 'completed':
+          message = `Sipariş tamamlandı! Doğrulama kodu: ${data.confirmCode}`;
+          Alert.alert(
+            'Sipariş Tamamlandı',
+            message,
+            [
+              {
+                text: 'Doğrula',
+                onPress: () => showConfirmCodeModal(data.orderId, data.confirmCode)
+              }
+            ]
+          );
+          break;
+        case 'cancelled':
+          message = 'Sipariş iptal edildi.';
+          Alert.alert('Sipariş Durumu', message);
+          AsyncStorage.removeItem('currentOrder');
+          break;
+        default:
+          message = `Sipariş durumu güncellendi: ${data.status}`;
+          Alert.alert('Sipariş Durumu', message);
+      }
     });
     
     socketService.on('orderStatusUpdate', (data: any) => {
       showModal('Sipariş Güncellendi', `Sipariş durumu güncellendi: ${data.status}`, 'info');
+    });
+
+    // Confirm code doğrulama sonuçlarını dinle
+    socketService.on('confirm_code_verified', (data: any) => {
+      console.log('Confirm code verified:', data);
+      setConfirmCodeModalVisible(false);
+      setUserConfirmCode('');
+      AsyncStorage.removeItem('currentOrder');
+      setCurrentOrder(null);
+      showModal('Başarılı', data.message || 'Sipariş başarıyla doğrulandı!', 'success');
+    });
+
+    socketService.on('confirm_code_error', (data: any) => {
+      console.log('Confirm code error:', data);
+      showModal('Hata', data.message || 'Doğrulama kodu yanlış!', 'error');
+    });
+
+    // Sipariş iptal etme event'lerini dinle
+    socketService.on('cancel_order_confirmation_required', (data: any) => {
+      console.log('Cancel order confirmation required:', data);
+      showCancelOrderModal(data.orderId.toString(), data.confirmCode, data.cancellationFee);
+    });
+
+    socketService.on('order_cancelled_successfully', (data: any) => {
+      console.log('Order cancelled successfully:', data);
+      setCancelOrderModalVisible(false);
+      setUserCancelCode('');
+      setCurrentOrder(null);
+      AsyncStorage.removeItem('currentOrder');
+      showModal('Sipariş İptal Edildi', data.message || 'Sipariş başarıyla iptal edildi!', 'success');
+    });
+
+    socketService.on('cancel_order_error', (data: any) => {
+      console.log('Cancel order error:', data);
+      showModal('Hata', data.message || 'Sipariş iptal edilirken bir hata oluştu!', 'error');
     });
     
     socketService.on('driver_offline', (data: any) => {
@@ -319,6 +535,11 @@ function HomeScreen() {
       socketService.off('order_accepted');
       socketService.off('order_status_update');
       socketService.off('orderStatusUpdate');
+      socketService.off('confirm_code_verified');
+      socketService.off('confirm_code_error');
+      socketService.off('cancel_order_confirmation_required');
+      socketService.off('order_cancelled_successfully');
+      socketService.off('cancel_order_error');
       socketService.off('driver_offline');
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
@@ -533,41 +754,102 @@ function HomeScreen() {
   }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints]);
   
   const handleCreateOrder = useCallback(async () => {
-    if (!weight || !pickupCoords || !destinationCoords) {
+    if (!weight || !pickupCoords || !destinationCoords || !cargoImage) {
       showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
       return;
     }
     
     try {
-      const orderData = {
-         pickupAddress: pickupLocation,
-         pickupLatitude: pickupCoords.latitude,
-         pickupLongitude: pickupCoords.longitude,
-         destinationAddress: destinationLocation,
-         destinationLatitude: destinationCoords.latitude,
-         destinationLongitude: destinationCoords.longitude,
-         weight: parseFloat(weight),
-         laborCount: 1,
-         estimatedPrice: distance ? Math.round(distance * 15) : 50
-       };
+      // FormData oluştur
+      const formData = new FormData();
+      formData.append('pickupAddress', pickupLocation);
+      formData.append('pickupLatitude', pickupCoords.latitude.toString());
+      formData.append('pickupLongitude', pickupCoords.longitude.toString());
+      formData.append('destinationAddress', destinationLocation);
+      formData.append('destinationLatitude', destinationCoords.latitude.toString());
+      formData.append('destinationLongitude', destinationCoords.longitude.toString());
+      formData.append('distance', (distance || 0).toString());
+      formData.append('estimatedTime', (routeDuration || 30).toString());
+      formData.append('notes', notes || '');
+      formData.append('weightKg', parseFloat(weight).toString());
+      formData.append('laborRequired', 'true');
+      formData.append('laborCount', '1');
       
-      await socketService.createOrder(orderData);
-      showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu.', 'success');
+      // Cargo image'ı FormData'ya ekle
+      if (cargoImage) {
+        const response = await fetch(cargoImage);
+        const blob = await response.blob();
+        formData.append('cargoPhoto', blob, 'cargo.jpg');
+      }
       
-      setWeight('');
-      setNotes('');
-      setCargoImage(null);
-      setPickupLocation('');
-      setDestinationLocation('');
-      setPickupCoords(null);
-      setDestinationCoords(null);
-      setDistance(null);
+      // API'ye sipariş gönder
+      let response = await fetch(`${API_CONFIG.BASE_URL}/api/orders/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      
+      // Token süresi dolmuşsa yenile ve tekrar dene
+      if (response.status === 401) {
+        const refreshSuccess = await refreshAuthToken();
+        if (refreshSuccess) {
+          response = await fetch(`${API_CONFIG.BASE_URL}/api/orders/create`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          });
+        } else {
+          showModal('Oturum Süresi Doldu', 'Lütfen tekrar giriş yapın.', 'error');
+          return;
+        }
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Sipariş bilgilerini AsyncStorage'a kaydet
+        const orderInfo = {
+          orderId: result.order.id,
+          status: 'pending',
+          pickupAddress: pickupLocation,
+          destinationAddress: destinationLocation,
+          weight: parseFloat(weight),
+          distance: distance,
+          estimatedPrice: result.order.estimatedPrice,
+          createdAt: new Date().toISOString(),
+          cargoImage: cargoImage,
+          notes: notes
+        };
+        
+        await AsyncStorage.setItem('currentOrder', JSON.stringify(orderInfo));
+        setCurrentOrder(result.order);
+        
+        showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu. Yakındaki sürücülere bildirim gönderildi.', 'success');
+        
+        // Form alanlarını temizle
+        setWeight('');
+        setNotes('');
+        setCargoImage(null);
+        setPickupLocation('');
+        setDestinationLocation('');
+        setPickupCoords(null);
+        setDestinationCoords(null);
+        setDistance(null);
+        setRouteCoordinates([]);
+        setRouteDuration(null);
+      } else {
+        showModal('Hata', result.error || 'Sipariş oluşturulurken bir hata oluştu.', 'error');
+      }
       
     } catch (error) {
       console.error('Sipariş oluşturma hatası:', error);
       showModal('Hata', 'Sipariş oluşturulurken bir hata oluştu.', 'error');
     }
-  }, [weight, pickupCoords, destinationCoords, pickupLocation, destinationLocation, distance, showModal]);
+  }, [weight, pickupCoords, destinationCoords, cargoImage, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal]);
 
   const handleCurrentLocationToggle = useCallback((value: boolean) => {
     setUseCurrentLocation(value);
@@ -962,7 +1244,7 @@ function HomeScreen() {
             )}
 
             <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Fotoğrafı (Opsiyonel)</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Fotoğrafı *</Text>
               <TouchableOpacity
                 style={{
                   borderWidth: 2,
@@ -1028,13 +1310,31 @@ function HomeScreen() {
             <TouchableOpacity
               style={[
                 styles.createOrderButton,
-                (!weight || !pickupCoords || !destinationCoords) && { opacity: 0.5 }
+                (!weight || !pickupCoords || !destinationCoords || !cargoImage) && { opacity: 0.5 }
               ]}
               onPress={handleCreateOrder}
-              disabled={!weight || !pickupCoords || !destinationCoords}
+              disabled={!weight || !pickupCoords || !destinationCoords || !cargoImage}
             >
               <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>Sipariş Oluştur</Text>
             </TouchableOpacity>
+
+            {/* Sipariş İptal Butonu - Sadece aktif sipariş varsa göster */}
+            {currentOrder && ['pending', 'accepted', 'started'].includes(currentOrder.status) && (
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#DC2626',
+                  borderRadius: 8,
+                  padding: 16,
+                  alignItems: 'center',
+                  marginTop: 12,
+                  borderWidth: 1,
+                  borderColor: '#B91C1C'
+                }}
+                onPress={initiateCancelOrder}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Siparişi İptal Et</Text>
+              </TouchableOpacity>
+            )}
 
             <View style={{ height: 100 }} />
           </ScrollView>
@@ -1083,6 +1383,178 @@ function HomeScreen() {
                 onPress={() => setLocationModalVisible(false)}
               >
                 <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Tamam</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm Code Modal */}
+      <Modal
+        visible={confirmCodeModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setConfirmCodeModalVisible(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            margin: 20,
+            borderRadius: 12,
+            padding: 20,
+            width: '80%',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#1F2937', textAlign: 'center' }}>
+              Sipariş Doğrulama
+            </Text>
+            <Text style={{ fontSize: 16, marginBottom: 20, color: '#6B7280', textAlign: 'center' }}>
+              Sürücünün size verdiği 4 haneli doğrulama kodunu girin:
+            </Text>
+            <TextInput
+              style={{
+                borderWidth: 1,
+                borderColor: '#D1D5DB',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 18,
+                textAlign: 'center',
+                marginBottom: 20,
+                letterSpacing: 4
+              }}
+              placeholder="0000"
+              value={userConfirmCode}
+              onChangeText={setUserConfirmCode}
+              keyboardType="numeric"
+              maxLength={4}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#6B7280',
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  flex: 1,
+                  marginRight: 10
+                }}
+                onPress={() => {
+                  setConfirmCodeModalVisible(false);
+                  setUserConfirmCode('');
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>İptal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#10B981',
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  flex: 1,
+                  marginLeft: 10
+                }}
+                onPress={handleConfirmCode}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>Doğrula</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Cancel Order Modal */}
+      <Modal
+        visible={cancelOrderModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setCancelOrderModalVisible(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            margin: 20,
+            borderRadius: 12,
+            padding: 20,
+            width: '80%',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#DC2626', textAlign: 'center' }}>
+              Sipariş İptal Et
+            </Text>
+            <Text style={{ fontSize: 16, marginBottom: 12, color: '#6B7280', textAlign: 'center' }}>
+              Siparişinizi iptal etmek istediğinizden emin misiniz?
+            </Text>
+            <Text style={{ fontSize: 14, marginBottom: 20, color: '#DC2626', textAlign: 'center', fontWeight: '600' }}>
+              Cezai Tutar: ₺{cancellationFee}
+            </Text>
+            <Text style={{ fontSize: 16, marginBottom: 20, color: '#6B7280', textAlign: 'center' }}>
+              İptal işlemini onaylamak için 4 haneli kodu girin:
+            </Text>
+            <TextInput
+              style={{
+                borderWidth: 1,
+                borderColor: '#D1D5DB',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 18,
+                textAlign: 'center',
+                marginBottom: 20,
+                letterSpacing: 4
+              }}
+              placeholder="0000"
+              value={userCancelCode}
+              onChangeText={setUserCancelCode}
+              keyboardType="numeric"
+              maxLength={4}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#6B7280',
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  flex: 1,
+                  marginRight: 10
+                }}
+                onPress={() => {
+                  setCancelOrderModalVisible(false);
+                  setUserCancelCode('');
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#DC2626',
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  flex: 1,
+                  marginLeft: 10
+                }}
+                onPress={handleCancelOrder}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>İptal Et</Text>
               </TouchableOpacity>
             </View>
           </View>

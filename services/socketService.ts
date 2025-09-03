@@ -347,6 +347,46 @@ class SocketService {
     return true;
   }
 
+  public rejectOrder(orderId: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('customer_reject_order', { orderId });
+    return true;
+  }
+
+  public confirmOrder(orderId: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('customer_confirm_order', { orderId });
+    return true;
+  }
+
+  public verifyConfirmCode(orderId: number, confirmCode: string) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('verify_confirm_code', { orderId, confirmCode });
+    return true;
+  }
+
+  public cancelOrderWithCode(orderId: number, confirmCode: string) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('cancel_order_with_code', { orderId, confirmCode });
+    return true;
+  }
+
   // Event listener management
   public on(event: string, callback: Function) {
     if (!this.eventListeners.has(event)) {

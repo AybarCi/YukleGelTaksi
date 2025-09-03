@@ -129,46 +129,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .input('destination_latitude', destinationLatitude)
       .input('destination_longitude', destinationLongitude)
       .input('cargo_photo_url', cargoPhotoUrl)
-      .input('notes', notes)
+      .input('customer_notes', notes)
       .input('distance_km', distance)
-      .input('estimated_time_minutes', estimatedTime)
       .input('weight_kg', weightKg)
-      .input('labor_required', laborRequired)
       .input('labor_count', laborCount)
-      .input('estimated_price', estimatedPrice)
+      .input('base_price', basePrice)
+      .input('distance_price', distance * pricePerKm)
+      .input('weight_price', weightPrice)
+      .input('labor_price', laborPrice)
+      .input('total_price', estimatedPrice)
       .query(`
         INSERT INTO orders (
           user_id, pickup_address, pickup_latitude, pickup_longitude,
           destination_address, destination_latitude, destination_longitude,
-          cargo_photo_url, notes, distance_km, estimated_time_minutes,
-          weight_kg, labor_required, labor_count, estimated_price,
-          order_status, created_at
+          cargo_photo_url, customer_notes, distance_km,
+          weight_kg, labor_count, base_price, distance_price,
+          weight_price, labor_price, total_price, status, created_at
         )
         OUTPUT INSERTED.id, INSERTED.created_at
         VALUES (
           @user_id, @pickup_address, @pickup_latitude, @pickup_longitude,
           @destination_address, @destination_latitude, @destination_longitude,
-          @cargo_photo_url, @notes, @distance_km, @estimated_time_minutes,
-          @weight_kg, @labor_required, @labor_count, @estimated_price,
-          'pending', GETDATE()
+          @cargo_photo_url, @customer_notes, @distance_km,
+          @weight_kg, @labor_count, @base_price, @distance_price,
+          @weight_price, @labor_price, @total_price, 'pending', GETDATE()
         )
       `);
 
     const newOrder = result.recordset[0];
 
-    // Log order status change
-    await pool.request()
-      .input('order_id', newOrder.id)
-      .input('new_status', 'pending')
-      .input('changed_by_user_id', authResult.user.id)
-      .query(`
-        INSERT INTO order_status_history (
-          order_id, old_status, new_status, changed_by_user_id, created_at
-        )
-        VALUES (
-          @order_id, NULL, @new_status, @changed_by_user_id, GETDATE()
-        )
-      `);
+    // Log order status change (skip if table doesn't exist)
+    try {
+      await pool.request()
+        .input('order_id', newOrder.id)
+        .input('new_status', 'pending')
+        .input('changed_by_user_id', authResult.user.id)
+        .query(`
+          INSERT INTO order_status_history (
+            order_id, old_status, new_status, changed_by_user_id, created_at
+          )
+          VALUES (
+            @order_id, NULL, @new_status, @changed_by_user_id, GETDATE()
+          )
+        `);
+    } catch (historyError) {
+      console.log('Order status history table not found, skipping history log');
+    }
 
     // Socket.IO ile yakındaki sürücülere bildirim gönder
     try {

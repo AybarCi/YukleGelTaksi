@@ -24,47 +24,19 @@ export default function OffersStep({ data, onBack, onSelectDriver }: OffersStepP
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate fetching offers from drivers
-    const fetchOffers = () => {
-      setTimeout(() => {
-        const mockOffers: DriverOffer[] = [
-          {
-            id: 1,
-            driverName: 'Mehmet Kaya',
-            rating: 4.8,
-            completedTrips: 245,
-            vehicleType: 'Ford Transit',
-            price: 120,
-            estimatedTime: '15 dk',
-            distance: '12 km',
-          },
-          {
-            id: 2,
-            driverName: 'Fatma Şahin',
-            rating: 4.9,
-            completedTrips: 189,
-            vehicleType: 'Fiat Doblo',
-            price: 110,
-            estimatedTime: '18 dk',
-            distance: '12 km',
-          },
-          {
-            id: 3,
-            driverName: 'Ali Demir',
-            rating: 4.7,
-            completedTrips: 156,
-            vehicleType: 'Renault Kangoo',
-            price: 135,
-            estimatedTime: '12 dk',
-            distance: '12 km',
-          },
-        ];
-        setOffers(mockOffers);
-        setLoading(false);
-      }, 2000);
-    };
-
-    fetchOffers();
+    // Real driver offers will come from socket events
+    // For now, just show loading state until real offers arrive
+    // Socket integration will be handled in the parent component
+    
+    // Set initial empty state
+    setOffers([]);
+    setLoading(true);
+    
+    // TODO: Listen for driver offer events from socket
+    // socketService.on('driver_offer', (offerData) => {
+    //   setOffers(prev => [...prev, offerData]);
+    //   setLoading(false);
+    // });
   }, []);
 
   const handleSelectOffer = (offer: DriverOffer) => {
