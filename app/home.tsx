@@ -334,6 +334,9 @@ function HomeScreen() {
       setPickupCoords(coords);
       setPickupLocation('Mevcut Konumum');
       
+      // Input alanını da güncelle
+      pickupLocationRef.current?.setAddressText('Mevcut Konumum');
+      
       // Haritayı mevcut konuma animasyon ile götür
       if (mapRef.current) {
         const screenHeight = Dimensions.get('window').height;
@@ -351,6 +354,8 @@ function HomeScreen() {
     } else if (!useCurrentLocation) {
       setPickupCoords(null);
       setPickupLocation('');
+      // Input alanını da temizle
+      pickupLocationRef.current?.setAddressText('');
     }
   }, [useCurrentLocation, userLocation]);
   
@@ -455,7 +460,7 @@ function HomeScreen() {
   }, [calculateDistance]);
 
   const calculateZoomLevel = useCallback((distance: number) => {
-    // Mesafeye göre zoom seviyesi hesapla - optimize edilmiş değerler
+    // Mesafeye göre zoom seviyesi hesapla - optimize edilmiş değerler (daha geniş görüş alanı)
     if (distance <= 1) {
       return { latitudeDelta: 0.008, longitudeDelta: 0.006 }; // Çok yakın mesafe
     } else if (distance <= 5) {
@@ -463,11 +468,13 @@ function HomeScreen() {
     } else if (distance <= 15) {
       return { latitudeDelta: 0.08, longitudeDelta: 0.06 }; // Orta mesafe
     } else if (distance <= 50) {
-      return { latitudeDelta: 0.25, longitudeDelta: 0.2 }; // Uzak mesafe
+      return { latitudeDelta: 0.6, longitudeDelta: 0.48 }; // Uzak mesafe - daha da artırıldı
     } else if (distance <= 100) {
-      return { latitudeDelta: 0.5, longitudeDelta: 0.4 }; // Çok uzak mesafe
+      return { latitudeDelta: 1.2, longitudeDelta: 0.96 }; // Çok uzak mesafe - daha da artırıldı
+    } else if (distance <= 200) {
+      return { latitudeDelta: 2.0, longitudeDelta: 1.6 }; // Aşırı uzak mesafe - daha da artırıldı
     } else {
-      return { latitudeDelta: 1.0, longitudeDelta: 0.8 }; // Aşırı uzak mesafe
+      return { latitudeDelta: 3.0, longitudeDelta: 2.4 }; // Çok aşırı uzak mesafe - daha da artırıldı
     }
   }, []);
 
@@ -565,6 +572,54 @@ function HomeScreen() {
   const handleCurrentLocationToggle = useCallback((value: boolean) => {
     setUseCurrentLocation(value);
   }, []);
+
+  const handlePickupCurrentLocation = useCallback(async () => {
+    if (!userLocation) {
+      await getCurrentLocation(true);
+      return;
+    }
+    
+    const coords = {
+      latitude: userLocation.coords.latitude,
+      longitude: userLocation.coords.longitude
+    };
+    
+    setPickupCoords(coords);
+    setPickupLocation('Mevcut Konumum');
+    
+    // Haritayı güncelle
+    if (mapRef.current) {
+      if (destinationCoords) {
+        animateToShowBothPoints(coords, destinationCoords);
+      } else {
+        animateToRegionWithOffset(coords.latitude, coords.longitude, 0.008, 0.006);
+      }
+    }
+  }, [userLocation, destinationCoords, getCurrentLocation, animateToShowBothPoints, animateToRegionWithOffset]);
+
+  const handleDestinationCurrentLocation = useCallback(async () => {
+    if (!userLocation) {
+      await getCurrentLocation(true);
+      return;
+    }
+    
+    const coords = {
+      latitude: userLocation.coords.latitude,
+      longitude: userLocation.coords.longitude
+    };
+    
+    setDestinationCoords(coords);
+    setDestinationLocation('Mevcut Konumum');
+    
+    // Haritayı güncelle
+    if (mapRef.current) {
+      if (pickupCoords) {
+        animateToShowBothPoints(pickupCoords, coords);
+      } else {
+        animateToRegionWithOffset(coords.latitude, coords.longitude, 0.008, 0.006);
+      }
+    }
+  }, [userLocation, pickupCoords, getCurrentLocation, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const handlePickupLocationSelect = useCallback((location: any) => {
     console.log('=== PICKUP LOCATION SELECT ===');
@@ -877,40 +932,20 @@ function HomeScreen() {
             </View>
 
             <View style={{ marginBottom: 20 }}>
-              <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: '#F3F4F6',
-                padding: 16,
-                borderRadius: 8,
-                marginBottom: 16
-              }}>
-                <Text style={{ fontSize: 16, fontWeight: '600', color: '#1F2937' }}>Mevcut Konumumu Kullan</Text>
-                <Switch
-                  value={useCurrentLocation}
-                  onValueChange={handleCurrentLocationToggle}
-                  trackColor={{ false: '#D1D5DB', true: '#FCD34D' }}
-                  thumbColor={useCurrentLocation ? '#FFD700' : '#9CA3AF'}
-                />
-              </View>
+              <YukKonumuInput
+                  ref={pickupLocationRef}
+                  onLocationSelect={handlePickupLocationSelect}
+                  onFocus={() => setActiveInputIndex(1)}
+                  onCurrentLocationPress={handlePickupCurrentLocation}
+               />
             </View>
-
-            {!useCurrentLocation && (
-              <View style={{ marginBottom: 20 }}>
-                <YukKonumuInput
-                    ref={pickupLocationRef}
-                    onLocationSelect={handlePickupLocationSelect}
-                    onFocus={() => setActiveInputIndex(1)}
-                 />
-              </View>
-            )}
 
             <View style={{ marginBottom: 20 }}>
               <VarisNoktasiInput
                   ref={destinationLocationRef}
                   onLocationSelect={handleDestinationLocationSelect}
                   onFocus={() => setActiveInputIndex(2)}
+                  onCurrentLocationPress={handleDestinationCurrentLocation}
                />
             </View>
 
