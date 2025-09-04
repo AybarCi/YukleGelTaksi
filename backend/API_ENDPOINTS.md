@@ -1,6 +1,6 @@
 # YükleGel Taksi Backend API Endpoints
 
-Backend sunucusu `http://localhost:3001` adresinde çalışmaktadır.
+Backend sunucusu `http://192.168.1.106:3001` adresinde çalışmaktadır.
 
 ## Authentication Endpoints
 

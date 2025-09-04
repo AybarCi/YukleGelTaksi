@@ -14,6 +14,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_CONFIG } from '../config/api';
 
 export default function SettingsScreen() {
   const { user, logout, showModal } = useAuth();
@@ -36,7 +37,7 @@ export default function SettingsScreen() {
         return;
       }
 
-      const response = await fetch('http://192.168.1.134:3001/api/customer/settings', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/customer/settings`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -108,7 +109,7 @@ export default function SettingsScreen() {
         settingsToSave.vibration_enabled = newSettings.vibration;
       }
 
-      const response = await fetch('http://192.168.1.134:3001/api/customer/settings', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/customer/settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -239,7 +240,7 @@ export default function SettingsScreen() {
                   return;
                 }
 
-                const response = await fetch('http://192.168.1.134:3001/api/users/freeze-account', {
+                const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/freeze-account`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -288,7 +289,7 @@ export default function SettingsScreen() {
                    return;
                  }
 
-                 const response = await fetch('http://192.168.1.134:3001/api/users/delete-account', {
+                 const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/delete-account`, {
                  method: 'DELETE',
                  headers: {
                    'Content-Type': 'application/json',
@@ -333,7 +334,7 @@ export default function SettingsScreen() {
                 return;
               }
 
-              const response = await fetch('http://192.168.1.134:3001/api/users/delete-account', {
+              const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/delete-account`, {
                 method: 'DELETE',
                 headers: {
                   'Content-Type': 'application/json',

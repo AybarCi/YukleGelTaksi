@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateSupervisorToken } from '../../../middleware/supervisorAuth';
 import DatabaseConnection from '../../../config/database';
+import { CacheManager, CacheKeys, CacheTTL } from '../../../lib/redis';
 
 interface ApiResponse {
   success?: boolean;
@@ -27,7 +28,12 @@ export async function GET(request: NextRequest): Promise<Response> {
       };
       return new Response(JSON.stringify(response), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
       });
     }
 
@@ -37,22 +43,73 @@ export async function GET(request: NextRequest): Promise<Response> {
     const search = searchParams.get('search') || '';
     const offset = (page - 1) * limit;
 
+    // Initialize cache manager
+    const cache = new CacheManager();
+    const cacheKey = CacheKeys.usersList(page, limit, search);
+    const countCacheKey = CacheKeys.usersCount(search);
+
     try {
+      // Try to get from cache first
+      const cachedData = await cache.get(cacheKey);
+      if (cachedData) {
+        return new Response(JSON.stringify({
+          success: true,
+          data: cachedData,
+          cached: true
+        }), {
+          status: 200,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          }
+        });
+      }
+
       const db = DatabaseConnection.getInstance();
       const pool = await db.connect();
 
-      // Search condition
+      // Search condition - Optimized for better performance
       let whereClause = 'WHERE 1=1';
       const params: any = {};
       
       if (search) {
-        whereClause += ` AND (
-          first_name LIKE @search OR 
-          last_name LIKE @search OR 
-          phone_number LIKE @search OR 
-          email LIKE @search
-        )`;
-        params.search = `%${search}%`;
+        const searchTerm = search.trim();
+        
+        // Exact phone number match (most common search)
+        if (/^\+?[0-9\s\-\(\)]+$/.test(searchTerm)) {
+          whereClause += ` AND phone_number LIKE @phoneSearch`;
+          params.phoneSearch = `%${searchTerm.replace(/[\s\-\(\)]/g, '')}%`;
+        }
+        // Email search (exact domain or username)
+        else if (searchTerm.includes('@')) {
+          whereClause += ` AND email LIKE @emailSearch`;
+          params.emailSearch = `%${searchTerm}%`;
+        }
+        // Name search - optimized with separate conditions
+        else {
+          // Split search term for better name matching
+          const nameParts = searchTerm.split(' ').filter(part => part.length > 0);
+          
+          if (nameParts.length === 1) {
+            // Single word - search in both first and last name
+            whereClause += ` AND (
+              first_name LIKE @nameSearch OR 
+              last_name LIKE @nameSearch
+            )`;
+            params.nameSearch = `${nameParts[0]}%`; // Prefix search is faster
+          } else if (nameParts.length >= 2) {
+            // Multiple words - assume first name + last name
+            whereClause += ` AND (
+              (first_name LIKE @firstNameSearch AND last_name LIKE @lastNameSearch) OR
+              (first_name LIKE @fullNameSearch OR last_name LIKE @fullNameSearch)
+            )`;
+            params.firstNameSearch = `${nameParts[0]}%`;
+            params.lastNameSearch = `${nameParts[1]}%`;
+            params.fullNameSearch = `%${searchTerm}%`;
+          }
+        }
       }
 
       // Get total count
@@ -102,6 +159,21 @@ export async function GET(request: NextRequest): Promise<Response> {
       const usersResult = await usersRequest.query(usersQuery);
       const users = usersResult.recordset;
 
+      // Prepare response data
+      const responseData = {
+        users,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      };
+
+      // Cache the result
+      await cache.set(cacheKey, responseData, CacheTTL.LIST);
+      await cache.set(countCacheKey, { total, totalPages: Math.ceil(total / limit) }, CacheTTL.MEDIUM);
+
       const response: ApiResponse = {
         success: true,
         message: 'Kullanıcılar başarıyla alındı',
@@ -116,7 +188,12 @@ export async function GET(request: NextRequest): Promise<Response> {
 
       return new Response(JSON.stringify(response), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
       });
 
     } catch (dbError) {
@@ -139,7 +216,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     };
     return new Response(JSON.stringify(response), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
     });
   }
 }

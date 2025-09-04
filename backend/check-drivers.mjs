@@ -8,7 +8,7 @@ async function testDriverAPI() {
     console.log('Not: Gerçek test için geçerli bir auth token gerekli.');
     
     // Backend'in çalışıp çalışmadığını kontrol et
-    const healthResponse = await fetch('http://192.168.1.134:3001/api/health');
+    const healthResponse = await fetch('http://192.168.1.106:3001/api/health');
     if (healthResponse.ok) {
       console.log('✓ Backend API çalışıyor');
     } else {

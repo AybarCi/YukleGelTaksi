@@ -72,7 +72,14 @@ export async function GET(request: NextRequest) {
       data: drivers
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, { 
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    });
 
   } catch (error) {
     console.error('Drivers list error:', error);
@@ -82,7 +89,14 @@ export async function GET(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Bilinmeyen hata'
     };
 
-    return NextResponse.json(response, { status: 500 });
+    return NextResponse.json(response, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    });
   }
 }
 
@@ -155,7 +169,14 @@ export async function PUT(request: NextRequest) {
     if (result.rowsAffected[0] === 0) {
       return NextResponse.json(
         { message: 'Sürücü bulunamadı', error: 'Geçersiz ID' },
-        { status: 404 }
+        { 
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          }
+        }
       );
     }
 
@@ -163,7 +184,14 @@ export async function PUT(request: NextRequest) {
       message: 'Sürücü bilgileri başarıyla güncellendi'
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, { 
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    });
 
   } catch (error) {
     console.error('Driver update error:', error);
@@ -173,7 +201,14 @@ export async function PUT(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Bilinmeyen hata'
     };
 
-    return NextResponse.json(response, { status: 500 });
+    return NextResponse.json(response, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    });
   }
 }
 
@@ -200,7 +235,14 @@ export async function DELETE(request: NextRequest) {
     if (result.rowsAffected[0] === 0) {
       return NextResponse.json(
         { message: 'Sürücü bulunamadı', error: 'Geçersiz ID' },
-        { status: 404 }
+        { 
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          }
+        }
       );
     }
 
@@ -208,7 +250,14 @@ export async function DELETE(request: NextRequest) {
       message: 'Sürücü başarıyla silindi'
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, { 
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    });
 
   } catch (error) {
     console.error('Driver delete error:', error);
@@ -218,6 +267,26 @@ export async function DELETE(request: NextRequest) {
       error: error instanceof Error ? error.message : 'Bilinmeyen hata'
     };
 
-    return NextResponse.json(response, { status: 500 });
+    return NextResponse.json(response, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    });
   }
+}
+
+// OPTIONS method for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400'
+    },
+  });
 }

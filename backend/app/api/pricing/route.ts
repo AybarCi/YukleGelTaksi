@@ -36,14 +36,21 @@ export async function GET(request: NextRequest) {
         labor_price: 25.00
       };
       
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         data: defaultSettings
       });
+      
+      // CORS headers ekle
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return response;
     }
 
     const settings = result.recordset[0];
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         id: settings.id,
@@ -55,14 +62,41 @@ export async function GET(request: NextRequest) {
         updated_at: settings.updated_at
       }
     });
+    
+    // CORS headers ekle
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return response;
 
   } catch (error) {
     console.error('Pricing settings fetch error:', error);
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       { error: 'Fiyatlandırma ayarları alınırken hata oluştu' },
       { status: 500 }
     );
+    
+    // CORS headers ekle
+    errorResponse.headers.set('Access-Control-Allow-Origin', '*');
+    errorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+    errorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return errorResponse;
   }
+}
+
+// OPTIONS - CORS preflight request için
+export async function OPTIONS() {
+  const response = new NextResponse(null, { status: 200 });
+  
+  // CORS headers ekle
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  response.headers.set('Access-Control-Max-Age', '86400');
+  
+  return response;
 }
 
 // PUT - Pricing ayarlarını güncelle
@@ -71,10 +105,17 @@ export async function PUT(request: NextRequest) {
     // Supervisor authentication kontrolü
     const authResult = await authenticateSupervisorToken(request);
     if (!authResult.success) {
-      return NextResponse.json(
+      const authErrorResponse = NextResponse.json(
         { error: authResult.message },
         { status: 401 }
       );
+      
+      // CORS headers ekle
+      authErrorResponse.headers.set('Access-Control-Allow-Origin', '*');
+      authErrorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+      authErrorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return authErrorResponse;
     }
 
     const body = await request.json();
@@ -82,17 +123,31 @@ export async function PUT(request: NextRequest) {
 
     // Validation
     if (!base_price || !price_per_km || !price_per_kg || !labor_price) {
-      return NextResponse.json(
+      const validationErrorResponse = NextResponse.json(
         { error: 'Tüm fiyatlandırma parametreleri gereklidir' },
         { status: 400 }
       );
+      
+      // CORS headers ekle
+      validationErrorResponse.headers.set('Access-Control-Allow-Origin', '*');
+      validationErrorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+      validationErrorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return validationErrorResponse;
     }
 
     if (base_price < 0 || price_per_km < 0 || price_per_kg < 0 || labor_price < 0) {
-      return NextResponse.json(
+      const negativeErrorResponse = NextResponse.json(
         { error: 'Fiyatlandırma parametreleri negatif olamaz' },
         { status: 400 }
       );
+      
+      // CORS headers ekle
+      negativeErrorResponse.headers.set('Access-Control-Allow-Origin', '*');
+      negativeErrorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+      negativeErrorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return negativeErrorResponse;
     }
 
     const dbInstance = DatabaseConnection.getInstance();
@@ -140,7 +195,7 @@ export async function PUT(request: NextRequest) {
 
     const updatedSettings = result.recordset[0];
     
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: 'Fiyatlandırma ayarları başarıyla güncellendi',
       data: {
@@ -153,12 +208,26 @@ export async function PUT(request: NextRequest) {
         updated_at: updatedSettings.updated_at
       }
     });
+    
+    // CORS headers ekle
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return response;
 
   } catch (error) {
     console.error('Pricing settings update error:', error);
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       { error: 'Fiyatlandırma ayarları güncellenirken hata oluştu' },
       { status: 500 }
     );
+    
+    // CORS headers ekle
+    errorResponse.headers.set('Access-Control-Allow-Origin', '*');
+    errorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+    errorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return errorResponse;
   }
 }
