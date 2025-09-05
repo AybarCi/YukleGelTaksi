@@ -17,6 +17,7 @@ interface VarisNoktasiInputProps {
   disabledText?: string;
   placeholder?: string;
   onCurrentLocationPress?: () => void;
+  editable?: boolean;
 }
 
 export interface VarisNoktasiInputRef {
@@ -32,9 +33,9 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
     disabled = false, 
     disabledText,
     placeholder = "Yükün teslim edileceği adresi seçin...",
-    onCurrentLocationPress
+    onCurrentLocationPress,
+    editable = true
   }, ref) => {
-    const googlePlacesRef = useRef<any>(null);
     const [inputText, setInputText] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
@@ -89,6 +90,8 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
 
     return (
       <View style={styles.container}>
+
+        
         <View style={styles.headerContainer}>
           <View style={styles.headerLeft}>
             <Ionicons name="flag-outline" size={20} color="#10B981" />
@@ -97,10 +100,18 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
         </View>
         
         <TouchableOpacity 
-          style={styles.inputButton}
-          onPress={() => setModalVisible(true)}
+          style={[
+            styles.inputButton,
+            !editable && {
+              backgroundColor: '#F3F4F6',
+              borderColor: '#D1D5DB',
+              opacity: 0.6
+            }
+          ]}
+          onPress={editable ? () => setModalVisible(true) : undefined}
+          disabled={!editable}
         >
-          <Ionicons name="flag-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+          <Ionicons name="location-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
           <Text style={[styles.inputText, !inputText && styles.placeholderText]}>
             {inputText || placeholder}
           </Text>
@@ -126,7 +137,6 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
 
             <View style={styles.searchContainer}>
               <GooglePlacesAutocomplete
-                ref={googlePlacesRef}
                 placeholder="Adres arayın..."
                 predefinedPlaces={[]}
                 enablePoweredByContainer={false}
@@ -171,9 +181,26 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
                 disableScroll={true}
                 minLength={3}
                 styles={{
-                  container: styles.modalPlacesContainer,
-                  textInput: styles.modalPlacesInput,
-                  listView: styles.modalPlacesList,
+                  container: { flex: 0 },
+                  textInput: {
+                    height: 48,
+                    borderWidth: 1,
+                    borderColor: '#E5E7EB',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    fontSize: 16,
+                    backgroundColor: '#FFFFFF',
+                    color: '#000000',
+                  },
+                  listView: {
+                    borderWidth: 1,
+                    borderColor: '#E5E7EB',
+                    borderTopWidth: 0,
+                    borderBottomLeftRadius: 8,
+                    borderBottomRightRadius: 8,
+                    backgroundColor: '#FFFFFF',
+                    maxHeight: 400,
+                  },
                   row: {
                     backgroundColor: '#FFFFFF',
                     padding: 13,

@@ -18,6 +18,7 @@ interface YukKonumuInputProps {
   showCurrentLocationButton?: boolean;
   onCurrentLocationPress?: () => void;
   placeholder?: string;
+  editable?: boolean;
 }
 
 export interface YukKonumuInputRef {
@@ -33,9 +34,9 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
     disabled = false, 
     disabledText,
     onCurrentLocationPress,
-    placeholder = "Yükün alınacağı adresi seçin..."
+    placeholder = "Yükün alınacağı adresi seçin...",
+    editable = true
   }, ref) => {
-    const googlePlacesRef = useRef<any>(null);
     const [inputText, setInputText] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
@@ -90,6 +91,7 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
 
     return (
       <View style={styles.container}>
+        
         <View style={styles.headerContainer}>
           <View style={styles.headerLeft}>
             <Ionicons name="cube-outline" size={20} color="#F97316" />
@@ -98,8 +100,16 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
         </View>
         
         <TouchableOpacity 
-          style={styles.inputButton}
-          onPress={() => setModalVisible(true)}
+          style={[
+            styles.inputButton,
+            !editable && {
+              backgroundColor: '#F3F4F6',
+              borderColor: '#D1D5DB',
+              opacity: 0.6
+            }
+          ]}
+          onPress={editable ? () => setModalVisible(true) : undefined}
+          disabled={!editable}
         >
           <Ionicons name="location-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
           <Text style={[styles.inputText, !inputText && styles.placeholderText]}>
@@ -127,7 +137,6 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
 
             <View style={styles.searchContainer}>
               <GooglePlacesAutocomplete
-                ref={googlePlacesRef}
                 placeholder="Adres arayın..."
                 predefinedPlaces={[]}
                 enablePoweredByContainer={false}
@@ -172,9 +181,26 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
                 disableScroll={true}
                 minLength={3}
                 styles={{
-                  container: styles.modalPlacesContainer,
-                  textInput: styles.modalPlacesInput,
-                  listView: styles.modalPlacesList,
+                  container: { flex: 0 },
+                  textInput: {
+                    height: 48,
+                    borderWidth: 1,
+                    borderColor: '#E5E7EB',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    fontSize: 16,
+                    backgroundColor: '#FFFFFF',
+                    color: '#000000',
+                  },
+                  listView: {
+                    borderWidth: 1,
+                    borderColor: '#E5E7EB',
+                    borderTopWidth: 0,
+                    borderBottomLeftRadius: 8,
+                    borderBottomRightRadius: 8,
+                    backgroundColor: '#FFFFFF',
+                    maxHeight: 400,
+                  },
                   row: {
                     backgroundColor: '#FFFFFF',
                     padding: 13,

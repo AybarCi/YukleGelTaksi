@@ -207,6 +207,7 @@ class SocketServer {
 
     // Müşteri sipariş iptal etme
     socket.on('cancel_order', async (orderId: number) => {
+      console.log(`🔴 cancel_order event received: orderId=${orderId}, userId=${socket.userId}`);
       await this.cancelOrder(orderId, socket.userId!);
     });
 
@@ -228,6 +229,11 @@ class SocketServer {
     // Müşteri confirm code doğrulama
     socket.on('verify_confirm_code', async (data: { orderId: number, confirmCode: string }) => {
       await this.handleConfirmCodeVerification(data.orderId, data.confirmCode, socket.userId!);
+    });
+
+    // Müşteri cancel code doğrulama
+    socket.on('verify_cancel_code', async (data: { orderId: number, confirmCode: string }) => {
+      await this.handleOrderCancellationWithCode(data.orderId, data.confirmCode, socket.userId!);
     });
   }
 
@@ -966,17 +972,17 @@ class SocketServer {
       const db = DatabaseConnection.getInstance();
       const pool = await db.connect();
 
-      const updateField = status === 'started' ? 'started_at' : 
-                         status === 'completed' ? 'completed_at' : null;
+      // Yeni sipariş durumları için timestamp alanları
+      const updateField = this.getTimestampFieldForStatus(status);
 
-      let query = `UPDATE orders SET status = @status`;
+      let query = `UPDATE orders SET order_status = @status`;
       if (updateField) {
         query += `, ${updateField} = GETDATE()`;
       }
       
       // Sipariş tamamlandığında confirm code oluştur
       let confirmCode = null;
-      if (status === 'completed') {
+      if (status === 'payment_completed') {
         confirmCode = Math.floor(1000 + Math.random() * 9000).toString(); // 4 haneli kod
         query += `, confirm_code = @confirmCode`;
       }
@@ -1009,7 +1015,7 @@ class SocketServer {
           };
           
           // Sipariş tamamlandıysa confirm code'u da gönder
-          if (status === 'completed' && confirmCode) {
+          if (status === 'payment_completed' && confirmCode) {
             updateData.confirmCode = confirmCode;
           }
           
@@ -1017,7 +1023,7 @@ class SocketServer {
         }
 
         // Sipariş tamamlandıysa aktif siparişlerden kaldır
-        if (status === 'completed' || status === 'cancelled') {
+        if (status === 'payment_completed' || status === 'cancelled') {
           this.activeOrders.delete(orderId);
           
           // Sürücüyü tekrar müsait yap
@@ -1029,7 +1035,31 @@ class SocketServer {
     }
   }
 
+  private getTimestampFieldForStatus(status: string): string | null {
+    switch (status) {
+      case 'driver_accepted_awaiting_customer':
+        return 'driver_accepted_awaiting_customer_at';
+      case 'confirmed':
+        return 'confirmed_at';
+      case 'driver_going_to_pickup':
+        return 'driver_going_to_pickup_at';
+      case 'pickup_completed':
+        return 'pickup_completed_at';
+      case 'in_transit':
+        return 'in_transit_at';
+      case 'delivered':
+        return 'delivered_at';
+      case 'payment_completed':
+        return 'payment_completed_at';
+      case 'cancelled':
+        return 'cancelled_at';
+      default:
+        return null;
+    }
+  }
+
   private async cancelOrder(orderId: number, userId: number) {
+    console.log(`🔴 cancelOrder method called with orderId: ${orderId}, userId: ${userId}`);
     try {
       const db = DatabaseConnection.getInstance();
       const pool = await db.connect();
@@ -1039,12 +1069,13 @@ class SocketServer {
         .input('orderId', orderId)
         .input('userId', userId)
         .query(`
-          SELECT id, status, estimated_price, created_at, driver_id
+          SELECT id, order_status, estimated_price, created_at, driver_id
           FROM orders 
-          WHERE id = @orderId AND user_id = @userId AND status IN ('pending', 'accepted', 'started')
+          WHERE id = @orderId AND user_id = @userId AND order_status NOT IN ('payment_completed', 'cancelled')
         `);
 
       if (orderResult.recordset.length === 0) {
+        console.log(`🔴 Order not found or cannot be cancelled. orderId: ${orderId}, userId: ${userId}`);
         const customerSocketId = this.connectedCustomers.get(userId);
         if (customerSocketId) {
           this.io.to(customerSocketId).emit('cancel_order_error', { 
@@ -1057,17 +1088,30 @@ class SocketServer {
       const order = orderResult.recordset[0];
       let cancellationFee = 0;
 
-      // Cezai tutar hesaplama
-      if (order.status === 'started') {
-        // Sürücü yola çıkmışsa %50 cezai tutar
-        cancellationFee = Math.round(order.estimated_price * 0.5);
-      } else if (order.status === 'accepted') {
-        // Sürücü kabul etmişse %25 cezai tutar
-        cancellationFee = Math.round(order.estimated_price * 0.25);
+      // Cezai tutar hesaplama - backoffice'ten tanımlanan yüzdeleri kullan
+      const feeResult = await pool.request()
+        .input('orderStatus', order.order_status)
+        .query(`
+          SELECT fee_percentage 
+          FROM cancellation_fees 
+          WHERE order_status = @orderStatus AND is_active = 1
+        `);
+
+      if (feeResult.recordset.length > 0) {
+        const feePercentage = feeResult.recordset[0].fee_percentage;
+        cancellationFee = Math.round(order.estimated_price * (feePercentage / 100));
+      } else {
+        // Fallback: Eski sistem
+        if (order.order_status === 'pending' || order.order_status === 'driver_accepted_awaiting_customer') {
+          cancellationFee = 0;
+        } else {
+          cancellationFee = Math.round(order.estimated_price * 0.25); // Default %25
+        }
       }
 
       // 4 haneli onay kodu oluştur
       const confirmCode = Math.floor(1000 + Math.random() * 9000).toString();
+      console.log(`🔑 CONFIRM CODE for Order ${orderId}: ${confirmCode}`);
 
       // Onay kodunu veritabanına kaydet
       await pool.request()
@@ -1083,16 +1127,20 @@ class SocketServer {
 
       // Müşteriye iptal onay modalı gönder
       const customerSocketId = this.connectedCustomers.get(userId);
+      console.log(`🔴 Sending cancel_order_confirmation_required to customer ${userId}, socketId: ${customerSocketId}`);
       if (customerSocketId) {
         this.io.to(customerSocketId).emit('cancel_order_confirmation_required', {
           orderId,
           confirmCode,
           cancellationFee,
-          orderStatus: order.status,
+          orderStatus: order.order_status,
           message: cancellationFee > 0 
             ? `Sipariş iptal edilecek. Cezai tutar: ${cancellationFee} TL. Onaylamak için kodu girin: ${confirmCode}`
             : `Sipariş ücretsiz iptal edilecek. Onaylamak için kodu girin: ${confirmCode}`
         });
+        console.log(`🔴 cancel_order_confirmation_required event sent successfully`);
+      } else {
+        console.log(`🔴 Customer socket not found for userId: ${userId}`);
       }
 
     } catch (error) {
@@ -1327,9 +1375,9 @@ class SocketServer {
         .input('userId', userId)
         .input('confirmCode', confirmCode)
         .query(`
-          SELECT id, status, cancellation_confirm_code, cancellation_fee, driver_id
+          SELECT id, order_status, cancellation_confirm_code, cancellation_fee, driver_id
           FROM orders 
-          WHERE id = @orderId AND user_id = @userId AND status IN ('pending', 'accepted', 'started')
+          WHERE id = @orderId AND user_id = @userId AND order_status NOT IN ('payment_completed', 'cancelled')
         `);
 
       if (result.recordset.length === 0) {
@@ -1359,7 +1407,7 @@ class SocketServer {
         .input('orderId', orderId)
         .query(`
           UPDATE orders 
-          SET status = 'cancelled',
+          SET order_status = 'cancelled',
               cancelled_at = GETDATE()
           WHERE id = @orderId
         `);

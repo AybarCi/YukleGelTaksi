@@ -387,6 +387,16 @@ class SocketService {
     return true;
   }
 
+  public verifyCancelCode(orderId: number, confirmCode: string) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('verify_cancel_code', { orderId, confirmCode });
+    return true;
+  }
+
   // Event listener management
   public on(event: string, callback: Function) {
     if (!this.eventListeners.has(event)) {

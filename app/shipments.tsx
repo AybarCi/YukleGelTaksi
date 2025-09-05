@@ -12,19 +12,44 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
+import { API_CONFIG } from '../config/api';
 
 interface Shipment {
-  id: string;
+  id: number;
   pickup_address: string;
-  delivery_address: string;
-  weight: number;
-  volume: number;
-  status: 'pending' | 'accepted' | 'in_progress' | 'delivered' | 'cancelled';
+  destination_address: string;
+  distance_km: number;
+  weight_kg: number;
+  labor_count: number;
+  cargo_photo_url?: string;
+  base_price: number;
+  distance_price: number;
+  weight_price: number;
+  labor_price: number;
+  total_price: number;
+  payment_method?: string;
+  status: 'pending' | 'driver_accepted_awaiting_customer' | 'confirmed' | 'driver_going_to_pickup' | 'pickup_completed' | 'in_transit' | 'delivered' | 'payment_completed' | 'cancelled';
+  customer_notes?: string;
+  driver_notes?: string;
+  cancel_reason?: string;
   created_at: string;
-  driver_name?: string;
-  estimated_price: number;
-  actual_price?: number;
+  accepted_at?: string;
+  confirmed_at?: string;
+  started_at?: string;
+  completed_at?: string;
+  cancelled_at?: string;
+  updated_at: string;
+  driver?: {
+    first_name: string;
+    last_name: string;
+    phone: string;
+    vehicle_plate: string;
+    vehicle_model: string;
+    vehicle_color: string;
+    rating: number;
+  } | null;
 }
 
 export default function ShipmentsScreen() {
@@ -41,47 +66,46 @@ export default function ShipmentsScreen() {
   const loadShipments = async () => {
     try {
       setIsLoading(true);
-      // TODO: Replace with actual API call
-      // Simulated data for now
-      const mockShipments: Shipment[] = [
-        {
-          id: '1',
-          pickup_address: 'Kadıköy, İstanbul',
-          delivery_address: 'Beşiktaş, İstanbul',
-          weight: 25,
-          volume: 2.5,
-          status: 'delivered',
-          created_at: '2024-01-15T10:30:00Z',
-          driver_name: 'Ahmet Yılmaz',
-          estimated_price: 150,
-          actual_price: 150,
-        },
-        {
-          id: '2',
-          pickup_address: 'Şişli, İstanbul',
-          delivery_address: 'Ümraniye, İstanbul',
-          weight: 15,
-          volume: 1.8,
-          status: 'in_progress',
-          created_at: '2024-01-16T14:20:00Z',
-          driver_name: 'Mehmet Demir',
-          estimated_price: 120,
-        },
-        {
-          id: '3',
-          pickup_address: 'Bakırköy, İstanbul',
-          delivery_address: 'Maltepe, İstanbul',
-          weight: 30,
-          volume: 3.2,
-          status: 'pending',
-          created_at: '2024-01-17T09:15:00Z',
-          estimated_price: 180,
-        },
-      ];
       
-      setShipments(mockShipments);
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        setShipments([]);
+        return;
+      }
+
+      // Filter'a göre status parametresi belirle
+      let statusParam = '';
+      if (filter === 'active') {
+        statusParam = 'pending,driver_accepted_awaiting_customer,confirmed,driver_going_to_pickup,pickup_completed,in_transit';
+      } else if (filter === 'completed') {
+        statusParam = 'delivered,payment_completed,cancelled';
+      }
+
+      const url = `${API_CONFIG.BASE_URL}/api/users/orders${
+        statusParam ? `?status=${statusParam}` : ''
+      }`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data && data.data.orders) {
+          setShipments(data.data.orders);
+        } else {
+          setShipments([]);
+        }
+      } else {
+        setShipments([]);
+      }
     } catch (error) {
-      showModal('Hata', 'Taşımalar yüklenirken bir hata oluştu.', 'error');
+      console.error('Shipments load error:', error);
+      setShipments([]);
     } finally {
       setIsLoading(false);
     }
@@ -195,31 +219,31 @@ export default function ShipmentsScreen() {
           <View style={styles.addressIcon}>
             <Ionicons name="navigate" size={16} color="#EF4444" />
           </View>
-          <Text style={styles.addressText}>{shipment.delivery_address}</Text>
+          <Text style={styles.addressText}>{shipment.destination_address}</Text>
         </View>
       </View>
 
       <View style={styles.shipmentDetails}>
         <View style={styles.detailItem}>
           <MaterialIcons name="fitness-center" size={16} color="#6B7280" />
-          <Text style={styles.detailText}>{shipment.weight} kg</Text>
+          <Text style={styles.detailText}>{shipment.weight_kg} kg</Text>
         </View>
         <View style={styles.detailItem}>
-          <MaterialIcons name="inventory" size={16} color="#6B7280" />
-          <Text style={styles.detailText}>{shipment.volume} m³</Text>
+          <MaterialIcons name="people" size={16} color="#6B7280" />
+          <Text style={styles.detailText}>{shipment.labor_count} işçi</Text>
         </View>
         <View style={styles.detailItem}>
           <Ionicons name="cash" size={16} color="#6B7280" />
           <Text style={styles.detailText}>
-            {shipment.actual_price || shipment.estimated_price} ₺
+            {shipment.total_price} ₺
           </Text>
         </View>
       </View>
 
       <View style={styles.shipmentFooter}>
         <Text style={styles.dateText}>{formatDate(shipment.created_at)}</Text>
-        {shipment.driver_name && (
-          <Text style={styles.driverText}>Sürücü: {shipment.driver_name}</Text>
+        {shipment.driver && (
+          <Text style={styles.driverText}>Sürücü: {shipment.driver.first_name} {shipment.driver.last_name}</Text>
         )}
       </View>
     </TouchableOpacity>
