@@ -234,7 +234,7 @@ export default function SettingsScreen() {
             text: 'Aktifleştir',
             onPress: async () => {
               try {
-                const token = await AsyncStorage.getItem('userToken');
+                const token = await AsyncStorage.getItem('auth_token');
                 if (!token) {
                   showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
                   return;
@@ -283,18 +283,19 @@ export default function SettingsScreen() {
              style: 'destructive',
              onPress: async () => {
                try {
-                 const token = await AsyncStorage.getItem('userToken');
+                 const token = await AsyncStorage.getItem('auth_token');
                  if (!token) {
                    showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
                    return;
                  }
 
-                 const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/delete-account`, {
-                 method: 'DELETE',
+                 const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/freeze-account`, {
+                 method: 'POST',
                  headers: {
                    'Content-Type': 'application/json',
                    'Authorization': `Bearer ${token}`
-                 }
+                 },
+                 body: JSON.stringify({ freeze: true })
                });
 
                  const data = await response.json();
@@ -328,7 +329,7 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const token = await AsyncStorage.getItem('userToken');
+              const token = await AsyncStorage.getItem('auth_token');
               if (!token) {
                 showModal('Hata', 'Oturum süresi dolmuş. Lütfen tekrar giriş yapın.', 'error');
                 return;

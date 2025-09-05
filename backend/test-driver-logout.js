@@ -8,7 +8,7 @@ const testDriverData = {
   user_type: 'driver'
 };
 
-const API_BASE_URL = 'http://172.20.10.8:3001/api';
+const API_BASE_URL = 'http://192.168.1.137:3000/api';
 
 // Readline interface for user input
 const rl = readline.createInterface({

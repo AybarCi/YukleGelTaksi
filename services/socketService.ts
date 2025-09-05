@@ -269,13 +269,24 @@ class SocketService {
     return true;
   }
 
+  public getConnectionStatus() {
+    return this.isConnected;
+  }
+
   public cancelOrder(orderId: number) {
+    console.log(`🔴 cancelOrder called with orderId: ${orderId}`);
+    console.log(`🔗 Socket connected: ${this.isConnected}`);
+    console.log(`🔌 Socket object exists: ${!!this.socket}`);
+    console.log(`🆔 Socket ID: ${this.socket?.id}`);
+    
     if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
+      console.error('❌ Socket not connected or socket object missing');
       return false;
     }
 
+    console.log(`📤 Emitting cancel_order event with orderId: ${orderId} from socket: ${this.socket.id}`);
     this.socket.emit('cancel_order', orderId);
+    console.log(`✅ cancel_order event emitted successfully from socket: ${this.socket.id}`);
     return true;
   }
 

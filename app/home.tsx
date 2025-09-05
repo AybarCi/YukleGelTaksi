@@ -111,6 +111,12 @@ function HomeScreen() {
   
   // Drivers state'inin güvenli olduğundan emin olmak için
   const safeDrivers = useMemo(() => Array.isArray(drivers) ? drivers : [], [drivers]);
+
+  // Debug: drivers state değişimini izle
+  useEffect(() => {
+    console.log('🗺️ Drivers state changed:', drivers);
+    console.log('🗺️ Safe drivers for map:', safeDrivers);
+  }, [drivers, safeDrivers]);
   
   // Yük bilgileri state'leri
   const [weight, setWeight] = useState('');
@@ -241,6 +247,10 @@ function HomeScreen() {
 
   // Devam eden sipariş modalı için state
   const [pendingOrderModalVisible, setPendingOrderModalVisible] = useState(false);
+
+  // Fiyat hesaplama için state'ler
+  const [estimatedPrice, setEstimatedPrice] = useState<number | null>(null);
+  const [priceLoading, setPriceLoading] = useState(false);
 
   // Form görünürlüğünü kontrol eden state
   // showOrderForm state kaldırıldı - form her zaman görünür
@@ -375,13 +385,16 @@ function HomeScreen() {
               ]
             );
           } else {
-            // Cezai şart yoksa ücretsiz iptal modalını göster
-            setFreeCancelModalVisible(true);
-            // Socket üzerinden onay kodu isteme işlemini başlat
+            // Cezai şart yoksa önce socket üzerinden onay kodu isteme işlemini başlat
+            console.log('🔴 Cezai şart yok, confirm code üretimi için cancelOrder çağrılıyor...');
+            console.log('🔗 Socket bağlantı durumu:', socketService.getConnectionStatus());
+            console.log('📋 Current Order ID:', currentOrder.id);
             const success = socketService.cancelOrder(currentOrder.id);
+            console.log('✅ cancelOrder çağrısı sonucu:', success);
             if (!success) {
               showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
             }
+            // Not: freeCancelModal, backend'den cancel_order_confirmation_required eventi geldiğinde otomatik açılacak
           }
         } else {
           // API hatası durumunda fallback olarak onay kodu isteme işlemini başlat
@@ -691,8 +704,10 @@ function HomeScreen() {
     });
     
     socketService.on('nearbyDriversUpdate', (data: any) => {
+      console.log('📍 nearbyDriversUpdate event received:', data);
       try {
         if (!data) {
+          console.log('📍 No data received, setting empty drivers');
           setDrivers([]);
           return;
         }
@@ -710,6 +725,7 @@ function HomeScreen() {
                  typeof driver.longitude === 'number';
         });
         
+        console.log('📍 Setting drivers:', validDrivers);
         setDrivers(validDrivers);
       } catch (error) {
         console.error('nearbyDriversUpdate işleme hatası:', error);
@@ -1560,12 +1576,76 @@ function HomeScreen() {
         setCargoImage(result.assets[0].uri);
       }
     } catch (error) {
-      console.error('Resim seçme hatası:', error);
+      console.error('Image picker error:', error);
       showModal('Hata', 'Resim seçilirken bir hata oluştu.', 'error');
     }
   }, [showModal]);
 
+  // Fiyat hesaplama fonksiyonu
+  const calculatePrice = useCallback(async () => {
+    if (!distance || !weight) {
+      setEstimatedPrice(null);
+      return;
+    }
 
+    const weightNum = parseFloat(weight);
+    if (isNaN(weightNum) || weightNum <= 0) {
+      setEstimatedPrice(null);
+      return;
+    }
+
+    try {
+      setPriceLoading(true);
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      console.log('Token for price calculation:', token ? 'Token exists' : 'Token is null');
+      
+      if (!token) {
+        console.error('No token found for price calculation');
+        setEstimatedPrice(null);
+        return;
+      }
+      
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/calculate-price`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          distance_km: distance,
+          weight_kg: weightNum,
+          labor_count: 1 // Varsayılan hammal sayısı
+        })
+      });
+
+      const data = await response.json();
+      
+      console.log('Price calculation response:', {
+        status: response.status,
+        ok: response.ok,
+        data: data
+      });
+      
+      if (response.ok) {
+        console.log('Setting estimated price:', data.data.total_price);
+        setEstimatedPrice(data.data.total_price);
+      } else {
+        console.error('Price calculation error:', data.error);
+        setEstimatedPrice(null);
+      }
+    } catch (error) {
+      console.error('Price calculation error:', error);
+      setEstimatedPrice(null);
+    } finally {
+      setPriceLoading(false);
+    }
+   }, [distance, weight]);
+
+  // Fiyat hesaplama için useEffect
+  useEffect(() => {
+    calculatePrice();
+  }, [calculatePrice]);
 
   return (
     <View style={styles.container}>
@@ -1826,7 +1906,13 @@ function HomeScreen() {
                   Mesafe: {distance.toFixed(1)} km
                 </Text>
                 <Text style={{ marginLeft: 8, fontSize: 14, color: '#6B7280' }}>
-                  (Tahmini Ücret: ₺{distance ? Math.round(distance * 15) : 0})
+                  {priceLoading ? (
+                    '(Ücret hesaplanıyor...)'
+                  ) : estimatedPrice ? (
+                    `(Tahmini Ücret: ₺${estimatedPrice.toFixed(2)})`
+                  ) : (
+                    '(Ücret hesaplanamadı)'
+                  )}
                 </Text>
               </View>
             )}

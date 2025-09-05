@@ -112,12 +112,27 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Fiyat hesaplama
-    const basePrice = pricingSettings.base_price;
-    const distancePrice = distance_km * pricingSettings.price_per_km;
-    const weightPrice = weight_kg * pricingSettings.price_per_kg;
-    const laborPrice = labor_count * pricingSettings.labor_price;
-    const totalPrice = basePrice + distancePrice + weightPrice + laborPrice;
+    // Fiyat hesaplama - Backoffice kurallarına göre
+    // Base ücret kuralları: 10 km altı VE 50 kg altında ise sadece base ücret + hammaliye
+    const isBaseOnly = distance_km <= 10 && weight_kg <= 50;
+    
+    let basePrice, distancePrice, weightPrice, laborPrice, totalPrice;
+    
+    if (isBaseOnly) {
+      // 10 km altı VE 50 kg altında: sadece base ücret + hammaliye
+      basePrice = pricingSettings.base_price;
+      distancePrice = 0;
+      weightPrice = 0;
+      laborPrice = labor_count * pricingSettings.labor_price;
+      totalPrice = basePrice + laborPrice;
+    } else {
+      // 10 km üzeri VEYA 50 kg üzeri: base ücret hariç diğer parametreler hesaplanır
+      basePrice = 0;
+      distancePrice = distance_km * pricingSettings.price_per_km;
+      weightPrice = weight_kg * pricingSettings.price_per_kg;
+      laborPrice = labor_count * pricingSettings.labor_price;
+      totalPrice = distancePrice + weightPrice + laborPrice;
+    }
 
     const result: PriceCalculationResult = {
       base_price: basePrice,

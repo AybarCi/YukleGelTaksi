@@ -49,15 +49,21 @@ class SocketServer {
     this.io.use(this.authenticateSocket.bind(this));
 
     this.io.on('connection', (socket: AuthenticatedSocket) => {
-      console.log(`User connected: ${socket.userId} (${socket.userType})`);
+      console.log(`🔌 Socket connected: ${socket.id}`);
+      console.log(`👤 User connected: ${socket.userId} (${socket.userType})`);
+      console.log(`🔍 Socket auth data:`, { userId: socket.userId, userType: socket.userType, driverId: socket.driverId });
 
       // Kullanıcı tipine göre bağlantıyı kaydet
       if (socket.userType === 'driver' && socket.driverId) {
+        console.log(`🚗 Setting up driver connection for driver ${socket.driverId}`);
         this.connectedDrivers.set(socket.driverId, socket.id);
         this.handleDriverConnection(socket);
       } else if (socket.userType === 'customer' && socket.userId) {
+        console.log(`👤 Setting up customer connection for user ${socket.userId}`);
         this.connectedCustomers.set(socket.userId, socket.id);
         this.handleCustomerConnection(socket);
+      } else {
+        console.log(`⚠️ Unknown user type or missing data: userType=${socket.userType}, userId=${socket.userId}, driverId=${socket.driverId}`);
       }
 
       socket.on('disconnect', () => {
@@ -173,6 +179,8 @@ class SocketServer {
   }
 
   private handleCustomerConnection(socket: AuthenticatedSocket) {
+    console.log(`🔧 Setting up event handlers for customer ${socket.userId} (Socket: ${socket.id})`);
+    
     // Her müşteriyi kendi unique room'una ekle - müşteriler birbirini görmemeli
     const customerRoom = `customer_${socket.userId}`;
     socket.join(customerRoom);
@@ -206,10 +214,18 @@ class SocketServer {
     });
 
     // Müşteri sipariş iptal etme
+    console.log(`🎯 Registering cancel_order event handler for socket ${socket.id}`);
     socket.on('cancel_order', async (orderId: number) => {
-      console.log(`🔴 cancel_order event received: orderId=${orderId}, userId=${socket.userId}`);
-      await this.cancelOrder(orderId, socket.userId!);
+      console.log(`🔴 cancel_order event received: orderId=${orderId}, userId=${socket.userId}, socketId=${socket.id}`);
+      console.log(`🔄 Calling cancelOrder method...`);
+      try {
+        await this.cancelOrder(orderId, socket.userId!);
+        console.log(`✅ cancelOrder method completed successfully`);
+      } catch (error) {
+        console.error(`❌ Error in cancelOrder method:`, error);
+      }
     });
+    console.log(`✅ cancel_order event handler registered for socket ${socket.id}`);
 
     // Müşteri sipariş iptal etme - confirm code ile
     socket.on('cancel_order_with_code', async (data: { orderId: number, confirmCode: string }) => {
@@ -1111,7 +1127,9 @@ class SocketServer {
 
       // 4 haneli onay kodu oluştur
       const confirmCode = Math.floor(1000 + Math.random() * 9000).toString();
-      console.log(`🔑 CONFIRM CODE for Order ${orderId}: ${confirmCode}`);
+      console.log(`🔑 CONFIRM CODE GENERATED for Order ${orderId}: ${confirmCode}`);
+      console.log(`💰 Cancellation Fee: ${cancellationFee} TL`);
+      console.log(`📝 Saving confirm code to database...`);
 
       // Onay kodunu veritabanına kaydet
       await pool.request()
@@ -1124,6 +1142,8 @@ class SocketServer {
               cancellation_fee = @cancellationFee
           WHERE id = @orderId
         `);
+      
+      console.log(`✅ Confirm code saved to database successfully for Order ${orderId}`);
 
       // Müşteriye iptal onay modalı gönder
       const customerSocketId = this.connectedCustomers.get(userId);
@@ -1365,6 +1385,7 @@ class SocketServer {
   }
 
   private async handleOrderCancellationWithCode(orderId: number, confirmCode: string, userId: number) {
+    console.log(`🔑 handleOrderCancellationWithCode called: orderId=${orderId}, confirmCode=${confirmCode}, userId=${userId}`);
     try {
       const db = DatabaseConnection.getInstance();
       const pool = await db.connect();

@@ -481,7 +481,106 @@ class SocketServer {
   }
 
   async cancelOrder(orderId, userId) {
-    console.log('Cancel order called:', orderId, userId);
+    console.log('🔴 cancelOrder method called with orderId:', orderId, 'userId:', userId);
+    try {
+      const DatabaseConnection = require('../config/database');
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // Sipariş bilgilerini al
+      const orderResult = await pool.request()
+        .input('orderId', orderId)
+        .input('userId', userId)
+        .query(`
+          SELECT id, order_status, total_price, created_at, driver_id
+          FROM orders 
+          WHERE id = @orderId AND user_id = @userId AND order_status NOT IN ('payment_completed', 'cancelled')
+        `);
+
+      if (orderResult.recordset.length === 0) {
+        console.log('🔴 Order not found or cannot be cancelled. orderId:', orderId, 'userId:', userId);
+        const customerSocketId = this.connectedCustomers.get(userId);
+        if (customerSocketId) {
+          this.io.to(customerSocketId).emit('cancel_order_error', { 
+            message: 'Sipariş bulunamadı veya iptal edilemez durumda.' 
+          });
+        }
+        return;
+      }
+
+      const order = orderResult.recordset[0];
+      let cancellationFee = 0;
+
+      // Cezai tutar hesaplama - backoffice'ten tanımlanan yüzdeleri kullan
+      const feeResult = await pool.request()
+        .input('orderStatus', order.order_status)
+        .query(`
+          SELECT fee_percentage 
+          FROM cancellation_fees 
+          WHERE order_status = @orderStatus AND is_active = 1
+        `);
+
+      if (feeResult.recordset.length > 0) {
+        const feePercentage = feeResult.recordset[0].fee_percentage;
+        cancellationFee = Math.round(order.total_price * (feePercentage / 100));
+      } else {
+        // Fallback: Eski sistem
+        if (order.order_status === 'pending' || order.order_status === 'driver_accepted_awaiting_customer') {
+          cancellationFee = 0;
+        } else {
+          cancellationFee = Math.round(order.total_price * 0.25); // Default %25
+        }
+      }
+
+      // 4 haneli onay kodu oluştur
+      const confirmCode = Math.floor(1000 + Math.random() * 9000).toString();
+      console.log('🔑 CONFIRM CODE GENERATED for Order', orderId + ':', confirmCode);
+      console.log('💰 Cancellation Fee:', cancellationFee, 'TL');
+      console.log('📝 Saving confirm code to database...');
+
+      // Onay kodunu veritabanına kaydet ve sipariş durumunu güncelle
+      await pool.request()
+        .input('orderId', orderId)
+        .input('confirmCode', confirmCode)
+        .input('cancellationFee', cancellationFee)
+        .query(`
+          UPDATE orders 
+          SET cancellation_confirm_code = @confirmCode,
+              cancellation_fee = @cancellationFee,
+              order_status = 'cancelled',
+              updated_at = GETDATE()
+          WHERE id = @orderId
+        `);
+      
+      console.log('✅ Confirm code saved to database successfully for Order', orderId);
+
+      // Müşteriye iptal onay modalı gönder
+      const customerSocketId = this.connectedCustomers.get(userId);
+      console.log('🔴 Sending cancel_order_confirmation_required to customer', userId, 'socketId:', customerSocketId);
+      if (customerSocketId) {
+        this.io.to(customerSocketId).emit('cancel_order_confirmation_required', {
+          orderId,
+          confirmCode,
+          cancellationFee,
+          orderStatus: order.order_status,
+          message: cancellationFee > 0 
+            ? `Sipariş iptal edilecek. Cezai tutar: ${cancellationFee} TL. Onaylamak için kodu girin: ${confirmCode}`
+            : `Sipariş ücretsiz iptal edilecek. Onaylamak için kodu girin: ${confirmCode}`
+        });
+        console.log('🔴 cancel_order_confirmation_required event sent successfully');
+      } else {
+        console.log('🔴 Customer socket not found for userId:', userId);
+      }
+
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      const customerSocketId = this.connectedCustomers.get(userId);
+      if (customerSocketId) {
+        this.io.to(customerSocketId).emit('cancel_order_error', { 
+          message: 'Sipariş iptal edilirken bir hata oluştu.' 
+        });
+      }
+    }
   }
 
   async updateCustomerLocation(userId, location) {
