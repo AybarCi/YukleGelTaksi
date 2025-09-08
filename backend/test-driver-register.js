@@ -38,7 +38,7 @@ async function testDriverRegistration() {
     console.log('Testing driver registration API...');
     console.log('Test data:', JSON.stringify(testDriverData, null, 2));
     
-    const response = await fetch('http://192.168.1.137:3000/api/drivers/register', {
+    const response = await fetch('http://192.168.1.173:3000/api/drivers/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -72,7 +72,7 @@ async function testDriverRegistration() {
   } catch (error) {
     console.error('\n💥 Test failed with error:', error.message);
     if (error.code === 'ECONNREFUSED') {
-      console.log('Make sure the backend server is running on http://192.168.1.137:3000');
+      console.log('Make sure the backend server is running on http://192.168.1.173:3000');
     }
   }
 }
@@ -99,7 +99,7 @@ async function testMinimalDriverRegistration() {
     console.log('\n\n=== Testing minimal driver registration ===');
     console.log('Minimal data:', JSON.stringify(minimalData, null, 2));
     
-    const response = await fetch('http://192.168.1.137:3000/api/drivers/register', {
+    const response = await fetch('http://192.168.1.173:3000/api/drivers/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

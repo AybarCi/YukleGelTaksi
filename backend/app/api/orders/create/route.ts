@@ -107,13 +107,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Calculate estimated price (basic calculation)
-    const basePrice = 50; // Base price in TL
-    const pricePerKm = 5; // Price per km in TL
-    const laborPrice = laborRequired ? (laborCount * 25) : 0; // Labor price per person
-    const weightPrice = weightKg > 10 ? (weightKg - 10) * 2 : 0; // Extra price for weight > 10kg
-    
-    const estimatedPrice = basePrice + (distance * pricePerKm) + laborPrice + weightPrice;
+    // Calculate price using the pricing API
+    let priceCalculation;
+    try {
+      const priceResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/calculate-price`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': request.headers.get('Authorization') || ''
+        },
+        body: JSON.stringify({
+          distance_km: distance,
+          weight_kg: weightKg || 0,
+          labor_count: laborCount || 0
+        })
+      });
+      
+      if (!priceResponse.ok) {
+        throw new Error('Price calculation failed');
+      }
+      
+      const priceData = await priceResponse.json();
+      priceCalculation = priceData.data;
+    } catch (priceError) {
+      console.error('Price calculation error:', priceError);
+      return NextResponse.json(
+        { success: false, error: 'Fiyat hesaplama sırasında hata oluştu' },
+        { status: 500 }
+      );
+    }
 
     // Connect to database
     const db = DatabaseConnection.getInstance();
@@ -133,11 +155,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .input('distance_km', distance)
       .input('weight_kg', weightKg)
       .input('labor_count', laborCount)
-      .input('base_price', basePrice)
-      .input('distance_price', distance * pricePerKm)
-      .input('weight_price', weightPrice)
-      .input('labor_price', laborPrice)
-      .input('total_price', estimatedPrice)
+      .input('base_price', priceCalculation.base_price)
+      .input('distance_price', priceCalculation.distance_price)
+      .input('weight_price', priceCalculation.weight_price)
+      .input('labor_price', priceCalculation.labor_price)
+      .input('total_price', priceCalculation.total_price)
       .query(`
         INSERT INTO orders (
           user_id, pickup_address, pickup_latitude, pickup_longitude,
@@ -189,7 +211,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           destinationLongitude,
           weight: weightKg || 0,
           laborCount: laborCount || 0,
-          estimatedPrice
+          estimatedPrice: priceCalculation.total_price
         };
         
         await socketServer.broadcastOrderToNearbyDrivers(newOrder.id, orderData);
@@ -209,7 +231,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         destinationAddress,
         distance,
         estimatedTime,
-        estimatedPrice,
+        estimatedPrice: priceCalculation.total_price,
         status: 'pending',
         createdAt: newOrder.created_at
       }

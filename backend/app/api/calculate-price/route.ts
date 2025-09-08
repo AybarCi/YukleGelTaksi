@@ -95,12 +95,12 @@ export async function POST(request: NextRequest) {
 
     let pricingSettings;
     if (pricingResult.recordset.length === 0) {
-      // Varsayılan değerler
+      // Varsayılan değerler - backoffice ile uyumlu
       pricingSettings = {
-        base_price: 50.00,
-        price_per_km: 5.00,
-        price_per_kg: 2.00,
-        labor_price: 25.00
+        base_price: 2500.00,
+        price_per_km: 100.00,
+        price_per_kg: 20.00,
+        labor_price: 800.00
       };
     } else {
       const settings = pricingResult.recordset[0];
@@ -113,25 +113,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Fiyat hesaplama - Backoffice kurallarına göre
-    // Base ücret kuralları: 10 km altı VE 50 kg altında ise sadece base ücret + hammaliye
-    const isBaseOnly = distance_km <= 10 && weight_kg <= 50;
+    // Her zaman tüm parametreleri hesapla, sonra base ücret ile karşılaştır
     
     let basePrice, distancePrice, weightPrice, laborPrice, totalPrice;
     
-    if (isBaseOnly) {
-      // 10 km altı VE 50 kg altında: sadece base ücret + hammaliye
+    // Tüm parametreleri hesapla
+    distancePrice = distance_km * pricingSettings.price_per_km;
+    weightPrice = weight_kg * pricingSettings.price_per_kg;
+    laborPrice = labor_count * pricingSettings.labor_price;
+    
+    // Hesaplanan toplam ücret
+    const calculatedPrice = distancePrice + weightPrice + laborPrice;
+    
+    // Base ücret + hammaliye
+    const baseWithLabor = pricingSettings.base_price + laborPrice;
+    
+    // Hangisi yüksekse onu kullan
+    if (baseWithLabor > calculatedPrice) {
+      // Base ücret daha yüksek - base ücret + hammaliye kullan
       basePrice = pricingSettings.base_price;
       distancePrice = 0;
       weightPrice = 0;
-      laborPrice = labor_count * pricingSettings.labor_price;
-      totalPrice = basePrice + laborPrice;
+      totalPrice = baseWithLabor;
     } else {
-      // 10 km üzeri VEYA 50 kg üzeri: base ücret hariç diğer parametreler hesaplanır
+      // Hesaplanan ücret daha yüksek - hesaplanan değerleri kullan
       basePrice = 0;
-      distancePrice = distance_km * pricingSettings.price_per_km;
-      weightPrice = weight_kg * pricingSettings.price_per_kg;
-      laborPrice = labor_count * pricingSettings.labor_price;
-      totalPrice = distancePrice + weightPrice + laborPrice;
+      totalPrice = calculatedPrice;
     }
 
     const result: PriceCalculationResult = {

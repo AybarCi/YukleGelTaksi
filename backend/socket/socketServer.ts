@@ -307,7 +307,7 @@ class SocketServer {
           INSERT INTO orders (
             user_id, pickup_address, pickup_latitude, pickup_longitude,
             destination_address, destination_latitude, destination_longitude,
-            weight, labor_count, estimated_price, status
+            weight, labor_count, estimated_price, order_status
           )
           OUTPUT INSERTED.id
           VALUES (
@@ -842,9 +842,9 @@ class SocketServer {
       // Önce siparişin hala müsait olup olmadığını kontrol et
       const orderCheck = await pool.request()
         .input('orderId', orderId)
-        .query(`SELECT status, weight FROM orders WHERE id = @orderId`);
+        .query(`SELECT order_status, weight FROM orders WHERE id = @orderId`);
       
-      if (orderCheck.recordset.length === 0 || orderCheck.recordset[0].status !== 'pending') {
+      if (orderCheck.recordset.length === 0 || orderCheck.recordset[0].order_status !== 'pending') {
         // Sipariş artık müsait değil
         const driverSocketId = this.connectedDrivers.get(driverId);
         if (driverSocketId) {
@@ -873,9 +873,9 @@ class SocketServer {
         .query(`
           UPDATE orders 
           SET driver_id = @driverId,
-              status = 'accepted',
+              order_status = 'accepted',
               accepted_at = GETDATE()
-          WHERE id = @orderId AND status = 'pending'
+          WHERE id = @orderId AND order_status = 'pending'
         `);
 
       if (updateResult.rowsAffected[0] === 0) {
@@ -1228,6 +1228,11 @@ class SocketServer {
     return this.connectedCustomers.size;
   }
 
+  public sendToCustomer(userId: number, event: string, data: any) {
+    const customerRoom = `customer_${userId}`;
+    this.io.to(customerRoom).emit(event, data);
+  }
+
   private async handleCustomerOrderRejection(orderId: number, userId: number) {
     try {
       const db = DatabaseConnection.getInstance();
@@ -1278,7 +1283,7 @@ class SocketServer {
       // Siparişi onaylandı olarak işaretle
       await pool.request()
         .input('orderId', orderId)
-        .query(`UPDATE orders SET status = 'confirmed', confirmed_at = GETDATE() WHERE id = @orderId AND user_id = ${userId}`);
+        .query(`UPDATE orders SET order_status = 'confirmed', confirmed_at = GETDATE() WHERE id = @orderId AND user_id = ${userId}`);
 
       // Aktif siparişi güncelle
       const order = this.activeOrders.get(orderId);
