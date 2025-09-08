@@ -33,6 +33,7 @@ class SocketServer {
   private connectedDrivers: Map<number, string> = new Map(); // driverId -> socketId
   private connectedCustomers: Map<number, string> = new Map(); // userId -> socketId
   private activeOrders: Map<number, any> = new Map(); // orderId -> orderData
+  private inspectingOrders: Map<number, number> = new Map(); // orderId -> driverId (inceleme kilidi)
 
   constructor(server: HTTPServer) {
     this.io = new SocketIOServer(server, {
@@ -167,9 +168,24 @@ class SocketServer {
       await this.updateDriverAvailability(socket.driverId!, isAvailable);
     });
 
-    // Sipariş kabul etme
+    // Sipariş inceleme (kilitleme)
+    socket.on('inspect_order', async (orderId: number) => {
+      await this.handleOrderInspection(socket.driverId!, orderId);
+    });
+
+    // Sipariş incelemeyi bırakma
+    socket.on('stop_inspecting_order', async (orderId: number) => {
+      await this.handleStopInspection(socket.driverId!, orderId);
+    });
+
+    // Sipariş kabul etme (inceleme sonrası)
     socket.on('accept_order', async (orderId: number) => {
       await this.handleOrderAcceptance(socket.driverId!, orderId);
+    });
+
+    // Hammaliye ile sipariş kabul etme
+    socket.on('accept_order_with_labor', async (data: { orderId: number, laborCount: number }) => {
+      await this.handleOrderAcceptanceWithLabor(socket.driverId!, data.orderId, data.laborCount);
     });
 
     // Sipariş durumu güncelleme
@@ -258,6 +274,14 @@ class SocketServer {
     
     if (socket.userType === 'driver' && socket.driverId) {
       this.connectedDrivers.delete(socket.driverId);
+      
+      // İnceleme kilitleri temizle
+      this.inspectingOrders.forEach((inspectingDriverId, orderId) => {
+        if (inspectingDriverId === socket.driverId) {
+          this.handleStopInspection(socket.driverId!, orderId);
+        }
+      });
+      
       // Sürücüyü offline yap
       this.updateDriverAvailability(socket.driverId, false);
     } else if (socket.userType === 'customer' && socket.userId) {
@@ -834,6 +858,225 @@ class SocketServer {
     }
   }
 
+  private async handleOrderInspection(driverId: number, orderId: number) {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // Siparişin durumunu kontrol et
+      const orderCheck = await pool.request()
+        .input('orderId', orderId)
+        .query(`SELECT order_status, driver_id FROM orders WHERE id = @orderId`);
+      
+      if (orderCheck.recordset.length === 0 || orderCheck.recordset[0].order_status !== 'pending') {
+        const driverSocketId = this.connectedDrivers.get(driverId);
+        if (driverSocketId) {
+          this.io.to(driverSocketId).emit('order_no_longer_available', { orderId });
+        }
+        return;
+      }
+
+      // Başka bir sürücü inceliyor mu kontrol et
+      if (this.inspectingOrders.has(orderId)) {
+        const inspectingDriverId = this.inspectingOrders.get(orderId);
+        if (inspectingDriverId !== driverId) {
+          const driverSocketId = this.connectedDrivers.get(driverId);
+          if (driverSocketId) {
+            this.io.to(driverSocketId).emit('order_being_inspected', { 
+              orderId, 
+              message: 'Bu sipariş başka bir sürücü tarafından inceleniyor' 
+            });
+          }
+          return;
+        }
+      }
+
+      // Siparişi inceleme listesine ekle
+      this.inspectingOrders.set(orderId, driverId);
+
+      // Siparişi "inspecting" durumuna getir
+      await pool.request()
+        .input('orderId', orderId)
+        .input('driverId', driverId)
+        .query(`
+          UPDATE orders 
+          SET order_status = 'inspecting', driver_id = @driverId
+          WHERE id = @orderId AND order_status = 'pending'
+        `);
+
+      // Diğer sürücülere bu siparişin incelendiğini bildir
+      this.connectedDrivers.forEach((socketId, otherDriverId) => {
+        if (otherDriverId !== driverId) {
+          this.io.to(socketId).emit('order_locked_for_inspection', { orderId });
+        }
+      });
+
+      // Müşteriye siparişin incelendiğini bildir
+      const orderResult = await pool.request()
+        .input('orderId', orderId)
+        .query(`SELECT user_id FROM orders WHERE id = @orderId`);
+      
+      if (orderResult.recordset.length > 0) {
+        const customerId = orderResult.recordset[0].user_id;
+        const customerSocketId = this.connectedCustomers.get(customerId);
+        if (customerSocketId) {
+          this.io.to(customerSocketId).emit('order_being_inspected', {
+            orderId,
+            message: 'Siparişiniz bir sürücü tarafından inceleniyor'
+          });
+        }
+      }
+
+      // İnceleyen sürücüye sipariş detaylarını gönder
+      const driverSocketId = this.connectedDrivers.get(driverId);
+      if (driverSocketId) {
+        const orderDetails = await this.getOrderDetails(orderId);
+        this.io.to(driverSocketId).emit('order_inspection_started', {
+          orderId,
+          orderDetails
+        });
+      }
+
+      console.log(`Order ${orderId} is being inspected by driver ${driverId}`);
+    } catch (error) {
+      console.error('Error handling order inspection:', error);
+    }
+  }
+
+  private async handleStopInspection(driverId: number, orderId: number) {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // İnceleme kilidini kontrol et
+      const inspectingDriverId = this.inspectingOrders.get(orderId);
+      if (inspectingDriverId !== driverId) {
+        return; // Bu sürücü incelemiyor
+      }
+
+      // İnceleme kilidini kaldır
+      this.inspectingOrders.delete(orderId);
+
+      // Siparişi tekrar "pending" durumuna getir
+      await pool.request()
+        .input('orderId', orderId)
+        .query(`
+          UPDATE orders 
+          SET order_status = 'pending', driver_id = NULL
+          WHERE id = @orderId AND order_status = 'inspecting'
+        `);
+
+      // Tüm sürücülere siparişin tekrar müsait olduğunu bildir
+      this.connectedDrivers.forEach((socketId) => {
+        this.io.to(socketId).emit('order_available_again', { orderId });
+      });
+
+      console.log(`Driver ${driverId} stopped inspecting order ${orderId}`);
+    } catch (error) {
+      console.error('Error stopping order inspection:', error);
+    }
+  }
+
+  private async handleOrderAcceptanceWithLabor(driverId: number, orderId: number, laborCount: number) {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // İnceleme kilidini kontrol et
+      const inspectingDriverId = this.inspectingOrders.get(orderId);
+      if (inspectingDriverId !== driverId) {
+        const driverSocketId = this.connectedDrivers.get(driverId);
+        if (driverSocketId) {
+          this.io.to(driverSocketId).emit('order_not_being_inspected', { orderId });
+        }
+        return;
+      }
+
+      // Hammaliye fiyatını system settings'den çek
+      const systemSettings = SystemSettingsService.getInstance();
+      const laborPricePerPerson = await systemSettings.getLaborPricePerPerson();
+      const laborPrice = laborCount * laborPricePerPerson;
+
+      // Siparişin mevcut fiyatını al
+      const orderResult = await pool.request()
+        .input('orderId', orderId)
+        .query(`SELECT estimated_price, user_id FROM orders WHERE id = @orderId`);
+
+      if (orderResult.recordset.length === 0) {
+        return;
+      }
+
+      const order = orderResult.recordset[0];
+      const finalPrice = order.estimated_price + laborPrice;
+
+      // Siparişi kabul et ve hammaliye bilgilerini güncelle
+      await pool.request()
+        .input('orderId', orderId)
+        .input('driverId', driverId)
+        .input('laborCount', laborCount)
+        .input('laborPrice', laborPrice)
+        .input('finalPrice', finalPrice)
+        .query(`
+          UPDATE orders 
+          SET driver_id = @driverId,
+              order_status = 'accepted',
+              labor_count = @laborCount,
+              labor_price = @laborPrice,
+              total_price = @finalPrice,
+              accepted_at = GETDATE()
+          WHERE id = @orderId AND order_status = 'inspecting'
+        `);
+
+      // İnceleme kilidini kaldır
+      this.inspectingOrders.delete(orderId);
+
+      // Müşteriye hammaliye bilgisi ile birlikte onay gönder
+      const customerSocketId = this.connectedCustomers.get(order.user_id);
+      if (customerSocketId) {
+        const driverInfo = await this.getDriverInfo(driverId);
+        
+        this.io.to(customerSocketId).emit('order_accepted_with_labor', {
+          orderId,
+          driver: {
+            name: `${driverInfo.first_name} ${driverInfo.last_name}`,
+            vehicle: `${driverInfo.vehicle_color} ${driverInfo.vehicle_model} (${driverInfo.vehicle_plate})`,
+            rating: driverInfo.rating,
+            phone: driverInfo.phone_number
+          },
+          pricing: {
+            originalPrice: order.estimated_price,
+            laborCount: laborCount,
+            laborPrice: laborPrice,
+            finalPrice: finalPrice
+          },
+          message: 'Sürücü siparişinizi kabul etti. Hammaliye bilgileri güncellendi.'
+        });
+      }
+
+      // Diğer sürücülere siparişin alındığını bildir
+      this.connectedDrivers.forEach((socketId, otherDriverId) => {
+        if (otherDriverId !== driverId) {
+          this.io.to(socketId).emit('order_taken', { orderId });
+        }
+      });
+
+      // Kabul eden sürücüye onay gönder
+      const driverSocketId = this.connectedDrivers.get(driverId);
+      if (driverSocketId) {
+        this.io.to(driverSocketId).emit('order_acceptance_confirmed', {
+          orderId,
+          finalPrice,
+          laborCount,
+          laborPrice
+        });
+      }
+
+      console.log(`Order ${orderId} accepted by driver ${driverId} with ${laborCount} laborers`);
+    } catch (error) {
+      console.error('Error accepting order with labor:', error);
+    }
+  }
+
   private async handleOrderAcceptance(driverId: number, orderId: number) {
     try {
       const db = DatabaseConnection.getInstance();
@@ -904,7 +1147,9 @@ class SocketServer {
           const driverInfo = await this.getDriverInfo(driverId);
           
           // Hammaliye hesaplaması yap
-          const laborCost = order.laborCount * 50; // Her hammal için 50 TL
+          const systemSettings = SystemSettingsService.getInstance();
+          const laborPricePerPerson = await systemSettings.getLaborPricePerPerson();
+          const laborCost = order.laborCount * laborPricePerPerson;
           const updatedPrice = order.estimatedPrice + laborCost;
           
           this.io.to(customerSocketId).emit('order_accepted', {
@@ -1020,6 +1265,18 @@ class SocketServer {
       const order = this.activeOrders.get(orderId);
       if (order) {
         order.status = status;
+        
+        // Aşamalı rota sistemi için özel işlemler
+        if (status === 'started') {
+          // Yük alındı - şimdi varış noktasına gidiliyor
+          order.currentPhase = 'delivery';
+          console.log(`📦 Order ${orderId}: Cargo picked up, now heading to destination`);
+        } else if (status === 'confirmed') {
+          // Sipariş onaylandı - yük alma noktasına gidiliyor
+          order.currentPhase = 'pickup';
+          console.log(`🚚 Order ${orderId}: Order confirmed, driver heading to pickup location`);
+        }
+        
         this.activeOrders.set(orderId, order);
 
         // Müşteriye durum güncellemesi gönder
@@ -1027,7 +1284,8 @@ class SocketServer {
         if (customerSocketId) {
           const updateData: any = {
             orderId,
-            status
+            status,
+            currentPhase: order.currentPhase
           };
           
           // Sipariş tamamlandıysa confirm code'u da gönder
@@ -1036,6 +1294,16 @@ class SocketServer {
           }
           
           this.io.to(customerSocketId).emit('order_status_update', updateData);
+        }
+
+        // Sürücüye de faz bilgisini gönder
+        const driverSocketId = this.connectedDrivers.get(driverId);
+        if (driverSocketId && (status === 'started' || status === 'confirmed')) {
+          this.io.to(driverSocketId).emit('order_phase_update', {
+            orderId,
+            currentPhase: order.currentPhase,
+            status
+          });
         }
 
         // Sipariş tamamlandıysa aktif siparişlerden kaldır
@@ -1057,6 +1325,8 @@ class SocketServer {
         return 'driver_accepted_awaiting_customer_at';
       case 'confirmed':
         return 'confirmed_at';
+      case 'started':
+        return 'started_at';
       case 'driver_going_to_pickup':
         return 'driver_going_to_pickup_at';
       case 'pickup_completed':
@@ -1171,6 +1441,53 @@ class SocketServer {
           message: 'Sipariş iptal edilirken bir hata oluştu.' 
         });
       }
+    }
+  }
+
+  private async getOrderDetails(orderId: number) {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      const result = await pool.request()
+        .input('orderId', orderId)
+        .query(`
+          SELECT 
+            o.*,
+            u.first_name as customer_first_name,
+            u.last_name as customer_last_name,
+            u.phone_number as customer_phone
+          FROM orders o
+          INNER JOIN users u ON o.user_id = u.id
+          WHERE o.id = @orderId
+        `);
+
+      if (result.recordset.length === 0) {
+        return null;
+      }
+
+      const order = result.recordset[0];
+      return {
+        id: order.id,
+        pickupAddress: order.pickup_address,
+        destinationAddress: order.destination_address,
+        weight: order.weight_kg,
+        laborCount: order.labor_count,
+        estimatedPrice: order.estimated_price,
+        cargoPhotoUrl: order.cargo_photo_url,
+        customer_first_name: order.customer_first_name,
+        customer_last_name: order.customer_last_name,
+        customer_phone: order.customer_phone,
+        customer: {
+          name: `${order.customer_first_name} ${order.customer_last_name}`,
+          phone: order.customer_phone
+        },
+        distance: order.distance_km,
+        createdAt: order.created_at
+      };
+    } catch (error) {
+      console.error('Error getting order details:', error);
+      return null;
     }
   }
 

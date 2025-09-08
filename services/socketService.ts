@@ -408,6 +408,36 @@ class SocketService {
     return true;
   }
 
+  public inspectOrder(orderId: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('inspect_order', { orderId });
+    return true;
+  }
+
+  public stopInspectingOrder(orderId: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('stop_inspecting_order', { orderId });
+    return true;
+  }
+
+  public acceptOrderWithLabor(orderId: number, laborCount: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('accept_order_with_labor', { orderId, laborCount });
+    return true;
+  }
+
   // Event listener management
   public on(event: string, callback: Function) {
     if (!this.eventListeners.has(event)) {

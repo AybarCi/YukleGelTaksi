@@ -13,7 +13,6 @@ import {
   Switch,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Keyboard,
   Dimensions,
   ActivityIndicator,
@@ -108,6 +107,13 @@ function HomeScreen() {
 
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  
+  // Aktif sipariş ve sürücü takibi için state'ler
+  const [currentOrder, setCurrentOrder] = useState<any>(null);
+  const [assignedDriver, setAssignedDriver] = useState<Driver | null>(null);
+  const [isTrackingDriver, setIsTrackingDriver] = useState(false);
+  const [driverRoute, setDriverRoute] = useState<{latitude: number, longitude: number}[]>([]);
+  const [estimatedArrival, setEstimatedArrival] = useState<string | null>(null);
   
   // Drivers state'inin güvenli olduğundan emin olmak için
   const safeDrivers = useMemo(() => Array.isArray(drivers) ? drivers : [], [drivers]);
@@ -242,9 +248,6 @@ function HomeScreen() {
   // Cancel confirmation modal için state
   const [cancelConfirmationModalVisible, setCancelConfirmationModalVisible] = useState(false);
 
-  // Mevcut sipariş durumu
-  const [currentOrder, setCurrentOrder] = useState<any>(null);
-
   // Devam eden sipariş modalı için state
   const [pendingOrderModalVisible, setPendingOrderModalVisible] = useState(false);
 
@@ -304,13 +307,19 @@ function HomeScreen() {
       return;
     }
 
+    // Kullanıcının girdiği kod ile backend'den gelen kodu karşılaştır
+    if (userCancelCode !== cancelConfirmCode) {
+      showModal('Hata', 'Doğrulama kodu yanlış. Lütfen tekrar deneyin.', 'error');
+      return;
+    }
+
     // Socket üzerinden cancel order doğrulama gönder
     const success = socketService.cancelOrderWithCode(parseInt(cancelOrderId), userCancelCode);
     
     if (!success) {
       showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
     }
-  }, [userCancelCode, cancelOrderId, showModal]);
+  }, [userCancelCode, cancelOrderId, cancelConfirmCode, showModal]);
 
   // Sipariş iptal etme başlatma - önce onay modalını göster
   const initiateCancelOrder = useCallback(async () => {
@@ -364,7 +373,7 @@ function HomeScreen() {
             // Cezai şart varsa ödeme modalı göster
             showModal(
               'Cezai Şart Uygulanacak', 
-              `Sipariş iptal edilecek ancak ${cancellationFee} TL cezai şart uygulanacaktır. Ödeme yapmak için devam edin.`,
+              `Sipariş iptal edilecek ancak ${cancellationFee} TL cezai şart uygulanacaktır. Devam etmek istiyor musunuz?`,
               'warning',
               [
                 {
@@ -372,20 +381,24 @@ function HomeScreen() {
                   style: 'cancel'
                 },
                 {
-                   text: 'Ödeme Yap',
+                   text: 'Evet, İptal Et',
                    onPress: () => {
-                     // TODO: Ödeme sayfası oluşturulacak
-                     showModal(
-                       'Ödeme Gerekli', 
-                       `${cancellationFee} TL cezai şart ödemesi gerekiyor. Ödeme sistemi yakında aktif olacak.`,
-                       'info'
-                     );
+                     // Kullanıcı cezai şartı kabul etti, confirm code üret
+                     console.log('🔴 Kullanıcı cezai şartı kabul etti, confirm code üretimi için cancelOrder çağrılıyor...');
+                     console.log('🔗 Socket bağlantı durumu:', socketService.getConnectionStatus());
+                     console.log('📋 Current Order ID:', currentOrder.id);
+                     const success = socketService.cancelOrder(currentOrder.id);
+                     console.log('✅ cancelOrder çağrısı sonucu:', success);
+                     if (!success) {
+                       showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+                     }
+                     // Backend'den cancel_order_confirmation_required eventi geldiğinde confirm code modalı açılacak
                    }
                  }
               ]
             );
           } else {
-            // Cezai şart yoksa önce socket üzerinden onay kodu isteme işlemini başlat
+            // Cezai şart yoksa doğrudan confirm code üret
             console.log('🔴 Cezai şart yok, confirm code üretimi için cancelOrder çağrılıyor...');
             console.log('🔗 Socket bağlantı durumu:', socketService.getConnectionStatus());
             console.log('📋 Current Order ID:', currentOrder.id);
@@ -394,10 +407,11 @@ function HomeScreen() {
             if (!success) {
               showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
             }
-            // Not: freeCancelModal, backend'den cancel_order_confirmation_required eventi geldiğinde otomatik açılacak
+            // Backend'den cancel_order_confirmation_required eventi geldiğinde confirm code modalı açılacak
           }
         } else {
-          // API hatası durumunda fallback olarak onay kodu isteme işlemini başlat
+          // API hatası durumunda da doğrudan confirm code üret
+          console.log('🔴 API hatası, confirm code üretimi için cancelOrder çağrılıyor...');
           const success = socketService.cancelOrder(currentOrder.id);
           if (!success) {
             showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
@@ -408,8 +422,9 @@ function HomeScreen() {
       }
     } catch (error) {
       console.error('Cancel order error:', error);
-      // Hata durumunda fallback olarak onay kodu isteme işlemini başlat
+      // Hata durumunda da doğrudan confirm code üret
       if (currentOrder) {
+        console.log('🔴 Catch bloğu, confirm code üretimi için cancelOrder çağrılıyor...');
         const success = socketService.cancelOrder(currentOrder.id);
         if (!success) {
           showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
@@ -509,9 +524,31 @@ function HomeScreen() {
           
           // Devam eden sipariş varsa order'ı set et
           setCurrentOrder(activeOrder);
+          
+          // Eğer sipariş kabul edilmiş durumda ise sürücü takibini başlat
+          if (activeOrder.status === 'accepted' || activeOrder.status === 'confirmed' || activeOrder.status === 'in_progress') {
+            if (activeOrder.driver_id) {
+              setAssignedDriver({
+                id: activeOrder.driver_id,
+                latitude: activeOrder.driver_latitude || 0,
+                longitude: activeOrder.driver_longitude || 0,
+                heading: activeOrder.driver_heading || 0,
+                name: activeOrder.driver_name
+              });
+              setIsTrackingDriver(true);
+              
+              // ETA bilgisi varsa set et
+              if (activeOrder.estimated_arrival) {
+                setEstimatedArrival(activeOrder.estimated_arrival);
+              }
+            }
+          }
         } else {
           // Devam eden sipariş yok, AsyncStorage'ı temizle
           setCurrentOrder(null);
+          setAssignedDriver(null);
+          setIsTrackingDriver(false);
+          setEstimatedArrival(null);
           await AsyncStorage.removeItem('currentOrder');
         }
       } else {
@@ -678,6 +715,7 @@ function HomeScreen() {
 
     socketService.on('driver_location_update', (data: any) => {
       if (data && data.driverId && data.latitude && data.longitude) {
+        // Genel sürücü listesini güncelle
         setDrivers(prevDrivers => {
           const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
           const updatedDrivers = [...currentDrivers];
@@ -700,6 +738,53 @@ function HomeScreen() {
           }
           return updatedDrivers;
         });
+        
+        // Eğer bu bizim atanmış sürücümüzse, özel takip bilgilerini güncelle
+        if (isTrackingDriver && assignedDriver && assignedDriver.id === data.driverId) {
+          setAssignedDriver(prev => prev ? {
+            ...prev,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            heading: data.heading || prev.heading || 0
+          } : null);
+          
+          // ETA güncellemesi varsa kaydet
+          if (data.estimatedArrival) {
+            setEstimatedArrival(data.estimatedArrival);
+          }
+          
+          // Aşamalı takip sistemi: Sipariş durumuna göre harita odaklaması
+          if (!userInteractedWithMap && mapRef.current && currentOrder) {
+            // Sipariş durumuna göre farklı takip davranışları
+            if (currentOrder.status === 'confirmed' || currentOrder.status === 'in_progress') {
+              // Sürücü yük alma noktasına gidiyor - sürücüyü takip et
+              mapRef.current.animateToRegion({
+                latitude: data.latitude,
+                longitude: data.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }, 1000);
+            } else if (currentOrder.status === 'started') {
+              // Sürücü teslimat fazında - sürücüyü takip et ama daha geniş görüş
+              mapRef.current.animateToRegion({
+                latitude: data.latitude,
+                longitude: data.longitude,
+                latitudeDelta: 0.015,
+                longitudeDelta: 0.015,
+              }, 1000);
+            }
+          }
+          
+          // Sürücü konumunu AsyncStorage'a kaydet (offline durumlar için)
+          if (currentOrder) {
+            AsyncStorage.setItem('driver_location', JSON.stringify({
+              latitude: data.latitude,
+              longitude: data.longitude,
+              heading: data.heading || 0,
+              timestamp: Date.now()
+            }));
+          }
+        }
       }
     });
     
@@ -744,26 +829,43 @@ function HomeScreen() {
     
     socketService.on('order_accepted', (data: any) => {
       // Hammaliye bilgisi ile yeniden hesaplanmış sipariş bilgisini göster
-      const { driver, estimatedArrival, updatedPrice, laborCost } = data;
+      const { driver, estimatedArrival, updatedPrice, laborCost, orderId } = data;
       const message = `Siparişiniz ${driver.name} tarafından kabul edildi.\n\nSürücü Bilgileri:\n${driver.vehicle}\nTahmini Varış: ${estimatedArrival} dakika\n\nGüncellenmiş Fiyat:\nTaşıma Ücreti: ${updatedPrice - laborCost} TL\nHammaliye: ${laborCost} TL\nToplam: ${updatedPrice} TL\n\nOnaylıyor musunuz?`;
       
-      Alert.alert(
+      showModal(
         'Sipariş Kabul Edildi',
         message,
+        'warning',
         [
           {
             text: 'İptal',
             style: 'cancel',
             onPress: () => {
                // Sipariş iptal edildi socket event'i gönder
-               socketService.rejectOrder(data.orderId);
+               socketService.rejectOrder(orderId);
              }
           },
           {
             text: 'Onayla',
             onPress: () => {
-               // Müşteri onayladı, socket room oluştur
-               socketService.confirmOrder(data.orderId);
+               // Müşteri onayladı, socket room oluştur ve sürücü takibini başlat
+               socketService.confirmOrder(orderId);
+               
+               // Sipariş ve sürücü bilgilerini kaydet
+               setCurrentOrder({ ...data, id: orderId });
+               setAssignedDriver({
+                 id: driver.id,
+                 latitude: driver.latitude || 0,
+                 longitude: driver.longitude || 0,
+                 heading: driver.heading || 0,
+                 name: driver.name
+               });
+               setIsTrackingDriver(true);
+               setEstimatedArrival(estimatedArrival);
+               
+               // AsyncStorage'a kaydet
+               AsyncStorage.setItem('currentOrder', JSON.stringify({ ...data, id: orderId }));
+               
                showModal('Sipariş Onaylandı', 'Sürücünüz yola çıkıyor. Canlı takip başlatılıyor.', 'success');
              }
           }
@@ -774,17 +876,36 @@ function HomeScreen() {
     socketService.on('order_status_update', (data: any) => {
       console.log('Order status updated:', data);
       
+      // Mevcut siparişi güncelle
+      if (currentOrder && currentOrder.id === data.orderId) {
+        const updatedOrder = { ...currentOrder, status: data.status };
+        setCurrentOrder(updatedOrder);
+        AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
+      }
+      
       let message = '';
       switch (data.status) {
         case 'started':
-          message = 'Sürücü yükünüzü aldı ve yola çıktı.';
-          Alert.alert('Sipariş Durumu', message);
+          message = 'Sürücü yükünüzü aldı ve varış noktasına doğru yola çıktı.';
+          showModal('Yük Alındı', message, 'info');
+          
+          // Aşamalı takip: Sürücü artık teslimat fazında
+          if (!userInteractedWithMap && mapRef.current && assignedDriver) {
+            // Harita odaklamasını sürücü konumuna ayarla
+            mapRef.current.animateToRegion({
+              latitude: assignedDriver.latitude,
+              longitude: assignedDriver.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }, 1000);
+          }
           break;
         case 'completed':
           message = `Sipariş tamamlandı! Doğrulama kodu: ${data.confirmCode}`;
-          Alert.alert(
+          showModal(
             'Sipariş Tamamlandı',
             message,
+            'success',
             [
               {
                 text: 'Doğrula',
@@ -795,12 +916,15 @@ function HomeScreen() {
           break;
         case 'cancelled':
           message = 'Sipariş iptal edildi.';
-          Alert.alert('Sipariş Durumu', message);
+          showModal('Sipariş Durumu', message, 'info');
+          setCurrentOrder(null);
+          setAssignedDriver(null);
+          setIsTrackingDriver(false);
           AsyncStorage.removeItem('currentOrder');
           break;
         default:
           message = `Sipariş durumu güncellendi: ${data.status}`;
-          Alert.alert('Sipariş Durumu', message);
+          showModal('Sipariş Durumu', message, 'info');
       }
     });
     
@@ -1520,9 +1644,10 @@ function HomeScreen() {
   }, [pickupCoords, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const handleImagePicker = useCallback(() => {
-    Alert.alert(
+    showModal(
       'Fotoğraf Ekle',
       'Yük fotoğrafını nasıl eklemek istiyorsunuz?',
+      'info',
       [
         {
           text: 'İptal',
@@ -1834,18 +1959,96 @@ function HomeScreen() {
                   </View>
                   
                   <View style={styles.cardFooter}>
-                    <View style={styles.progressBarContainer}>
-                      <Animated.View style={[
-                        styles.progressBar, 
-                        { 
-                          width: progressAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0%', '100%'],
-                            extrapolate: 'clamp'
-                          })
-                        }
+                    {/* Aşamalı takip göstergesi */}
+                    <View style={styles.phaseTrackingContainer}>
+                      <View style={styles.phaseStep}>
+                        <View style={[
+                          styles.phaseCircle,
+                          currentOrder?.status === 'pending' ? styles.phaseActive :
+                          ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseCompleted : styles.phaseInactive
+                        ]}>
+                          <MaterialIcons 
+                            name="schedule" 
+                            size={12} 
+                            color={currentOrder?.status === 'pending' ? '#F59E0B' : 
+                                   ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
+                          />
+                        </View>
+                        <Text style={styles.phaseLabel}>Bekliyor</Text>
+                      </View>
+                      
+                      <View style={[
+                        styles.phaseLine,
+                        ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
                       ]} />
+                      
+                      <View style={styles.phaseStep}>
+                        <View style={[
+                          styles.phaseCircle,
+                          ['accepted', 'confirmed'].includes(currentOrder?.status || '') ? styles.phaseActive :
+                          ['in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseCompleted : styles.phaseInactive
+                        ]}>
+                          <MaterialIcons 
+                            name="local-shipping" 
+                            size={12} 
+                            color={['accepted', 'confirmed'].includes(currentOrder?.status || '') ? '#F59E0B' : 
+                                   ['in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
+                          />
+                        </View>
+                        <Text style={styles.phaseLabel}>Yolda</Text>
+                      </View>
+                      
+                      <View style={[
+                        styles.phaseLine,
+                        ['in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
+                      ]} />
+                      
+                      <View style={styles.phaseStep}>
+                        <View style={[
+                          styles.phaseCircle,
+                          currentOrder?.status === 'in_progress' ? styles.phaseActive :
+                          ['started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseCompleted : styles.phaseInactive
+                        ]}>
+                          <MaterialIcons 
+                            name="inventory" 
+                            size={12} 
+                            color={currentOrder?.status === 'in_progress' ? '#F59E0B' : 
+                                   ['started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
+                          />
+                        </View>
+                        <Text style={styles.phaseLabel}>Yük Alımı</Text>
+                      </View>
+                      
+                      <View style={[
+                        styles.phaseLine,
+                        ['started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
+                      ]} />
+                      
+                      <View style={styles.phaseStep}>
+                        <View style={[
+                          styles.phaseCircle,
+                          currentOrder?.status === 'started' ? styles.phaseActive :
+                          currentOrder?.status === 'completed' ? styles.phaseCompleted : styles.phaseInactive
+                        ]}>
+                          <MaterialIcons 
+                            name="place" 
+                            size={12} 
+                            color={currentOrder?.status === 'started' ? '#F59E0B' : 
+                                   currentOrder?.status === 'completed' ? '#FFFFFF' : '#9CA3AF'} 
+                          />
+                        </View>
+                        <Text style={styles.phaseLabel}>Teslimat</Text>
+                      </View>
                     </View>
+                    
+                    {/* Durum metni */}
+                    <Text style={styles.currentPhaseText}>
+                      {currentOrder?.status === 'pending' && 'Sürücü aranıyor...'}
+                      {['accepted', 'confirmed'].includes(currentOrder?.status || '') && 'Sürücü yük konumuna gidiyor'}
+                      {currentOrder?.status === 'in_progress' && 'Sürücü yük konumunda'}
+                      {currentOrder?.status === 'started' && 'Yük alındı, teslimat yapılıyor'}
+                      {currentOrder?.status === 'completed' && 'Teslimat tamamlandı'}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -2488,8 +2691,13 @@ function HomeScreen() {
                   </View>
                   
                   <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Mesafe</Text>
+                    <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.distance_km ? currentOrder.distance_km.toFixed(1) : 'Hesaplanıyor'} km</Text>
+                  </View>
+                  
+                  <View style={{ marginBottom: 12 }}>
                     <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Yük Ağırlığı</Text>
-                    <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.weight || 'Belirtilmemiş'} kg</Text>
+                    <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.weight_kg || 'Belirtilmemiş'} kg</Text>
                   </View>
                   
                   <View>
@@ -2815,17 +3023,60 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
   },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 4,
-    flex: 1,
-    marginRight: 12,
+  phaseTrackingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#FFD700',
-    borderRadius: 4,
+  phaseStep: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  phaseCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  phaseActive: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+  },
+  phaseCompleted: {
+    backgroundColor: '#10B981',
+  },
+  phaseInactive: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  phaseLine: {
+    height: 2,
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  phaseLineCompleted: {
+    backgroundColor: '#10B981',
+  },
+  phaseLineInactive: {
+    backgroundColor: '#E5E7EB',
+  },
+  phaseLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  currentPhaseText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#374151',
+    textAlign: 'center',
+    marginTop: 8,
   },
   compactOrderCard: {
     backgroundColor: '#FFFFFF',

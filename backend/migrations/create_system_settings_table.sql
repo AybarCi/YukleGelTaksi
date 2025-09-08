@@ -67,5 +67,7 @@ BEGIN
 END
 GO
 
+-- labor_price_per_person ayarı kaldırıldı, artık pricing_settings tablosu kullanılıyor
+
 PRINT 'Default system settings inserted successfully';
 GO

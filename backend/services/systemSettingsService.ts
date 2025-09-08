@@ -101,6 +101,32 @@ class SystemSettingsService {
   }
 
   /**
+   * Hammaliye fiyatını pricing_settings tablosundan çeker
+   */
+  public async getLaborPricePerPerson(): Promise<number> {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      const result = await pool.request()
+        .query(`
+          SELECT labor_price 
+          FROM pricing_settings 
+          ORDER BY id DESC
+        `);
+
+      if (result.recordset.length > 0) {
+        return parseFloat(result.recordset[0].labor_price) || 25;
+      }
+
+      return 25; // Varsayılan değer
+    } catch (error) {
+      console.error('Error getting labor price from pricing_settings:', error);
+      return 800; // Hata durumunda varsayılan değer
+    }
+  }
+
+  /**
    * Cache'i temizler
    */
   public clearCache(key?: string): void {
