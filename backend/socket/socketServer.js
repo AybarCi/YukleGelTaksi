@@ -326,6 +326,10 @@ class SocketServer {
       this.cancelOrder(orderId, customerId);
     });
 
+    socket.on('cancel_order_with_code', (data) => {
+      this.cancelOrderWithCode(data.orderId, data.confirmCode, customerId);
+    });
+
     socket.on('customer_location_update', (location) => {
       // Müşteri konumunu güncelle
       const customerInfo = this.connectedCustomers.get(customerId);
@@ -532,9 +536,9 @@ class SocketServer {
 
       if (orderResult.recordset.length === 0) {
         console.log('🔴 Order not found or cannot be cancelled. orderId:', orderId, 'userId:', userId);
-        const customerSocketId = this.connectedCustomers.get(userId);
-        if (customerSocketId) {
-          this.io.to(customerSocketId).emit('cancel_order_error', { 
+        const customerData = this.connectedCustomers.get(userId);
+        if (customerData && customerData.socketId) {
+          this.io.to(customerData.socketId).emit('cancel_order_error', { 
             message: 'Sipariş bulunamadı veya iptal edilemez durumda.' 
           });
         }
@@ -571,7 +575,7 @@ class SocketServer {
       console.log('💰 Cancellation Fee:', cancellationFee, 'TL');
       console.log('📝 Saving confirm code to database...');
 
-      // Onay kodunu veritabanına kaydet ve sipariş durumunu güncelle
+      // Onay kodunu veritabanına kaydet (sipariş durumunu henüz değiştirme)
       await pool.request()
         .input('orderId', orderId)
         .input('confirmCode', confirmCode)
@@ -580,7 +584,6 @@ class SocketServer {
           UPDATE orders 
           SET cancellation_confirm_code = @confirmCode,
               cancellation_fee = @cancellationFee,
-              order_status = 'cancelled',
               updated_at = GETDATE()
           WHERE id = @orderId
         `);
@@ -588,10 +591,10 @@ class SocketServer {
       console.log('✅ Confirm code saved to database successfully for Order', orderId);
 
       // Müşteriye iptal onay modalı gönder
-      const customerSocketId = this.connectedCustomers.get(userId);
-      console.log('🔴 Sending cancel_order_confirmation_required to customer', userId, 'socketId:', customerSocketId);
-      if (customerSocketId) {
-        this.io.to(customerSocketId).emit('cancel_order_confirmation_required', {
+      const customerData = this.connectedCustomers.get(userId);
+      console.log('🔴 Sending cancel_order_confirmation_required to customer', userId, 'customerData:', customerData);
+      if (customerData && customerData.socketId) {
+        this.io.to(customerData.socketId).emit('cancel_order_confirmation_required', {
           orderId,
           confirmCode,
           cancellationFee,
@@ -600,13 +603,98 @@ class SocketServer {
             ? `Sipariş iptal edilecek. Cezai tutar: ${cancellationFee} TL. Onaylamak için kodu girin: ${confirmCode}`
             : `Sipariş ücretsiz iptal edilecek. Onaylamak için kodu girin: ${confirmCode}`
         });
-        console.log('🔴 cancel_order_confirmation_required event sent successfully');
+        console.log('🔴 cancel_order_confirmation_required event sent successfully to socket:', customerData.socketId);
       } else {
         console.log('🔴 Customer socket not found for userId:', userId);
       }
 
     } catch (error) {
       console.error('Error cancelling order:', error);
+      const customerData = this.connectedCustomers.get(userId);
+      if (customerData && customerData.socketId) {
+        this.io.to(customerData.socketId).emit('cancel_order_error', { 
+          message: 'Sipariş iptal edilirken bir hata oluştu.' 
+        });
+      }
+    }
+  }
+
+  async cancelOrderWithCode(orderId, confirmCode, userId) {
+    console.log('🔴 cancelOrderWithCode method called with orderId:', orderId, 'confirmCode:', confirmCode, 'userId:', userId);
+    try {
+      const DatabaseConnection = require('../config/database');
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // Sipariş bilgilerini ve confirm code'u kontrol et
+      const orderResult = await pool.request()
+        .input('orderId', orderId)
+        .input('userId', userId)
+        .input('confirmCode', confirmCode)
+        .query(`
+          SELECT id, order_status, total_price, cancellation_confirm_code, cancellation_fee, driver_id
+          FROM orders 
+          WHERE id = @orderId AND user_id = @userId AND cancellation_confirm_code = @confirmCode
+        `);
+
+      if (orderResult.recordset.length === 0) {
+        console.log('🔴 Order not found or confirm code mismatch. orderId:', orderId, 'userId:', userId);
+        const customerSocketId = this.connectedCustomers.get(userId);
+        if (customerSocketId) {
+          this.io.to(customerSocketId).emit('cancel_order_error', { 
+            message: 'Sipariş bulunamadı veya doğrulama kodu yanlış.' 
+          });
+        }
+        return;
+      }
+
+      const order = orderResult.recordset[0];
+      console.log('✅ Confirm code verified, proceeding with cancellation for Order', orderId);
+
+      // Siparişi gerçekten iptal et
+      await pool.request()
+        .input('orderId', orderId)
+        .query(`
+          UPDATE orders 
+          SET order_status = 'cancelled',
+              updated_at = GETDATE()
+          WHERE id = @orderId
+        `);
+
+      console.log('✅ Order cancelled successfully in database for Order', orderId);
+
+      // Müşteriye başarılı iptal mesajı gönder
+      const customerSocketId = this.connectedCustomers.get(userId);
+      if (customerSocketId) {
+        this.io.to(customerSocketId).emit('order_cancelled_successfully', {
+          orderId,
+          message: 'Sipariş başarıyla iptal edildi.',
+          cancellationFee: order.cancellation_fee
+        });
+        console.log('✅ order_cancelled_successfully event sent to customer', userId);
+      }
+
+      // Eğer sürücü atanmışsa, sürücüye de bildir
+      if (order.driver_id) {
+        const driverData = this.connectedDrivers.get(order.driver_id);
+        if (driverData) {
+          const driverSocketId = driverData.socketId;
+          this.io.to(driverSocketId).emit('order_cancelled_by_customer', {
+            orderId,
+            message: 'Müşteri siparişi iptal etti.'
+          });
+          console.log('✅ order_cancelled_by_customer event sent to driver', order.driver_id);
+        }
+      }
+
+      // Tüm sürücülere sipariş iptal edildi bilgisi gönder
+      this.broadcastToAllDrivers('order_cancelled', {
+        orderId,
+        message: 'Sipariş müşteri tarafından iptal edildi.'
+      });
+
+    } catch (error) {
+      console.error('Error in cancelOrderWithCode:', error);
       const customerSocketId = this.connectedCustomers.get(userId);
       if (customerSocketId) {
         this.io.to(customerSocketId).emit('cancel_order_error', { 
