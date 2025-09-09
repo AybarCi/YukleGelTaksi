@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
             o.pickup_longitude,
             o.destination_latitude,
             o.destination_longitude,
-            o.weight,
+            o.weight_kg,
             o.labor_count,
             o.estimated_price,
             o.final_price,
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
           latitude: order.destination_latitude,
           longitude: order.destination_longitude
         },
-        weight: order.weight,
+        weight_kg: order.weight_kg,
         laborCount: order.labor_count,
         estimatedPrice: order.estimated_price,
         finalPrice: order.final_price,

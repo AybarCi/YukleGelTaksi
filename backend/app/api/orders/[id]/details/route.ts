@@ -8,7 +8,7 @@ interface OrderDetailsResponse {
     id: number;
     pickup_address: string;
     destination_address: string;
-    weight: number;
+    weight_kg: number;
     labor_count: number;
     estimated_price: number;
     cargo_photo_url?: string;
@@ -85,7 +85,7 @@ export async function GET(
         id: order.id,
         pickup_address: order.pickup_address,
         destination_address: order.destination_address,
-        weight: order.weight_kg,
+        weight_kg: order.weight_kg,
         labor_count: order.labor_count,
         estimated_price: order.estimated_price,
         cargo_photo_url: order.cargo_photo_url,

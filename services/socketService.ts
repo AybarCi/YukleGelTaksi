@@ -225,6 +225,64 @@ class SocketService {
       console.log('Driver disconnected:', data);
       this.emit('driver_disconnected', data);
     });
+
+    // Backend'den gelen eksik eventleri ekle
+    this.socket.on('order_locked_for_inspection', (data) => {
+      console.log('Order locked for inspection:', data);
+      this.emit('order_locked_for_inspection', data);
+    });
+
+    this.socket.on('order_already_taken', (data) => {
+      console.log('Order already taken:', data);
+      this.emit('order_already_taken', data);
+    });
+
+    this.socket.on('order_acceptance_confirmed', (data) => {
+      console.log('Order acceptance confirmed:', data);
+      this.emit('order_acceptance_confirmed', data);
+    });
+
+    this.socket.on('order_phase_update', (data) => {
+      console.log('Order phase update:', data);
+      this.emit('order_phase_update', data);
+    });
+
+    this.socket.on('order_inspection_started', (data) => {
+      console.log('Order inspection started:', data);
+      this.emit('order_inspection_started', data);
+    });
+
+    this.socket.on('order_inspection_stopped', (data) => {
+      console.log('Order inspection stopped:', data);
+      this.emit('order_inspection_stopped', data);
+    });
+
+    // Sipariş iptal eventleri
+    this.socket.on('cancel_order_confirmation_required', (data) => {
+      console.log('Cancel order confirmation required:', data);
+      this.emit('cancel_order_confirmation_required', data);
+    });
+
+    this.socket.on('order_cancelled_successfully', (data) => {
+      console.log('Order cancelled successfully:', data);
+      this.emit('order_cancelled_successfully', data);
+    });
+
+    this.socket.on('cancel_order_error', (data) => {
+      console.log('Cancel order error:', data);
+      this.emit('cancel_order_error', data);
+    });
+
+    // Confirm code eventleri
+    this.socket.on('confirm_code_verified', (data) => {
+      console.log('Confirm code verified:', data);
+      this.emit('confirm_code_verified', data);
+    });
+
+    this.socket.on('confirm_code_error', (data) => {
+      console.log('Confirm code error:', data);
+      this.emit('confirm_code_error', data);
+    });
   }
 
   private handleReconnection() {
@@ -413,7 +471,6 @@ class SocketService {
       console.error('Socket not connected');
       return false;
     }
-
     this.socket.emit('inspect_order', { orderId });
     return true;
   }

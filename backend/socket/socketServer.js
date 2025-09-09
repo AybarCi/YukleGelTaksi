@@ -1,6 +1,7 @@
 const { Server: SocketIOServer } = require('socket.io');
 const { Server: HTTPServer } = require('http');
 const jwt = require('jsonwebtoken');
+const sql = require('mssql');
 const DatabaseConnection = require('../config/database.js');
 
 class SocketServer {
@@ -15,6 +16,7 @@ class SocketServer {
     this.connectedDrivers = new Map(); // driverId -> { socketId, location, isAvailable }
     this.connectedCustomers = new Map(); // userId -> { socketId, location }
     this.activeOrders = new Map(); // orderId -> orderData
+    this.inspectingOrders = new Map(); // orderId -> driverId (inceleme kilidi)
 
     this.setupSocketHandlers();
     console.log('Socket.IO server initialized');
@@ -227,6 +229,37 @@ class SocketServer {
 
     socket.on('update_order_status', ({ orderId, status }) => {
       this.updateOrderStatus(orderId, status, driverId);
+    });
+
+    socket.on('inspect_order', async (data) => {
+      console.log('🔍 SOCKET: inspect_order event received:', data);
+      const { orderId } = data;
+      const driverId = socket.driverId;
+      
+      console.log(`🔍 SOCKET: Driver ${driverId} wants to inspect order ${orderId}`);
+      console.log(`🔍 DEBUG: socket.driverId değeri:`, socket.driverId);
+      console.log(`🔍 DEBUG: data içeriği:`, JSON.stringify(data));
+      console.log(`🔍 DEBUG: orderId değeri:`, orderId);
+      
+      if (!driverId) {
+        console.error('❌ ERROR: driverId bulunamadı!');
+        socket.emit('error', { message: 'Driver ID bulunamadı' });
+        return;
+      }
+      
+      if (!orderId) {
+        console.error('❌ ERROR: orderId bulunamadı!');
+        socket.emit('error', { message: 'Order ID bulunamadı' });
+        return;
+      }
+      
+      console.log(`🔍 SOCKET: handleOrderInspection çağrılıyor...`);
+      const result = await this.handleOrderInspection(driverId, orderId);
+      console.log('🔍 DEBUG: handleOrderInspection sonucu:', result);
+    });
+
+    socket.on('stop_inspecting_order', (orderId) => {
+      this.handleStopInspection(driverId, orderId);
     });
 
     // Driver offline event handler
@@ -829,6 +862,189 @@ class SocketServer {
       return newToken;
     } catch (error) {
       console.error('Refresh token error:', error);
+      return null;
+    }
+  }
+
+  async handleOrderInspection(driverId, orderId) {
+    try {
+      // orderId'yi düzelt - eğer object ise id property'sini al
+      let actualOrderId = orderId;
+      if (typeof orderId === 'object' && orderId !== null) {
+        actualOrderId = orderId.id || orderId.orderId;
+      }
+      
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // orderId'yi integer'a çevir
+      const orderIdInt = parseInt(actualOrderId);
+
+      // Siparişin durumunu kontrol et
+      const orderCheck = await pool.request()
+        .input('orderId', sql.Int, orderIdInt)
+        .query(`SELECT order_status, driver_id FROM orders WHERE id = @orderId`);
+      
+      if (orderCheck.recordset.length === 0 || orderCheck.recordset[0].order_status !== 'pending') {
+        const driverData = this.connectedDrivers.get(driverId);
+        if (driverData) {
+          this.io.to(driverData.socketId).emit('order_no_longer_available', { orderId });
+        }
+        return;
+      }
+
+      // Başka bir sürücü inceliyor mu kontrol et
+      if (this.inspectingOrders.has(actualOrderId)) {
+        const inspectingDriverId = this.inspectingOrders.get(actualOrderId);
+        if (inspectingDriverId !== driverId) {
+          const driverData = this.connectedDrivers.get(driverId);
+          if (driverData) {
+            this.io.to(driverData.socketId).emit('order_being_inspected', { 
+              orderId, 
+              message: 'Bu sipariş başka bir sürücü tarafından inceleniyor' 
+            });
+          }
+          return;
+        }
+      }
+
+      // Siparişi inceleme listesine ekle
+      this.inspectingOrders.set(actualOrderId, driverId);
+
+      // Siparişi "inspecting" durumuna getir (driver_id set etme)
+      await pool.request()
+        .input('orderId', sql.Int, orderIdInt)
+        .query(`
+          UPDATE orders 
+          SET order_status = 'inspecting'
+          WHERE id = @orderId AND order_status = 'pending'
+        `);
+
+      // Diğer sürücülere bu siparişin incelendiğini bildir
+      this.connectedDrivers.forEach((driverData, otherDriverId) => {
+        if (otherDriverId !== driverId) {
+          this.io.to(driverData.socketId).emit('order_locked_for_inspection', { orderId: actualOrderId });
+        }
+      });
+      
+      // Tüm sürücülere order_status_update gönder
+      this.broadcastToAllDrivers('order_status_update', { orderId: actualOrderId, status: 'inspecting' });
+
+      // Müşteriye siparişin incelendiğini bildir
+      const orderResult = await pool.request()
+        .input('orderId', sql.Int, orderIdInt)
+        .query(`SELECT user_id FROM orders WHERE id = @orderId`);
+      
+      if (orderResult.recordset.length > 0) {
+        const customerId = orderResult.recordset[0].user_id;
+        const customerRoom = `customer_${customerId}`;
+        
+        // Customer room'una sipariş inceleme durumu gönder
+        this.io.to(customerRoom).emit('order_inspection_started', {
+          orderId: actualOrderId,
+          status: 'inspecting',
+          message: 'Siparişiniz bir sürücü tarafından inceleniyor'
+        });
+        
+        // Müşteriye order_status_update da gönder
+        this.io.to(customerRoom).emit('order_status_update', {
+          orderId: actualOrderId,
+          status: 'inspecting',
+          message: 'Siparişiniz inceleniyor'
+        });
+      }
+
+      // İnceleyen sürücüye sipariş detaylarını gönder
+      const driverData = this.connectedDrivers.get(driverId);
+      if (driverData) {
+        const orderDetails = await this.getOrderDetails(actualOrderId);
+        this.io.to(driverData.socketId).emit('order_inspection_started', {
+          orderId: actualOrderId,
+          orderDetails
+        });
+      }
+
+      console.log(`Order ${actualOrderId} is being inspected by driver ${driverId}`);
+    } catch (error) {
+      console.error('Error handling order inspection:', error);
+    }
+  }
+
+  async handleStopInspection(driverId, orderId) {
+    try {
+      // orderId'yi düzelt - eğer object ise id property'sini al
+      let actualOrderId = orderId;
+      if (typeof orderId === 'object' && orderId !== null) {
+        actualOrderId = orderId.id || orderId.orderId;
+      }
+      
+      // İnceleme kilidini kaldır
+      this.inspectingOrders.delete(actualOrderId);
+
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // orderId'yi integer'a çevir
+      const orderIdInt = parseInt(actualOrderId);
+
+      // Siparişi tekrar pending durumuna getir
+      const updateResult = await pool.request()
+        .input('orderId', sql.Int, orderIdInt)
+        .query(`
+          UPDATE orders 
+          SET order_status = 'pending', driver_id = NULL
+          WHERE id = @orderId AND order_status = 'inspecting'
+        `);
+      
+      // Tüm sürücülere siparişin tekrar müsait olduğunu bildir
+      this.broadcastToAllDrivers('order_available_again', { orderId: actualOrderId });
+      this.broadcastToAllDrivers('order_status_update', { orderId: actualOrderId, status: 'pending' });
+
+      // Müşteriye incelemenin bittiğini bildir
+      const orderResult = await pool.request()
+        .input('orderId', sql.Int, orderIdInt)
+        .query(`SELECT user_id FROM orders WHERE id = @orderId`);
+      
+      if (orderResult.recordset.length > 0) {
+        const customerId = orderResult.recordset[0].user_id;
+        const customerRoom = `customer_${customerId}`;
+        
+        this.io.to(customerRoom).emit('order_inspection_stopped', {
+          orderId: actualOrderId,
+          status: 'pending',
+          message: 'Sipariş incelemesi tamamlandı, tekrar beklemede'
+        });
+        
+        this.io.to(customerRoom).emit('order_status_update', {
+          orderId: actualOrderId,
+          status: 'pending',
+          message: 'Siparişiniz tekrar beklemede'
+        });
+      }
+
+      console.log(`Driver ${driverId} stopped inspecting order ${actualOrderId}`);
+    } catch (error) {
+      console.error('Error stopping order inspection:', error);
+    }
+  }
+
+  async getOrderDetails(orderId) {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      const result = await pool.request()
+        .input('orderId', orderId)
+        .query(`
+          SELECT o.*, u.first_name, u.last_name, u.phone_number
+          FROM orders o
+          LEFT JOIN users u ON o.user_id = u.id
+          WHERE o.id = @orderId
+        `);
+      
+      return result.recordset[0] || null;
+    } catch (error) {
+      console.error('Error getting order details:', error);
       return null;
     }
   }

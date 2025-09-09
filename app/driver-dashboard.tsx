@@ -31,7 +31,7 @@ interface Customer {
   destination: string;
   distance: string;
   estimated_fare: number;
-  status: 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed';
+  status: 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
   created_at: string;
 }
 
@@ -114,9 +114,17 @@ export default function DriverDashboardScreen() {
       // AsyncStorage'dan son online durumunu kontrol et
       AsyncStorage.getItem('driver_online_status').then(savedStatus => {
         const shouldBeOnline = savedStatus === 'true';
+        console.log('🔌 Driver online status:', shouldBeOnline);
         setIsOnline(shouldBeOnline); // Online durumunu hemen set et
         if (shouldBeOnline) {
+          console.log('🔌 Connecting socket for driver...');
           socketService.connect(token);
+          
+          // Bağlantı durumunu kontrol et
+          setTimeout(() => {
+            console.log('🔌 Socket connection status after connect:', socketService.isSocketConnected());
+            console.log('🔌 Socket ID after connect:', socketService.getSocketId());
+          }, 2000);
         }
       });
       
@@ -138,7 +146,9 @@ export default function DriverDashboardScreen() {
         // OrderData'yı Customer formatına dönüştür
         const newCustomer: Customer = {
           id: orderData.id,
-          name: orderData.customerName || 'Müşteri',
+          name: orderData.customer_first_name && orderData.customer_last_name 
+            ? `${orderData.customer_first_name} ${orderData.customer_last_name}` 
+            : (orderData.customerName || 'Müşteri'),
           phone: orderData.customerPhone || 'Bilinmiyor',
           pickup_location: orderData.pickupAddress,
           destination: orderData.destinationAddress,
@@ -257,6 +267,17 @@ export default function DriverDashboardScreen() {
       socketService.on('order_inspection_started', (data: { orderId: number, orderDetails: any }) => {
         console.log('Sipariş incelemesi başlatıldı:', data);
         
+        // İlgili siparişi customers listesinde 'inspecting' durumuna güncelle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          return currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              return { ...customer, status: 'inspecting' as Customer['status'] };
+            }
+            return customer;
+          });
+        });
+        
         // Sipariş detaylarını set et
         if (data.orderDetails) {
           setOrderDetails(data.orderDetails);
@@ -264,10 +285,26 @@ export default function DriverDashboardScreen() {
           // İlgili siparişi selectedOrder olarak set et
           const order = customers?.find(c => c.id === data.orderId);
           if (order) {
-            setSelectedOrder(order);
+            setSelectedOrder({...order, status: 'inspecting'});
             setShowInspectionModal(true);
           }
         }
+      });
+      
+      // İnceleme durdurulduğunda sipariş durumunu güncelle
+      socketService.on('order_inspection_stopped', (data: { orderId: number, status: string }) => {
+        console.log('Sipariş incelemesi durduruldu:', data);
+        
+        // İlgili siparişi customers listesinde 'waiting' durumuna güncelle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          return currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              return { ...customer, status: 'waiting' as Customer['status'] };
+            }
+            return customer;
+          });
+        });
       });
     }
     
@@ -280,6 +317,8 @@ export default function DriverDashboardScreen() {
       socketService.off('request_location_update');
       socketService.off('order_status_update');
       socketService.off('order_phase_update');
+      socketService.off('order_inspection_started');
+      socketService.off('order_inspection_stopped');
       // Cleanup location watch
       if (locationWatchRef.current) {
         locationWatchRef.current.remove();
@@ -492,13 +531,17 @@ export default function DriverDashboardScreen() {
           // API'den gelen siparişleri Customer formatına dönüştür
           const pendingCustomers: Customer[] = data.orders.map((order: any) => ({
             id: order.id,
-            name: order.customerName || 'Müşteri',
-            phone: order.customerPhone || 'Bilinmiyor',
+            name: order.customer && order.customer.firstName && order.customer.lastName 
+              ? `${order.customer.firstName} ${order.customer.lastName}` 
+              : order.customerName || 'Müşteri',
+            phone: order.customer && order.customer.phone 
+              ? order.customer.phone 
+              : order.customerPhone || 'Bilinmiyor',
             pickup_location: order.pickupAddress,
             destination: order.destinationAddress,
             distance: order.distance ? `${order.distance.toFixed(1)} km` : 'Hesaplanıyor...',
             estimated_fare: order.estimatedPrice,
-            status: 'waiting',
+            status: order.order_status === 'pending' ? 'waiting' : order.order_status === 'inspecting' ? 'inspecting' : 'waiting',
             created_at: order.created_at || new Date().toISOString(),
           }));
           
@@ -585,8 +628,13 @@ export default function DriverDashboardScreen() {
       setLoadingDetails(true);
       setSelectedOrder(order);
       
+      // Socket bağlantısını kontrol et
+      console.log('🔍 Socket bağlantı durumu:', socketService.isSocketConnected());
+      console.log('🔍 Socket ID:', socketService.getSocketId());
+      
       // Socket üzerinden inceleme başlat
-      socketService.inspectOrder(order.id);
+      const inspectResult = socketService.inspectOrder(order.id);
+      console.log('🔍 inspectOrder sonucu:', inspectResult);
       
       // İncelenen siparişler listesine ekle
       setInspectingOrders(prev => new Set([...prev, order.id]));
@@ -924,6 +972,7 @@ export default function DriverDashboardScreen() {
         case 'confirmed': return '#10B981';
         case 'in_progress': return '#3B82F6';
         case 'completed': return '#6B7280';
+        case 'inspecting': return '#F59E0B';
         default: return '#FFD700';
       }
     };
@@ -935,6 +984,7 @@ export default function DriverDashboardScreen() {
         case 'confirmed': return 'Onaylandı';
         case 'in_progress': return 'Devam Ediyor';
         case 'completed': return 'Tamamlandı';
+        case 'inspecting': return 'İnceleniyor';
         default: return 'Bekliyor';
       }
     };
@@ -944,7 +994,7 @@ export default function DriverDashboardScreen() {
         <View style={styles.customerHeader}>
           <View>
             <Text style={styles.customerName}>{item.name}</Text>
-            <Text style={styles.customerPhone}>{item.phone}</Text>
+            <Text style={styles.customerPhone}>{maskPhoneNumber(item.phone)}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
             <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
@@ -978,6 +1028,13 @@ export default function DriverDashboardScreen() {
               {inspectingOrders.has(item.id) ? 'İnceleniyor...' : 'İncele'}
             </Text>
           </TouchableOpacity>
+        )}
+        
+        {item.status === 'inspecting' && (
+          <View style={[styles.actionButton, { backgroundColor: '#F59E0B', marginHorizontal: 0 }]}>
+            <Ionicons name="eye" size={16} color="#FFFFFF" />
+            <Text style={styles.actionButtonText}>İnceleme Devam Ediyor</Text>
+          </View>
         )}
         
         {item.status === 'confirmed' && (
@@ -1184,7 +1241,7 @@ export default function DriverDashboardScreen() {
         </View>
         
         <FlatList
-          data={(customers || []).filter(c => c.status === 'waiting' || c.status === 'accepted')}
+          data={(customers || []).filter(c => c.status === 'waiting' || c.status === 'accepted' || c.status === 'inspecting')}
           renderItem={renderCustomerItem}
           keyExtractor={(item) => item.id.toString()}
           showsVerticalScrollIndicator={false}
@@ -1367,12 +1424,6 @@ export default function DriverDashboardScreen() {
             <View style={styles.inspectionModalContainer}>
               <View style={styles.inspectionModalHeader}>
                 <Text style={styles.inspectionModalTitle}>Sipariş Detayları</Text>
-                <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => selectedOrder && stopInspecting(selectedOrder.id)}
-                >
-                  <Ionicons name="close" size={20} color="#6B7280" />
-                </TouchableOpacity>
               </View>
               
               <ScrollView style={styles.inspectionModalContent}>

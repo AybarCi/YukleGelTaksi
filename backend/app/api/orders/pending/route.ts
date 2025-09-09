@@ -71,6 +71,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           o.distance_km,
           o.estimated_time_minutes,
           o.estimated_price,
+          o.weight_kg,
+          o.labor_count,
+          o.order_status,
           o.created_at,
           u.first_name as customer_first_name,
           u.last_name as customer_last_name,
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           ) AS distance_to_pickup
         FROM orders o
         INNER JOIN users u ON o.user_id = u.id
-        WHERE o.order_status = 'pending'
+        WHERE o.order_status IN ('pending', 'inspecting')
           AND o.pickup_latitude IS NOT NULL
           AND o.pickup_longitude IS NOT NULL
           AND (
@@ -110,6 +113,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       distance: order.distance_km,
       estimatedTime: order.estimated_time_minutes,
       estimatedPrice: order.estimated_price,
+      weight_kg: order.weight_kg,
+      laborCount: order.labor_count,
+      order_status: order.order_status,
       createdAt: order.created_at,
       customer: {
         firstName: order.customer_first_name,

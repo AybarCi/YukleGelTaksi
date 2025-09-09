@@ -110,6 +110,7 @@ function HomeScreen() {
   
   // Aktif sipariş ve sürücü takibi için state'ler
   const [currentOrder, setCurrentOrder] = useState<any>(null);
+  const currentOrderRef = useRef<any>(null);
   const [assignedDriver, setAssignedDriver] = useState<Driver | null>(null);
   const [isTrackingDriver, setIsTrackingDriver] = useState(false);
   const [driverRoute, setDriverRoute] = useState<{latitude: number, longitude: number}[]>([]);
@@ -157,6 +158,11 @@ function HomeScreen() {
   
   const { logout, showModal, user, token, refreshAuthToken } = useAuth();
 
+  // currentOrder değiştiğinde ref'i güncelle
+  useEffect(() => {
+    currentOrderRef.current = currentOrder;
+  }, [currentOrder]);
+
   // Sipariş durumu metni için yardımcı fonksiyon
   const getOrderStatusText = (status: string) => {
     switch (status) {
@@ -172,6 +178,7 @@ function HomeScreen() {
       case 'started': return 'Başladı';
       case 'completed': return 'Tamamlandı';
       case 'cancelled': return 'İptal Edildi';
+      case 'inspecting': return 'Siparişiniz İnceleniyor';
       default: return status || 'Bilinmiyor';
     }
   };
@@ -260,10 +267,10 @@ function HomeScreen() {
 
   // Form alanlarının düzenlenebilirlik durumunu kontrol eden fonksiyon
   const isFormEditable = useCallback(() => {
-    // Eğer aktif bir sipariş varsa (beklemede, kabul edilmiş, onaylanmış, başlamış durumda)
+    // Eğer aktif bir sipariş varsa (beklemede, kabul edilmiş, onaylanmış, başlamış, inceleniyor durumda)
     // form alanları düzenlenemez
     if (currentOrder) {
-      const nonEditableStatuses = ['pending', 'accepted', 'confirmed', 'in_progress', 'started'];
+      const nonEditableStatuses = ['pending', 'accepted', 'confirmed', 'in_progress', 'started', 'inspecting'];
       return !nonEditableStatuses.includes(currentOrder.status);
     }
     // Aktif sipariş yoksa form düzenlenebilir
@@ -511,7 +518,7 @@ function HomeScreen() {
   const checkExistingOrder = useCallback(async () => {
     try {
       // Yeni API endpoint'ini kullanarak devam eden siparişleri kontrol et
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,accepted,confirmed,in_progress&limit=1`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,confirmed,in_progress&limit=1`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -692,6 +699,14 @@ function HomeScreen() {
     }
   }, [userLocation, useCurrentLocation, showModal]);
 
+  // Socket bağlantısı için ayrı useEffect
+  useEffect(() => {
+    if (token) {
+      socketService.connect(token);
+    }
+  }, [token]);
+
+  // Component mount ve initialization için useEffect
   useEffect(() => {
     const initializeApp = async () => {
       await getCurrentLocation();
@@ -699,10 +714,6 @@ function HomeScreen() {
     
     initializeApp();
     checkExistingOrder();
-    
-    if (token) {
-      socketService.connect(token);
-    }
     
     socketService.on('connection_error', (data: any) => {
       console.error('Socket bağlantı hatası:', data.error);
@@ -874,17 +885,36 @@ function HomeScreen() {
     });
     
     socketService.on('order_status_update', (data: any) => {
-      console.log('Order status updated:', data);
+      console.log('📊 MÜŞTERI: Sipariş durumu güncellendi:', data);
+      console.log('📊 MÜŞTERI: Mevcut sipariş:', currentOrderRef.current);
+      console.log('📊 MÜŞTERI: Event alındı - Order ID:', data.orderId, 'Status:', data.status);
+      console.log('📊 MÜŞTERI: Socket bağlantı durumu:', socketService.isSocketConnected());
+      
+      // Sadece mevcut siparişin durumu güncelleniyorsa işle
+      if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+        // Test için alert göster
+        if (data.status === 'inspecting') {
+          alert('ananın amı trae');
+        }
+      }
       
       // Mevcut siparişi güncelle
-      if (currentOrder && currentOrder.id === data.orderId) {
-        const updatedOrder = { ...currentOrder, status: data.status };
+      if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+        console.log(`📊 MÜŞTERI: Sipariş durumu ${currentOrderRef.current.status} -> ${data.status}`);
+        const updatedOrder = { ...currentOrderRef.current, status: data.status };
         setCurrentOrder(updatedOrder);
+        currentOrderRef.current = updatedOrder;
         AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
+      } else {
+        console.log('📊 MÜŞTERI: Sipariş ID eşleşmiyor veya mevcut sipariş yok');
       }
       
       let message = '';
       switch (data.status) {
+        case 'inspecting':
+          message = 'Siparişiniz bir sürücü tarafından inceleniyor.';
+          showModal('Sipariş İnceleniyor', message, 'info');
+          break;
         case 'started':
           message = 'Sürücü yükünüzü aldı ve varış noktasına doğru yola çıktı.';
           showModal('Yük Alındı', message, 'info');
@@ -928,9 +958,7 @@ function HomeScreen() {
       }
     });
     
-    socketService.on('orderStatusUpdate', (data: any) => {
-      showModal('Sipariş Güncellendi', `Sipariş durumu güncellendi: ${data.status}`, 'info');
-    });
+
 
     // Confirm code doğrulama sonuçlarını dinle
     socketService.on('confirm_code_verified', (data: any) => {
@@ -988,6 +1016,51 @@ function HomeScreen() {
       console.log('Cancel order error:', data);
       showModal('Hata', data.message || 'Sipariş iptal edilirken bir hata oluştu!', 'error');
     });
+
+    // Backend'den gelen eksik eventleri ekle
+    socketService.on('order_created', (data: any) => {
+      console.log('🆕 MÜŞTERI: Sipariş oluşturuldu:', data);
+      showModal('Sipariş Oluşturuldu', 'Siparişiniz başarıyla oluşturuldu ve sürücülere gönderildi.', 'success');
+    });
+
+    socketService.on('order_taken', (data: any) => {
+      console.log('📦 MÜŞTERI: Sipariş başka sürücü tarafından alındı:', data);
+      showModal('Sipariş Alındı', 'Siparişiniz başka bir sürücü tarafından alındı.', 'info');
+    });
+
+    socketService.on('order_locked_for_inspection', (data: any) => {
+      console.log('🔒 MÜŞTERI: Sipariş inceleme için kilitlendi:', data);
+      showModal('Sipariş İnceleniyor', 'Siparişiniz bir sürücü tarafından inceleniyor.', 'info');
+    });
+
+    socketService.on('order_already_taken', (data: any) => {
+      console.log('⚠️ MÜŞTERI: Sipariş zaten alınmış:', data);
+      showModal('Sipariş Alınmış', 'Bu sipariş zaten başka bir sürücü tarafından alınmış.', 'warning');
+    });
+
+    socketService.on('order_acceptance_confirmed', (data: any) => {
+      console.log('✅ MÜŞTERI: Sipariş kabulü onaylandı:', data);
+      showModal('Sipariş Onaylandı', 'Siparişiniz sürücü tarafından onaylandı.', 'success');
+    });
+
+    socketService.on('order_phase_update', (data: any) => {
+      console.log('🔄 MÜŞTERI: Sipariş faz güncellemesi:', data);
+      if (data.currentPhase === 'pickup') {
+        showModal('Sürücü Yolda', 'Sürücü yük alma noktasına doğru yola çıktı.', 'info');
+      } else if (data.currentPhase === 'delivery') {
+        showModal('Yük Alındı', 'Yük alındı, şimdi varış noktasına gidiliyor.', 'info');
+      }
+    });
+
+    socketService.on('order_inspection_started', (data: any) => {
+      console.log('🔍 MÜŞTERI: Sipariş incelemesi başladı:', data);
+      showModal('İnceleme Başladı', 'Sürücü siparişinizi inceliyor.', 'info');
+    });
+
+    socketService.on('order_inspection_stopped', (data: any) => {
+      console.log('🔍 MÜŞTERI: Sipariş incelemesi durdu:', data);
+      showModal('İnceleme Tamamlandı', 'Sipariş incelemesi tamamlandı, tekrar beklemede.', 'info');
+    });
     
     socketService.on('driver_offline', (data: any) => {
       if (data && data.driverId) {
@@ -997,6 +1070,8 @@ function HomeScreen() {
         });
       }
     });
+    
+
     
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardVisible(true);
@@ -1023,17 +1098,26 @@ function HomeScreen() {
       socketService.off('driver_disconnected');
       socketService.off('order_accepted');
       socketService.off('order_status_update');
-      socketService.off('orderStatusUpdate');
       socketService.off('confirm_code_verified');
       socketService.off('confirm_code_error');
       socketService.off('cancel_order_confirmation_required');
       socketService.off('order_cancelled_successfully');
       socketService.off('cancel_order_error');
       socketService.off('driver_offline');
+      socketService.off('order_being_inspected');
+      socketService.off('order_created');
+      socketService.off('order_taken');
+      socketService.off('order_locked_for_inspection');
+      socketService.off('order_inspection_started');
+      socketService.off('order_inspection_stopped');
+      socketService.off('order_already_taken');
+      socketService.off('order_acceptance_confirmed');
+      socketService.off('order_phase_update');
+      socketService.off('order_inspection_started');
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, [user?.id]);
+  }, []); // Component mount olduğunda socket event listener'ları kur
   
   // Progress bar animasyonu için useEffect
   useEffect(() => {
@@ -1935,7 +2019,15 @@ function HomeScreen() {
                   <View style={styles.cardHeader}>
                     <View style={styles.statusBadge}>
                       <View style={styles.statusDot} />
-                      <Text style={styles.statusText}>Devam Ediyor</Text>
+                      <Text style={styles.statusText}>
+                        {currentOrder?.status === 'pending' && 'Bekliyor'}
+                        {currentOrder?.status === 'inspecting' && 'İnceleniyor'}
+                        {['accepted', 'confirmed'].includes(currentOrder?.status || '') && 'Onaylandı'}
+                        {currentOrder?.status === 'in_progress' && 'Sürücü yolda'}
+                        {currentOrder?.status === 'started' && 'Yük alındı'}
+                        {currentOrder?.status === 'transporting' && 'Taşıma durumunda'}
+                        {currentOrder?.status === 'completed' && 'Teslimat tamamlandı'}
+                      </Text>
                     </View>
                     <MaterialIcons name="arrow-forward-ios" size={16} color="#6B7280" />
                   </View>
@@ -1964,17 +2056,17 @@ function HomeScreen() {
                       <View style={styles.phaseStep}>
                         <View style={[
                           styles.phaseCircle,
-                          currentOrder?.status === 'pending' ? styles.phaseActive :
+                          ['pending', 'inspecting'].includes(currentOrder?.status || '') ? styles.phaseActive :
                           ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseCompleted : styles.phaseInactive
                         ]}>
                           <MaterialIcons 
-                            name="schedule" 
+                            name={currentOrder?.status === 'inspecting' ? 'search' : 'schedule'} 
                             size={12} 
-                            color={currentOrder?.status === 'pending' ? '#F59E0B' : 
+                            color={['pending', 'inspecting'].includes(currentOrder?.status || '') ? '#F59E0B' : 
                                    ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
                           />
                         </View>
-                        <Text style={styles.phaseLabel}>Bekliyor</Text>
+                        <Text style={styles.phaseLabel}>{currentOrder?.status === 'inspecting' ? 'İnceleniyor' : 'Bekliyor'}</Text>
                       </View>
                       
                       <View style={[
@@ -2040,15 +2132,6 @@ function HomeScreen() {
                         <Text style={styles.phaseLabel}>Teslimat</Text>
                       </View>
                     </View>
-                    
-                    {/* Durum metni */}
-                    <Text style={styles.currentPhaseText}>
-                      {currentOrder?.status === 'pending' && 'Sürücü aranıyor...'}
-                      {['accepted', 'confirmed'].includes(currentOrder?.status || '') && 'Sürücü yük konumuna gidiyor'}
-                      {currentOrder?.status === 'in_progress' && 'Sürücü yük konumunda'}
-                      {currentOrder?.status === 'started' && 'Yük alındı, teslimat yapılıyor'}
-                      {currentOrder?.status === 'completed' && 'Teslimat tamamlandı'}
-                    </Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -3026,20 +3109,20 @@ const styles = StyleSheet.create({
   phaseTrackingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 12,
   },
   phaseStep: {
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   phaseCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   phaseActive: {
     backgroundColor: '#FEF3C7',
@@ -3056,8 +3139,8 @@ const styles = StyleSheet.create({
   },
   phaseLine: {
     height: 2,
-    flex: 1,
-    marginHorizontal: 4,
+    width: 20,
+    marginHorizontal: 0,
   },
   phaseLineCompleted: {
     backgroundColor: '#10B981',
@@ -3070,6 +3153,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#6B7280',
     textAlign: 'center',
+    flexWrap: 'wrap',
+    maxWidth: 40,
   },
   currentPhaseText: {
     fontSize: 12,
@@ -3077,6 +3162,8 @@ const styles = StyleSheet.create({
     color: '#374151',
     textAlign: 'center',
     marginTop: 8,
+    paddingHorizontal: 8,
+    flexWrap: 'wrap',
   },
   compactOrderCard: {
     backgroundColor: '#FFFFFF',
