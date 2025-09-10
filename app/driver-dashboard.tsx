@@ -179,6 +179,15 @@ export default function DriverDashboardScreen() {
         console.log('Order cancelled:', orderId);
         // İptal edilen siparişi listeden kaldır
         setCustomers(prev => (prev || []).filter(customer => customer.id !== orderId));
+        
+        // Eğer iptal edilen sipariş aktif sipariş ise, sürücüyü ana ekrana getir
+        if (activeOrder && activeOrder.id === orderId) {
+          setActiveOrder(null);
+          setCurrentPhase('pickup');
+          setRouteCoordinates([]);
+          setRouteDuration(null);
+          console.log('Aktif sipariş iptal edildi, sürücü ana ekrana getirildi');
+        }
       });
       
       // Müşteri siparişi onayladığında
@@ -1498,18 +1507,28 @@ export default function DriverDashboardScreen() {
                       <View style={styles.orderInfoSection}>
                         <Text style={styles.sectionTitle}>Kargo Fotoğrafları</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosContainer}>
-                          {orderDetails.cargo_photo_urls.split(',').map((url: string, index: number) => (
-                            <TouchableOpacity
-                              key={index}
-                              style={styles.photoThumbnail}
-                            >
-                              <Image
-                                source={{ uri: url.trim() }}
-                                style={styles.thumbnailImage}
-                                resizeMode="cover"
-                              />
-                            </TouchableOpacity>
-                          ))}
+                          {(() => {
+                            try {
+                              const photoUrls = typeof orderDetails.cargo_photo_urls === 'string' 
+                                ? JSON.parse(orderDetails.cargo_photo_urls) 
+                                : orderDetails.cargo_photo_urls;
+                              return Array.isArray(photoUrls) ? photoUrls.map((url: string, index: number) => (
+                                <TouchableOpacity
+                                  key={index}
+                                  style={styles.photoThumbnail}
+                                >
+                                  <Image
+                                    source={{ uri: url.trim() }}
+                                    style={styles.thumbnailImage}
+                                    resizeMode="cover"
+                                  />
+                                </TouchableOpacity>
+                              )) : null;
+                            } catch (error) {
+                              console.error('Fotoğraf URL parse hatası:', error);
+                              return null;
+                            }
+                          })()}
                         </ScrollView>
                       </View>
                     )}

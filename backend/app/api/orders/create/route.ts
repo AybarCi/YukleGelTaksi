@@ -47,6 +47,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Parse form data
     const formData = await request.formData();
     
+    // Backend'e gelen request'i logla
+    console.log('=== BACKEND REQUEST LOG ===');
+    console.log('User ID:', authResult.user.id);
+    console.log('FormData entries:');
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        console.log(`${key}: File (name: ${value.name}, size: ${value.size}, type: ${value.type})`);
+      } else {
+        console.log(`${key}: ${value}`);
+      }
+    }
+    console.log('==============================');
+    
     // Extract form fields
     const pickupAddress = formData.get('pickupAddress') as string;
     const pickupLatitude = parseFloat(formData.get('pickupLatitude') as string);

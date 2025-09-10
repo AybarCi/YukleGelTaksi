@@ -425,19 +425,30 @@ export default function ShipmentsScreen() {
                 <View style={styles.modalSection}>
                   <Text style={styles.sectionTitle}>Kargo Fotoğrafları</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosContainer}>
-                    {selectedShipment.cargo_photo_urls.split(',').map((url, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        onPress={() => openImageModal(index)}
-                        style={styles.photoThumbnail}
-                      >
-                        <Image
-                          source={{ uri: url.trim() }}
-                          style={styles.thumbnailImage}
-                          resizeMode="cover"
-                        />
-                      </TouchableOpacity>
-                    ))}
+                    {(() => {
+                      try {
+                        const photoUrls = typeof selectedShipment.cargo_photo_urls === 'string' 
+                          ? JSON.parse(selectedShipment.cargo_photo_urls) 
+                          : selectedShipment.cargo_photo_urls;
+                        const urlArray = Array.isArray(photoUrls) ? photoUrls : photoUrls.split(',');
+                        return urlArray.map((url: string, index: number) => (
+                          <TouchableOpacity
+                            key={index}
+                            onPress={() => openImageModal(index)}
+                            style={styles.photoThumbnail}
+                          >
+                            <Image
+                              source={{ uri: url.trim() }}
+                              style={styles.thumbnailImage}
+                              resizeMode="cover"
+                            />
+                          </TouchableOpacity>
+                        ));
+                      } catch (error) {
+                        console.error('Fotoğraf URL\'leri parse edilemedi:', error);
+                        return null;
+                      }
+                    })()}
                   </ScrollView>
                 </View>
               )}
@@ -477,13 +488,25 @@ export default function ShipmentsScreen() {
               <TouchableOpacity onPress={closeImageModal} style={styles.imageCloseButton}>
                 <Ionicons name="close" size={30} color="#fff" />
               </TouchableOpacity>
-              {selectedShipment && selectedShipment.cargo_photo_urls && (
-                <Image
-                  source={{ uri: selectedShipment.cargo_photo_urls.split(',')[selectedImageIndex]?.trim() }}
-                  style={styles.fullImage}
-                  resizeMode="contain"
-                />
-              )}
+              {selectedShipment && selectedShipment.cargo_photo_urls && (() => {
+                try {
+                  const photoUrls = typeof selectedShipment.cargo_photo_urls === 'string' 
+                    ? JSON.parse(selectedShipment.cargo_photo_urls) 
+                    : selectedShipment.cargo_photo_urls;
+                  const urlArray = Array.isArray(photoUrls) ? photoUrls : photoUrls.split(',');
+                  const imageUrl = urlArray[selectedImageIndex]?.trim();
+                  return imageUrl ? (
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.fullImage}
+                      resizeMode="contain"
+                    />
+                  ) : null;
+                } catch (error) {
+                  console.error('Fotoğraf URL parse edilemedi:', error);
+                  return null;
+                }
+              })()}
             </View>
           </TouchableOpacity>
         </View>

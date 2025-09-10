@@ -293,6 +293,16 @@ class SocketServer {
   handleCustomerConnection(socket) {
     const customerId = socket.userId;
     
+    // Eğer bu müşteri zaten bağlıysa, eski bağlantıyı temizle
+    const existingCustomer = this.connectedCustomers.get(customerId);
+    if (existingCustomer && existingCustomer.socketId !== socket.id) {
+      console.log(`🔄 Customer ${customerId} reconnecting, cleaning old connection`);
+      const oldSocket = this.io.sockets.sockets.get(existingCustomer.socketId);
+      if (oldSocket) {
+        oldSocket.disconnect(true);
+      }
+    }
+    
     // Müşteriyi bağlı müşteriler listesine ekle (detaylı bilgilerle)
     this.connectedCustomers.set(customerId, {
       socketId: socket.id,
@@ -309,13 +319,12 @@ class SocketServer {
     // Tüm bağlı sürücüleri bu müşterinin odasına ekle
     this.addAllDriversToCustomerRoom(customerId);
     
-    // Odadaki mevcut üyeleri detaylı logla
-    this.logRoomMembers(customerRoom);
-    
     console.log(`👤 Customer ${customerId} connected`);
 
-    // Send nearby drivers to the newly connected customer
-    this.sendNearbyDriversToCustomer(socket);
+    // Send nearby drivers to the newly connected customer (sadece bir kez)
+    setTimeout(() => {
+      this.sendNearbyDriversToCustomer(socket);
+    }, 1000);
 
     // Customer-specific event handlers
     socket.on('create_order', (orderData) => {
@@ -531,7 +540,7 @@ class SocketServer {
         .query(`
           SELECT id, order_status, total_price, created_at, driver_id
           FROM orders 
-          WHERE id = @orderId AND user_id = @userId AND order_status NOT IN ('payment_completed', 'cancelled')
+          WHERE id = @orderId AND user_id = @userId AND order_status IN ('pending', 'accepted', 'started', 'inspecting')
         `);
 
       if (orderResult.recordset.length === 0) {
@@ -662,6 +671,12 @@ class SocketServer {
         `);
 
       console.log('✅ Order cancelled successfully in database for Order', orderId);
+
+      // Eğer sipariş inspecting durumundaysa, inspectingOrders Map'inden kaldır
+      if (order.order_status === 'inspecting') {
+        this.inspectingOrders.delete(orderId);
+        console.log('🔍 Removed order from inspecting list:', orderId);
+      }
 
       // Müşteriye başarılı iptal mesajı gönder
       const customerSocketId = this.connectedCustomers.get(userId);

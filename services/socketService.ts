@@ -82,18 +82,21 @@ class SocketService {
         },
         transports: ['polling', 'websocket'], // polling önce dene
         timeout: 30000, // 30 saniye timeout
-        forceNew: true,
+        forceNew: false, // Mevcut bağlantıyı yeniden kullan
         reconnection: true,
-        reconnectionAttempts: 15, // daha fazla deneme
-        reconnectionDelay: 1000, // 1 saniye bekle
-        reconnectionDelayMax: 5000, // maksimum 5 saniye
+        reconnectionAttempts: 5, // Daha az deneme
+        reconnectionDelay: 2000, // 2 saniye bekle
+        reconnectionDelayMax: 10000, // maksimum 10 saniye
         randomizationFactor: 0.3,
-        autoConnect: true,
+        autoConnect: false, // Manuel bağlantı kontrolü
         upgrade: true,
         rememberUpgrade: true
       });
 
       this.setupEventHandlers();
+      
+      // Manuel olarak bağlan
+      this.socket.connect();
     } catch (error) {
       console.error('Error initializing socket:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -117,22 +120,18 @@ class SocketService {
       this.isConnected = false;
       this.emit('disconnected', { reason });
       
-      // Farklı disconnect sebepleri için farklı yaklaşımlar
-      if (reason === 'io server disconnect') {
-        // Sunucu tarafından disconnect - hemen yeniden bağlan
+      // Sadece belirli durumlarda yeniden bağlan
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        // Sunucu tarafından disconnect veya transport kapanması - kontrollü yeniden bağlan
         setTimeout(() => {
-          if (this.socket && !this.isConnected) {
+          if (this.socket && !this.isConnected && this.reconnectAttempts < this.maxReconnectAttempts) {
+            console.log('Attempting reconnection...');
+            this.reconnectAttempts++;
             this.socket.connect();
           }
-        }, 1000);
-      } else if (reason === 'transport close' || reason === 'transport error') {
-        // Transport hatası - kısa bir bekleyip yeniden dene
-        setTimeout(() => {
-          this.handleReconnection();
-        }, 2000);
-      } else {
-        this.handleReconnection();
+        }, 3000); // 3 saniye bekle
       }
+      // Diğer durumlar için otomatik yeniden bağlanma yok
     });
 
     // Token yenileme olayını dinle
@@ -203,7 +202,7 @@ class SocketService {
     });
 
     // New order for drivers
-    this.socket.on('new_order', (data) => {
+    this.socket.on('new_order_available', (data) => {
       console.log('New order available:', data);
       this.emit('new_order', data);
     });

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
           o.distance_km,
           o.weight_kg,
           o.labor_count,
-
+          o.cargo_photo_urls,
           o.base_price,
           o.distance_price,
           o.weight_price,
@@ -94,7 +94,9 @@ export async function GET(request: NextRequest) {
         ORDER BY o.created_at DESC
       `);
 
-      const orders = ordersResult.recordset.map(order => ({
+      const orders = ordersResult.recordset.map(order => {
+        console.log(`🔍 Order ${order.id} cargo_photo_urls from DB:`, order.cargo_photo_urls);
+        return {
         id: order.id,
         pickup_address: order.pickup_address,
         pickup_latitude: order.pickup_latitude,
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
         distance_km: order.distance_km,
         weight_kg: order.weight_kg,
         labor_count: order.labor_count,
-
+        cargo_photo_urls: order.cargo_photo_urls,
         base_price: order.base_price,
         distance_price: order.distance_price,
         weight_price: order.weight_price,
@@ -132,7 +134,8 @@ export async function GET(request: NextRequest) {
           vehicle_color: order.vehicle_color,
           rating: order.driver_rating
         } : null
-      }));
+        };
+      });
 
       return NextResponse.json({
         success: true,

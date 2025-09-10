@@ -491,8 +491,46 @@ function HomeScreen() {
       setNotes(order.customer_notes || '');
       
       // Yük fotoğrafını set et
+      console.log('🖼️ Sipariş cargo_photo_urls:', order.cargo_photo_urls);
       if (order.cargo_photo_urls) {
-        setCargoImages(JSON.parse(order.cargo_photo_urls));
+        try {
+          const parsedImages = JSON.parse(order.cargo_photo_urls);
+          console.log('🖼️ Parse edilmiş cargo images:', parsedImages);
+          // Array olup olmadığını kontrol et
+          if (Array.isArray(parsedImages)) {
+            // Base URL'i ekle
+            const fullUrls = parsedImages.map(url => {
+              if (url.startsWith('/uploads/')) {
+                const fullUrl = `${API_CONFIG.BASE_URL}${url}`;
+                console.log('🔗 Full URL oluşturuldu:', fullUrl);
+                return fullUrl;
+              }
+              console.log('🔗 URL zaten tam:', url);
+              return url;
+            });
+            console.log('🖼️ Final URLs with base:', fullUrls);
+            setCargoImages(fullUrls);
+          } else {
+            console.log('❌ Parse edilmiş veri array değil:', typeof parsedImages);
+            setCargoImages([]);
+          }
+        } catch (error) {
+          console.log('❌ JSON parse hatası:', error);
+          console.log('❌ Ham cargo_photo_urls verisi:', order.cargo_photo_urls);
+          // Eğer JSON parse başarısız olursa, string olarak tek bir URL olabilir
+          if (typeof order.cargo_photo_urls === 'string' && order.cargo_photo_urls.trim()) {
+            const fullUrl = order.cargo_photo_urls.startsWith('/uploads/') 
+              ? `${API_CONFIG.BASE_URL}${order.cargo_photo_urls}`
+              : order.cargo_photo_urls;
+            console.log('🔗 Tek URL için full URL:', fullUrl);
+            setCargoImages([fullUrl]);
+          } else {
+            setCargoImages([]);
+          }
+        }
+      } else {
+        console.log('❌ cargo_photo_urls boş veya null');
+        setCargoImages([]);
       }
       
       // Input componentlerine adres bilgilerini set et - bir sonraki render cycle'da
@@ -1540,13 +1578,33 @@ function HomeScreen() {
       formData.append('laborRequired', 'true');
       formData.append('laborCount', '1');
       
-      // Cargo image'ı FormData'ya ekle
+      // Cargo images'ları FormData'ya ekle
       if (cargoImages.length > 0) {
-        // Upload first image for now, later we'll handle multiple images
-        const response = await fetch(cargoImages[0]);
-        const blob = await response.blob();
-        formData.append('cargoPhoto', blob, 'cargo.jpg');
+        for (let i = 0; i < cargoImages.length; i++) {
+          // React Native'de ImagePicker URI'larını doğrudan kullan
+          const fileExtension = cargoImages[i].split('.').pop() || 'jpg';
+          formData.append(`cargoPhoto${i}`, {
+            uri: cargoImages[i],
+            type: `image/${fileExtension}`,
+            name: `cargo${i}.${fileExtension}`
+          } as any, `cargo${i}.${fileExtension}`);
+        }
       }
+      
+      // FormData içeriğini logla
+      console.log('=== FRONTEND REQUEST LOG ===');
+      console.log('API URL:', `${API_CONFIG.BASE_URL}/api/orders/create`);
+      console.log('FormData keys and values:');
+      console.log('- pickupAddress:', pickupLocation);
+      console.log('- destinationAddress:', destinationLocation);
+      console.log('- notes:', notes);
+      console.log('- weightKg:', weight);
+      console.log('- distance:', distance);
+      console.log('- estimatedTime:', routeDuration);
+      console.log('- cargoImages array length:', cargoImages.length);
+      console.log('- cargoImages array:', cargoImages);
+      console.log('- Cargo photos added to FormData:', cargoImages.length, 'photos');
+      console.log('================================');
       
       // API'ye sipariş gönder
       let response = await fetch(`${API_CONFIG.BASE_URL}/api/orders/create`, {
@@ -2402,66 +2460,69 @@ function HomeScreen() {
                     {cargoImages.map((imageUri, index) => (
                        <View key={index} style={{ marginRight: 8, position: 'relative' }}>
                          <Image source={{ uri: imageUri }} style={{ width: 90, height: 90, borderRadius: 8 }} />
-                         <TouchableOpacity
-                           style={{
-                             position: 'absolute',
-                             top: -5,
-                             right: -5,
-                             backgroundColor: '#EF4444',
-                             borderRadius: 12,
-                             width: 24,
-                             height: 24,
-                             alignItems: 'center',
-                             justifyContent: 'center',
-                           }}
-                           onPress={(e) => {
-                             e.stopPropagation();
-                             setCargoImages(prev => prev.filter((_, i) => i !== index));
-                           }}
-                         >
-                           <Ionicons name="close" size={16} color="white" />
-                         </TouchableOpacity>
+                         {isFormEditable() && (
+                           <TouchableOpacity
+                             style={{
+                               position: 'absolute',
+                               top: -5,
+                               right: -5,
+                               backgroundColor: '#EF4444',
+                               borderRadius: 12,
+                               width: 24,
+                               height: 24,
+                               alignItems: 'center',
+                               justifyContent: 'center',
+                             }}
+                             onPress={(e) => {
+                               e.stopPropagation();
+                               setCargoImages(prev => prev.filter((_, i) => i !== index));
+                             }}
+                           >
+                             <Ionicons name="close" size={16} color="white" />
+                           </TouchableOpacity>
+                         )}
                        </View>
                      ))}
-                     <TouchableOpacity
-                       style={{
-                         width: 90,
-                         height: 90,
-                         borderWidth: 2,
-                         borderColor: '#D1D5DB',
-                         borderStyle: 'dashed',
-                         borderRadius: 8,
-                         alignItems: 'center',
-                         justifyContent: 'center',
-                         backgroundColor: '#FFFFFF',
-                         marginLeft: 8,
-                       }}
-                       onPress={isFormEditable() ? handleImagePicker : undefined}
-                       disabled={!isFormEditable()}
-                     >
-                       <Ionicons name="add" size={24} color="#9CA3AF" />
-                     </TouchableOpacity>
+                     {isFormEditable() && (
+                       <TouchableOpacity
+                         style={{
+                           width: 90,
+                           height: 90,
+                           borderWidth: 2,
+                           borderColor: '#D1D5DB',
+                           borderStyle: 'dashed',
+                           borderRadius: 8,
+                           alignItems: 'center',
+                           justifyContent: 'center',
+                           backgroundColor: '#FFFFFF',
+                           marginLeft: 8,
+                         }}
+                         onPress={handleImagePicker}
+                       >
+                         <Ionicons name="add" size={24} color="#9CA3AF" />
+                       </TouchableOpacity>
+                     )}
                    </ScrollView>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={{
-                    borderWidth: 2,
-                    borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
-                    borderStyle: 'dashed',
-                    borderRadius: 8,
-                    padding: 20,
-                    alignItems: 'center',
-                    backgroundColor: isFormEditable() ? '#F9FAFB' : '#F3F4F6',
-                    opacity: isFormEditable() ? 1 : 0.6,
-                    minHeight: 80,
-                  }}
-                  onPress={isFormEditable() ? handleImagePicker : undefined}
-                  disabled={!isFormEditable()}
-                >
-                  <Ionicons name="camera" size={32} color="#9CA3AF" />
-                  <Text style={{ marginTop: 8, fontSize: 14, color: '#6B7280' }}>Yük fotoğrafı ekle</Text>
-                </TouchableOpacity>
+                isFormEditable() && (
+                  <TouchableOpacity
+                    style={{
+                      borderWidth: 2,
+                      borderColor: '#D1D5DB',
+                      borderStyle: 'dashed',
+                      borderRadius: 8,
+                      padding: 20,
+                      alignItems: 'center',
+                      backgroundColor: '#F9FAFB',
+                      minHeight: 80,
+                    }}
+                    onPress={handleImagePicker}
+                  >
+                    <Ionicons name="camera" size={32} color="#9CA3AF" />
+                    <Text style={{ marginTop: 8, fontSize: 14, color: '#6B7280' }}>Yük fotoğrafı ekle</Text>
+                  </TouchableOpacity>
+                )
               )}
             </View>
 
@@ -2507,7 +2568,7 @@ function HomeScreen() {
 
 
             {/* Sipariş İptal Butonu - Sadece aktif sipariş varsa göster */}
-            {currentOrder && ['pending', 'accepted', 'started'].includes(currentOrder.status) && (
+            {currentOrder && ['pending', 'accepted', 'started', 'inspecting'].includes(currentOrder.status) && (
               <TouchableOpacity
                 style={{
                   backgroundColor: '#F97316',
@@ -2905,12 +2966,34 @@ function HomeScreen() {
                     <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.weight_kg || 'Belirtilmemiş'} kg</Text>
                   </View>
                   
-                  <View>
+                  <View style={{ marginBottom: 12 }}>
                     <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Toplam Tutar</Text>
                     <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>
                       ₺{currentOrder.total_price ? currentOrder.total_price.toFixed(2) : 'Hesaplanıyor'}
                     </Text>
                   </View>
+                  
+                  {currentOrder.cargo_photo_urls && (
+                    <View>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Yük Fotoğrafları</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                        {(JSON.parse(currentOrder.cargo_photo_urls) as string[]).map((imageUri: string, index: number) => (
+                          <View key={index} style={{ marginRight: 8 }}>
+                            <Image
+                              source={{ uri: imageUri }}
+                              style={{
+                                width: 80,
+                                height: 80,
+                                borderRadius: 8,
+                                backgroundColor: '#F3F4F6'
+                              }}
+                              resizeMode="cover"
+                            />
+                          </View>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
                 </View>
               )}
               
