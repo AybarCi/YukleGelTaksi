@@ -353,7 +353,7 @@ function HomeScreen() {
   const initiateCancelOrder = useCallback(async () => {
     try {
       // Önce API'den aktif sipariş kontrolü yap
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,accepted,confirmed,in_progress,started&limit=1`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,confirmed,in_progress,started&limit=1`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

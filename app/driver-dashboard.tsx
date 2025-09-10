@@ -1254,7 +1254,7 @@ export default function DriverDashboardScreen() {
         <FlatList
           data={(customers || []).filter(c => c.status === 'waiting' || c.status === 'accepted' || c.status === 'inspecting')}
           renderItem={renderCustomerItem}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => item.id ? item.id.toString() : Math.random().toString()}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
@@ -1505,27 +1505,52 @@ export default function DriverDashboardScreen() {
                     {/* Cargo Photos */}
                     {orderDetails && orderDetails.cargo_photo_urls && (
                       <View style={styles.orderInfoSection}>
-                        <Text style={styles.sectionTitle}>Kargo Fotoğrafları</Text>
+                        <Text style={styles.sectionTitle}>Yükün Fotoğrafları</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosContainer}>
                           {(() => {
                             try {
+                              console.log('Driver Dashboard - Raw cargo_photo_urls:', orderDetails.cargo_photo_urls);
                               const photoUrls = typeof orderDetails.cargo_photo_urls === 'string' 
                                 ? JSON.parse(orderDetails.cargo_photo_urls) 
                                 : orderDetails.cargo_photo_urls;
-                              return Array.isArray(photoUrls) ? photoUrls.map((url: string, index: number) => (
-                                <TouchableOpacity
-                                  key={index}
-                                  style={styles.photoThumbnail}
-                                >
-                                  <Image
-                                    source={{ uri: url.trim() }}
-                                    style={styles.thumbnailImage}
-                                    resizeMode="cover"
-                                  />
-                                </TouchableOpacity>
-                              )) : null;
+                              console.log('Driver Dashboard - Parsed photoUrls:', photoUrls);
+                              
+                              if (Array.isArray(photoUrls)) {
+                                const processedUrls = photoUrls.map(url => {
+                                  const trimmedUrl = url.trim();
+                                  const finalUrl = trimmedUrl.startsWith('http') ? trimmedUrl : `${API_CONFIG.BASE_URL}${trimmedUrl}`;
+                                  console.log('Driver Dashboard - Final URL:', finalUrl);
+                                  return finalUrl;
+                                });
+                                
+                                return processedUrls.map((url: string, index: number) => (
+                                  <TouchableOpacity
+                                    key={index}
+                                    style={styles.photoThumbnail}
+                                  >
+                                    <Image
+                                      source={{ uri: url }}
+                                      style={styles.thumbnailImage}
+                                      resizeMode="cover"
+                                    />
+                                  </TouchableOpacity>
+                                ));
+                              } else if (typeof photoUrls === 'string') {
+                                const finalUrl = photoUrls.startsWith('http') ? photoUrls : `${API_CONFIG.BASE_URL}${photoUrls}`;
+                                console.log('Driver Dashboard - Single URL:', finalUrl);
+                                return (
+                                  <TouchableOpacity style={styles.photoThumbnail}>
+                                    <Image
+                                      source={{ uri: finalUrl }}
+                                      style={styles.thumbnailImage}
+                                      resizeMode="cover"
+                                    />
+                                  </TouchableOpacity>
+                                );
+                              }
+                              return null;
                             } catch (error) {
-                              console.error('Fotoğraf URL parse hatası:', error);
+                              console.error('Driver Dashboard - Fotoğraf URL parse hatası:', error);
                               return null;
                             }
                           })()}
