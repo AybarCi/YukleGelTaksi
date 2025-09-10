@@ -11,7 +11,12 @@ import {
   TextInput,
   Linking,
   Image,
+  Animated,
 } from 'react-native';
+import {
+  PinchGestureHandler,
+  State,
+} from 'react-native-gesture-handler';
 import { useAuth } from '../contexts/AuthContext';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -94,7 +99,97 @@ export default function DriverDashboardScreen() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [laborCount, setLaborCount] = useState('1');
   const [laborPrice, setLaborPrice] = useState(800); // Default değer pricing_settings tablosundan
+  
+  // Fotoğraf modal state'leri
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  
+  // Zoom state'leri
+  const scale = useRef(new Animated.Value(1)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const [isZoomed, setIsZoomed] = useState(false);
+  
+  // Gesture handler ref'leri
+  const pinchRef = useRef(null);
   const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
+  
+  // Fotoğraf slider fonksiyonları
+  const openPhotoModal = (urls: string[], index: number = 0) => {
+    setPhotoUrls(urls);
+    setCurrentImageIndex(index);
+    setPhotoModalVisible(true);
+  };
+
+  const closePhotoModal = () => {
+    resetZoom();
+    setPhotoModalVisible(false);
+    setCurrentImageIndex(0);
+    setPhotoUrls([]);
+  };
+
+  const goToNextImage = () => {
+    resetZoom();
+    setCurrentImageIndex((prevIndex) => 
+      prevIndex === photoUrls.length - 1 ? 0 : prevIndex + 1
+    );
+  };
+
+  const goToPreviousImage = () => {
+    resetZoom();
+    setCurrentImageIndex((prevIndex) => 
+      prevIndex === 0 ? photoUrls.length - 1 : prevIndex - 1
+    );
+  };
+
+  // Zoom fonksiyonları
+  const resetZoom = () => {
+    Animated.parallel([
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateX, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    setIsZoomed(false);
+  };
+
+  const onPinchGestureEvent = Animated.event(
+    [{ nativeEvent: { scale: scale } }],
+    { useNativeDriver: true }
+  );
+
+  const onPinchHandlerStateChange = (event: any) => {
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      const currentScale = event.nativeEvent.scale;
+      
+      if (currentScale < 1) {
+        resetZoom();
+      } else if (currentScale > 3) {
+        Animated.timing(scale, {
+          toValue: 3,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+        setIsZoomed(true);
+      } else {
+        setIsZoomed(currentScale > 1);
+      }
+    }
+  };
+
+
   
   // Aşamalı rota sistemi için state'ler
   const [activeOrder, setActiveOrder] = useState<OrderData | null>(null);
@@ -1527,6 +1622,7 @@ export default function DriverDashboardScreen() {
                                   <TouchableOpacity
                                     key={index}
                                     style={styles.photoThumbnail}
+                                    onPress={() => openPhotoModal(processedUrls, index)}
                                   >
                                     <Image
                                       source={{ uri: url }}
@@ -1539,7 +1635,10 @@ export default function DriverDashboardScreen() {
                                 const finalUrl = photoUrls.startsWith('http') ? photoUrls : `${API_CONFIG.BASE_URL}${photoUrls}`;
                                 console.log('Driver Dashboard - Single URL:', finalUrl);
                                 return (
-                                  <TouchableOpacity style={styles.photoThumbnail}>
+                                  <TouchableOpacity 
+                                    style={styles.photoThumbnail}
+                                    onPress={() => openPhotoModal([finalUrl], 0)}
+                                  >
                                     <Image
                                       source={{ uri: finalUrl }}
                                       style={styles.thumbnailImage}
@@ -1562,7 +1661,7 @@ export default function DriverDashboardScreen() {
                       <Text style={styles.sectionTitle}>Fiyat Bilgileri</Text>
                       <View style={styles.priceRow}>
                         <Text style={styles.priceLabel}>Tahmini Ücret:</Text>
-                        <Text style={styles.priceValue}>₺{selectedOrder.estimated_fare}</Text>
+                        <Text style={styles.priceValue}>₺{selectedOrder.estimated_fare.toFixed(2)}</Text>
                       </View>
                       {laborCount && parseInt(laborCount) > 0 && (
                         <View style={styles.priceRow}>
@@ -1572,7 +1671,9 @@ export default function DriverDashboardScreen() {
                       )}
                       <View style={[styles.priceRow, styles.totalPriceRow]}>
                         <Text style={styles.totalPriceLabel}>Toplam:</Text>
-                        <Text style={styles.totalPriceValue}>₺{selectedOrder.estimated_fare + (laborCount && parseInt(laborCount) > 0 ? parseInt(laborCount) * laborPrice : 0)}</Text>
+                        <Text style={styles.totalPriceValue}>
+                          ₺{(selectedOrder.estimated_fare + (laborCount && parseInt(laborCount) > 0 ? parseInt(laborCount) * laborPrice : 0)).toFixed(2)}
+                        </Text>
                       </View>
                     </View>
                   </>
@@ -1597,6 +1698,77 @@ export default function DriverDashboardScreen() {
                 >
                   <Text style={styles.acceptInspectionButtonText}>Kabul Et</Text>
                 </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Fotoğraf Modal */}
+        <Modal
+          visible={photoModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closePhotoModal}
+        >
+          <View style={styles.photoModalOverlay}>
+            <View style={styles.photoModalContainer}>
+              {/* Modal Header */}
+              <View style={styles.photoModalHeader}>
+                <Text style={styles.photoModalTitle}>
+                  {currentImageIndex + 1} / {photoUrls.length}
+                </Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={closePhotoModal}
+                >
+                  <Ionicons name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Fotoğraf Container */}
+              <View style={styles.photoContainer}>
+                {photoUrls.length > 0 && (
+                  <PinchGestureHandler
+                    ref={pinchRef}
+                    onGestureEvent={onPinchGestureEvent}
+                    onHandlerStateChange={onPinchHandlerStateChange}
+                  >
+                    <Animated.Image
+                      source={{ uri: photoUrls[currentImageIndex] }}
+                      style={[
+                        styles.fullScreenImage,
+                        {
+                          transform: [
+                            { scale: scale },
+                            { translateX: translateX },
+                            { translateY: translateY },
+                          ],
+                        },
+                      ]}
+                      resizeMode="contain"
+                    />
+                  </PinchGestureHandler>
+                )}
+
+                {/* Sol Ok */}
+                {photoUrls.length > 1 && (
+                  <TouchableOpacity
+                    style={[styles.navigationArrow, styles.leftArrow]}
+                    onPress={goToPreviousImage}
+                  >
+                    <Ionicons name="chevron-back" size={30} color="#FFFFFF" />
+                  </TouchableOpacity>
+                )}
+
+                {/* Sağ Ok */}
+                {photoUrls.length > 1 && (
+                  <TouchableOpacity
+                    style={[styles.navigationArrow, styles.rightArrow]}
+                    onPress={goToNextImage}
+                  >
+                    <Ionicons name="chevron-forward" size={30} color="#FFFFFF" />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </View>
@@ -2140,7 +2312,62 @@ export default function DriverDashboardScreen() {
      overflow: 'hidden',
    },
    thumbnailImage: {
-     width: '100%',
-     height: '100%',
-   },
- });
+      width: '100%',
+      height: '100%',
+    },
+    // Fotoğraf Modal Styles
+    photoModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    photoModalContainer: {
+      flex: 1,
+      width: '100%',
+      justifyContent: 'center',
+    },
+    photoModalHeader: {
+      position: 'absolute',
+      top: 60,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      zIndex: 1,
+    },
+    photoModalTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: '#FFFFFF',
+    },
+    photoContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      position: 'relative',
+    },
+    fullScreenImage: {
+      width: width,
+      height: height * 0.7,
+    },
+    navigationArrow: {
+      position: 'absolute',
+      top: '50%',
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: -25,
+    },
+    leftArrow: {
+      left: 20,
+    },
+    rightArrow: {
+      right: 20,
+    },
+  });

@@ -231,19 +231,19 @@ function HomeScreen() {
         // Snap to minimum
         Animated.spring(bottomSheetHeight, {
           toValue: minBottomSheetHeight,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }).start();
       } else if (currentHeight > screenHeight * 0.7) {
         // Snap to maximum
         Animated.spring(bottomSheetHeight, {
           toValue: maxBottomSheetHeight,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }).start();
       } else {
         // Snap to middle
         Animated.spring(bottomSheetHeight, {
           toValue: screenHeight * 0.6,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }).start();
       }
     },
@@ -1235,7 +1235,7 @@ function HomeScreen() {
       Animated.timing(progressAnim, {
         toValue: 1,
         duration: 3000, // Animasyon süresini 3 saniyeye düşür
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start(() => {
         // Animasyon tamamlandığında küçük bir gecikme ile tekrar başlat
         animationTimeout = setTimeout(() => {
