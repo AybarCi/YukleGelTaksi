@@ -23,6 +23,13 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Bu uygulama konum bilginizi kullanarak size en yakın sürücüleri bulur."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Bu uygulama yük fotoğraflarını yüklemek için galeri erişimi gerektirir.",
+          "cameraPermission": "Bu uygulama yük fotoğraflarını çekmek için kamera erişimi gerektirir."
+        }
       ]
     ],
     "android": {
@@ -38,7 +45,10 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ],
       "config": {
         "googleMaps": {
@@ -51,6 +61,10 @@
       "bundleIdentifier": "com.yuklegelltaksi.app",
       "buildNumber": "1",
       "icon": "./assets/images/logo1.png",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Bu uygulama yük fotoğraflarını çekmek için kamera erişimi gerektirir.",
+        "NSPhotoLibraryUsageDescription": "Bu uygulama yük fotoğraflarını yüklemek için galeri erişimi gerektirir."
+      },
       "config": {
         "googleMapsApiKey": "AIzaSyBh078SvpaOnhvq5QGkGJ4hQV-Z0mpI81M"
       }

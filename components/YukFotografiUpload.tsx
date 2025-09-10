@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -34,8 +35,14 @@ const YukFotografiUpload: React.FC<YukFotografiUploadProps> = ({
     if (cameraStatus !== 'granted' || mediaStatus !== 'granted') {
       Alert.alert(
         'İzin Gerekli',
-        'Fotoğraf çekebilmek için kamera ve galeri izinleri gereklidir.',
-        [{ text: 'Tamam' }]
+        'Fotoğraf çekebilmek için kamera ve galeri izinleri gereklidir. Ayarlardan izinleri açabilirsiniz.',
+        [
+          { text: 'İptal', style: 'cancel' },
+          { 
+            text: 'Ayarlara Git', 
+            onPress: () => Linking.openSettings() 
+          }
+        ]
       );
       return false;
     }
@@ -44,13 +51,45 @@ const YukFotografiUpload: React.FC<YukFotografiUploadProps> = ({
 
   const takePhoto = async () => {
     setShowOptions(false);
-    const hasPermission = await requestPermissions();
-    if (!hasPermission) return;
-
-    setIsUploading(true);
+    
     try {
+      // İlk olarak mevcut izinleri kontrol et
+      const cameraPermission = await ImagePicker.getCameraPermissionsAsync();
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      
+      let cameraStatus = cameraPermission.status;
+      let mediaStatus = mediaPermission.status;
+      
+      // Eğer izin verilmemişse, izin iste
+      if (cameraStatus !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        cameraStatus = status;
+      }
+      
+      if (mediaStatus !== 'granted') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        mediaStatus = status;
+      }
+      
+      // İzin verilmediyse kullanıcıyı uyar
+      if (cameraStatus !== 'granted') {
+        Alert.alert(
+          'Kamera İzni Gerekli',
+          'Fotoğraf çekebilmek için kamera izni gereklidir. Ayarlardan izni açabilirsiniz.',
+          [
+            { text: 'İptal', style: 'cancel' },
+            { 
+              text: 'Ayarlara Git', 
+              onPress: () => Linking.openSettings() 
+            }
+          ]
+        );
+        return;
+      }
+
+      setIsUploading(true);
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: 'images',
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -71,13 +110,38 @@ const YukFotografiUpload: React.FC<YukFotografiUploadProps> = ({
 
   const pickFromGallery = async () => {
     setShowOptions(false);
-    const hasPermission = await requestPermissions();
-    if (!hasPermission) return;
-
-    setIsUploading(true);
+    
     try {
+      // İlk olarak mevcut izinleri kontrol et
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      
+      let mediaStatus = mediaPermission.status;
+      
+      // Eğer izin verilmemişse, izin iste
+      if (mediaStatus !== 'granted') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        mediaStatus = status;
+      }
+      
+      // İzin verilmediyse kullanıcıyı uyar
+      if (mediaStatus !== 'granted') {
+        Alert.alert(
+          'Galeri İzni Gerekli',
+          'Fotoğraf seçebilmek için galeri izni gereklidir. Ayarlardan izni açabilirsiniz.',
+          [
+            { text: 'İptal', style: 'cancel' },
+            { 
+              text: 'Ayarlara Git', 
+              onPress: () => Linking.openSettings() 
+            }
+          ]
+        );
+        return;
+      }
+
+      setIsUploading(true);
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,

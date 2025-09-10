@@ -8,6 +8,9 @@ import {
   SafeAreaView,
   RefreshControl,
   ActivityIndicator,
+  Modal,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -23,7 +26,7 @@ interface Shipment {
   distance_km: number;
   weight_kg: number;
   labor_count: number;
-  cargo_photo_url?: string;
+  cargo_photo_urls?: string;
   base_price: number;
   distance_price: number;
   weight_price: number;
@@ -52,12 +55,18 @@ interface Shipment {
   } | null;
 }
 
+const { width } = Dimensions.get('window');
+
 export default function ShipmentsScreen() {
   const { user, showModal } = useAuth();
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [showImageModal, setShowImageModal] = useState(false);
 
   useEffect(() => {
     loadShipments();
@@ -117,22 +126,7 @@ export default function ShipmentsScreen() {
     setRefreshing(false);
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'Bekliyor';
-      case 'accepted':
-        return 'Kabul Edildi';
-      case 'in_progress':
-        return 'Yolda';
-      case 'delivered':
-        return 'Teslim Edildi';
-      case 'cancelled':
-        return 'İptal Edildi';
-      default:
-        return 'Bilinmiyor';
-    }
-  };
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -186,8 +180,42 @@ export default function ShipmentsScreen() {
     return true;
   }) : [];
 
+  const openDetailModal = (shipment: Shipment) => {
+    setSelectedShipment(shipment);
+    setShowDetailModal(true);
+  };
+
+  const closeDetailModal = () => {
+    setShowDetailModal(false);
+    setSelectedShipment(null);
+  };
+
+  const openImageModal = (index: number) => {
+    setSelectedImageIndex(index);
+    setShowImageModal(true);
+  };
+
+  const closeImageModal = () => {
+    setShowImageModal(false);
+  };
+
+  const getStatusText = (status: string) => {
+    const statusMap: { [key: string]: string } = {
+      'pending': 'Beklemede',
+      'driver_accepted_awaiting_customer': 'Sürücü Kabul Etti',
+      'confirmed': 'Onaylandı',
+      'driver_going_to_pickup': 'Sürücü Yolda',
+      'pickup_completed': 'Alım Tamamlandı',
+      'in_transit': 'Yolda',
+      'delivered': 'Teslim Edildi',
+      'payment_completed': 'Ödeme Tamamlandı',
+      'cancelled': 'İptal Edildi'
+    };
+    return statusMap[status] || status;
+  };
+
   const renderShipmentItem = (shipment: Shipment) => (
-    <TouchableOpacity key={shipment.id} style={styles.shipmentCard}>
+    <TouchableOpacity key={shipment.id} style={styles.shipmentCard} onPress={() => openDetailModal(shipment)}>
       <View style={styles.shipmentHeader}>
         <View style={styles.shipmentId}>
           <MaterialIcons name="local-shipping" size={20} color="#FFD700" />
@@ -338,6 +366,128 @@ export default function ShipmentsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Detail Modal */}
+      <Modal
+        visible={showDetailModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeDetailModal}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={closeDetailModal} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Sipariş Detayı</Text>
+            <View style={styles.placeholder} />
+          </View>
+
+          {selectedShipment && (
+            <ScrollView style={styles.modalContent}>
+              {/* Order Info */}
+              <View style={styles.modalSection}>
+                <Text style={styles.sectionTitle}>Sipariş Bilgileri</Text>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Sipariş ID:</Text>
+                  <Text style={styles.infoValue}>#{selectedShipment.id}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Durum:</Text>
+                  <Text style={styles.infoValue}>{getStatusText(selectedShipment.status)}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Toplam Tutar:</Text>
+                  <Text style={styles.infoValue}>{selectedShipment.total_price} TL</Text>
+                </View>
+              </View>
+
+              {/* Addresses */}
+              <View style={styles.modalSection}>
+                <Text style={styles.sectionTitle}>Adresler</Text>
+                <View style={styles.addressItem}>
+                  <View style={styles.addressIcon}>
+                    <Ionicons name="location" size={16} color="#10B981" />
+                  </View>
+                  <Text style={styles.addressText}>{selectedShipment.pickup_address}</Text>
+                </View>
+                <View style={styles.routeLine} />
+                <View style={styles.addressItem}>
+                  <View style={styles.addressIcon}>
+                    <Ionicons name="flag" size={16} color="#EF4444" />
+                  </View>
+                  <Text style={styles.addressText}>{selectedShipment.destination_address}</Text>
+                </View>
+              </View>
+
+              {/* Cargo Photos */}
+              {selectedShipment.cargo_photo_urls && (
+                <View style={styles.modalSection}>
+                  <Text style={styles.sectionTitle}>Kargo Fotoğrafları</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosContainer}>
+                    {selectedShipment.cargo_photo_urls.split(',').map((url, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        onPress={() => openImageModal(index)}
+                        style={styles.photoThumbnail}
+                      >
+                        <Image
+                          source={{ uri: url.trim() }}
+                          style={styles.thumbnailImage}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Notes */}
+              {selectedShipment.customer_notes && (
+                <View style={styles.modalSection}>
+                  <Text style={styles.sectionTitle}>Müşteri Notları</Text>
+                  <Text style={styles.noteText}>{selectedShipment.customer_notes}</Text>
+                </View>
+              )}
+
+              {selectedShipment.driver_notes && (
+                <View style={styles.modalSection}>
+                  <Text style={styles.sectionTitle}>Sürücü Notları</Text>
+                  <Text style={styles.noteText}>{selectedShipment.driver_notes}</Text>
+                </View>
+              )}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* Image Modal */}
+      <Modal
+        visible={showImageModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.imageModalContainer}>
+          <TouchableOpacity
+            style={styles.imageModalOverlay}
+            onPress={closeImageModal}
+          >
+            <View style={styles.imageModalContent}>
+              <TouchableOpacity onPress={closeImageModal} style={styles.imageCloseButton}>
+                <Ionicons name="close" size={30} color="#fff" />
+              </TouchableOpacity>
+              {selectedShipment && selectedShipment.cargo_photo_urls && (
+                <Image
+                  source={{ uri: selectedShipment.cargo_photo_urls.split(',')[selectedImageIndex]?.trim() }}
+                  style={styles.fullImage}
+                  resizeMode="contain"
+                />
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -555,5 +705,113 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  modalSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000000',
+    marginBottom: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#000000',
+  },
+  photosContainer: {
+    marginTop: 8,
+  },
+  photoThumbnail: {
+    width: 80,
+    height: 80,
+    marginRight: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
+  },
+  noteText: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalOverlay: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalContent: {
+    width: width * 0.9,
+    height: width * 0.9,
+    position: 'relative',
+  },
+  imageCloseButton: {
+    position: 'absolute',
+    top: -50,
+    right: 0,
+    zIndex: 1,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullImage: {
+    width: '100%',
+    height: '100%',
   },
 });

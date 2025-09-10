@@ -11,7 +11,7 @@ interface OrderDetailsResponse {
     weight_kg: number;
     labor_count: number;
     estimated_price: number;
-    cargo_photo_url?: string;
+    cargo_photo_urls?: string[];
     customer_name: string;
     customer_first_name: string;
     customer_last_name: string;
@@ -59,7 +59,7 @@ export async function GET(
           o.weight_kg,
           o.labor_count,
           o.estimated_price,
-          o.cargo_photo_url,
+          o.cargo_photo_urls,
           o.distance_km,
           o.created_at,
           u.first_name,
@@ -79,6 +79,16 @@ export async function GET(
 
     const order = result.recordset[0];
     
+    // Parse cargo photo URLs
+    let cargoPhotoUrls = [];
+    if (order.cargo_photo_urls) {
+      try {
+        cargoPhotoUrls = JSON.parse(order.cargo_photo_urls);
+      } catch (e) {
+        cargoPhotoUrls = [];
+      }
+    }
+
     const response: OrderDetailsResponse = {
       success: true,
       order: {
@@ -88,7 +98,7 @@ export async function GET(
         weight_kg: order.weight_kg,
         labor_count: order.labor_count,
         estimated_price: order.estimated_price,
-        cargo_photo_url: order.cargo_photo_url,
+        cargo_photo_urls: cargoPhotoUrls,
         customer_name: `${order.first_name} ${order.last_name}`,
         customer_first_name: order.first_name,
         customer_last_name: order.last_name,

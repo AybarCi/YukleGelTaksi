@@ -18,6 +18,8 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
+  Alert,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
@@ -30,6 +32,7 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 're
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import { useCameraPermissions } from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
@@ -104,6 +107,7 @@ const DestinationMarker = memo(({ coords }: { coords: { latitude: number; longit
 
 function HomeScreen() {
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -132,7 +136,7 @@ function HomeScreen() {
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
   const [pickupCoords, setPickupCoords] = useState<{latitude: number, longitude: number} | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<{latitude: number, longitude: number} | null>(null);
-  const [cargoImage, setCargoImage] = useState<string | null>(null);
+  const [cargoImages, setCargoImages] = useState<string[]>([]);
   const [distance, setDistance] = useState<number | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
   const [routeDuration, setRouteDuration] = useState<string | null>(null);
@@ -487,8 +491,8 @@ function HomeScreen() {
       setNotes(order.customer_notes || '');
       
       // Yük fotoğrafını set et
-      if (order.cargo_photo_url) {
-        setCargoImage(order.cargo_photo_url);
+      if (order.cargo_photo_urls) {
+        setCargoImages(JSON.parse(order.cargo_photo_urls));
       }
       
       // Input componentlerine adres bilgilerini set et - bir sonraki render cycle'da
@@ -734,6 +738,25 @@ function HomeScreen() {
   // Component mount ve initialization için useEffect
   useEffect(() => {
     const initializeApp = async () => {
+      // Bekleyen kamera sonuçlarını kontrol et
+      try {
+        console.log('🔍 Bekleyen kamera sonuçları kontrol ediliyor...');
+        const pendingResult = await ImagePicker.getPendingResultAsync();
+        if (pendingResult && 'assets' in pendingResult && !pendingResult.canceled && pendingResult.assets && pendingResult.assets.length > 0) {
+          console.log('📸 Bekleyen kamera sonucu bulundu:', pendingResult);
+          const newImages = pendingResult.assets.map((asset: any) => asset.uri);
+          setCargoImages(prev => {
+            const updated = [...prev, ...newImages];
+            console.log('✅ Bekleyen kamera sonucu işlendi:', updated);
+            return updated;
+          });
+        } else {
+          console.log('ℹ️ Bekleyen kamera sonucu bulunamadı');
+        }
+      } catch (error) {
+        console.error('❌ Bekleyen kamera sonucu kontrol hatası:', error);
+      }
+      
       await getCurrentLocation();
     };
     
@@ -1042,7 +1065,7 @@ function HomeScreen() {
       setDestinationCoords(null);
       setWeight('');
       setNotes('');
-      setCargoImage(null);
+      setCargoImages([]);
       setDistance(null);
       setRouteDuration(null);
       setRouteCoordinates([]);
@@ -1485,7 +1508,7 @@ function HomeScreen() {
   }, [pickupCoords, token]);
 
   const handleCreateOrder = useCallback(async () => {
-    if (!weight || !pickupCoords || !destinationCoords || !cargoImage) {
+    if (!weight || !pickupCoords || !destinationCoords || cargoImages.length === 0) {
       showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
       return;
     }
@@ -1518,8 +1541,9 @@ function HomeScreen() {
       formData.append('laborCount', '1');
       
       // Cargo image'ı FormData'ya ekle
-      if (cargoImage) {
-        const response = await fetch(cargoImage);
+      if (cargoImages.length > 0) {
+        // Upload first image for now, later we'll handle multiple images
+        const response = await fetch(cargoImages[0]);
         const blob = await response.blob();
         formData.append('cargoPhoto', blob, 'cargo.jpg');
       }
@@ -1563,7 +1587,7 @@ function HomeScreen() {
           distance: distance,
           estimatedPrice: result.order.estimatedPrice,
           createdAt: new Date().toISOString(),
-          cargoImage: cargoImage,
+          cargoImages: JSON.stringify(cargoImages),
           notes: notes
         };
         
@@ -1575,7 +1599,7 @@ function HomeScreen() {
         // Form alanlarını temizle
         setWeight('');
         setNotes('');
-        setCargoImage(null);
+        setCargoImages([]);
         setPickupLocation('');
         setDestinationLocation('');
         setPickupCoords(null);
@@ -1591,7 +1615,7 @@ function HomeScreen() {
       console.error('Sipariş oluşturma hatası:', error);
       showModal('Hata', 'Sipariş oluşturulurken bir hata oluştu.', 'error');
     }
-  }, [weight, pickupCoords, destinationCoords, cargoImage, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal, checkDriverAvailability]);
+  }, [weight, pickupCoords, destinationCoords, cargoImages, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal, checkDriverAvailability]);
 
   const handleCurrentLocationToggle = useCallback((value: boolean) => {
     setUseCurrentLocation(value);
@@ -1773,66 +1797,169 @@ function HomeScreen() {
     console.log('=== END DESTINATION LOCATION SELECT ===');
   }, [pickupCoords, animateToShowBothPoints, animateToRegionWithOffset]);
 
+  const [showImagePickerModal, setShowImagePickerModal] = useState(false);
+
   const handleImagePicker = useCallback(() => {
-    showModal(
-      'Fotoğraf Ekle',
-      'Yük fotoğrafını nasıl eklemek istiyorsunuz?',
-      'info',
-      [
-        {
-          text: 'İptal',
-          style: 'cancel',
-        },
-        {
-          text: 'Kameradan Çek',
-          onPress: () => pickImage('camera'),
-        },
-        {
-          text: 'Galeriden Seç',
-          onPress: () => pickImage('gallery'),
-        },
-      ]
-    );
+    setShowImagePickerModal(true);
   }, []);
 
   const pickImage = useCallback(async (source: 'camera' | 'gallery') => {
     try {
       let result;
-      
       if (source === 'camera') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-          showModal('İzin Gerekli', 'Kamera kullanımı için izin gerekli.', 'warning');
-          return;
+        // useCameraPermissions hook'unu kullan
+        console.log('🔍 Kamera izni kontrol ediliyor...');
+        console.log('📱 Mevcut kamera izni durumu:', cameraPermission?.status);
+        
+        // Eğer izin verilmemişse, izin iste
+        if (cameraPermission?.status !== 'granted') {
+          console.log('📝 Kamera izni isteniyor...');
+          const permissionResult = await requestCameraPermission();
+          console.log('📋 İzin sonucu:', permissionResult?.status);
+          
+          if (permissionResult?.status !== 'granted') {
+            Alert.alert(
+              'Kamera İzni Gerekli',
+              'Fotoğraf çekebilmek için kamera izni gereklidir. Ayarlardan izni açabilirsiniz.',
+              [
+                { text: 'İptal', style: 'cancel' },
+                { 
+                  text: 'Ayarlara Git', 
+                  onPress: () => Linking.openSettings() 
+                }
+              ]
+            );
+            return;
+          }
         }
         
-        result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
+        console.log('✅ Kamera izni onaylandı');
+        console.log('📸 Kamera açılıyor...');
+        
+        // Android'de kamera açma sorunları için kısa bir bekleme süresi ekle
+        if (Platform.OS === 'android') {
+          console.log('⏳ Android için bekleme süresi...');
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        
+        // Kamera açma işlemini try-catch ile sarmalayalım
+        try {
+          console.log('🚀 launchCameraAsync çağrılıyor...');
+          result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.8,
+            base64: false,
+            exif: false,
+          });
+          console.log('📷 Kamera sonucu alındı:', {
+            canceled: result.canceled,
+            assetsLength: result.assets?.length
+          });
+        } catch (cameraError) {
+          console.error('❌ Kamera açma hatası:', cameraError);
+          throw new Error('Kamera açılamadı. Lütfen tekrar deneyin.');
+        }
       } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          showModal('İzin Gerekli', 'Galeri erişimi için izin gerekli.', 'warning');
+        // Galeri seçimi için izin kontrolü
+        console.log('🔍 Galeri izni kontrol ediliyor...');
+        const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+        let mediaStatus = mediaPermission.status;
+        console.log('📱 Mevcut galeri izni durumu:', mediaStatus);
+        
+        // Eğer izin verilmemişse, izin iste
+        if (mediaStatus !== 'granted') {
+          console.log('📝 Galeri izni isteniyor...');
+          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          mediaStatus = permissionResult.status;
+          console.log('📋 İzin sonucu:', mediaStatus);
+        }
+        
+        // İzin verilmediyse kullanıcıyı uyar
+        if (mediaStatus !== 'granted') {
+          console.log('❌ Galeri izni reddedildi');
+          Alert.alert(
+            'Galeri İzni Gerekli',
+            'Fotoğraf seçebilmek için galeri izni gereklidir. Ayarlardan izni açabilirsiniz.',
+            [
+              { text: 'İptal', style: 'cancel' },
+              { 
+                text: 'Ayarlara Git', 
+                onPress: () => Linking.openSettings() 
+              }
+            ]
+          );
           return;
         }
         
+        console.log('✅ Galeri izni onaylandı');
+        
+        console.log('📱 Galeri açılıyor...');
+        // result = await ImagePicker.launchImageLibraryAsync({
+        //   mediaTypes: ['images'],
+        //   allowsMultipleSelection: true,
+        //   quality: 0.8,
+        //   base64: false,
+        //   exif: false,
+        // });
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+        console.log('🖼️ Galeri sonucu alındı:', {
+          canceled: result.canceled,
+          assetsLength: result.assets?.length
         });
       }
       
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setCargoImage(result.assets[0].uri);
+      console.log('🔍 Result kontrolü:', {
+        canceled: result.canceled,
+        assets: result.assets,
+        assetsLength: result.assets?.length,
+        resultType: typeof result,
+        resultKeys: Object.keys(result)
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        console.log('✅ Fotoğraf seçimi başarılı, işleniyor...');
+        const newImages = result.assets.map((asset, index) => {
+          console.log(`📸 Asset ${index}:`, {
+            uri: asset.uri,
+            width: asset.width,
+            height: asset.height,
+            type: asset.type
+          });
+          return asset.uri;
+        });
+        console.log('🖼️ Yeni resimler:', newImages);
+        
+        setCargoImages(prev => {
+          const updated = [...prev, ...newImages];
+          console.log('📋 Güncellenmiş cargoImages:', updated);
+          console.log('📊 Toplam fotoğraf sayısı:', updated.length);
+          return updated;
+        });
+        
+        // Başarı mesajı göster
+        showModal('Başarılı', `${newImages.length} fotoğraf başarıyla eklendi.`, 'success');
+      } else {
+        console.log('❌ Resim seçilmedi veya iptal edildi:', {
+          canceled: result.canceled,
+          hasAssets: !!result.assets,
+          assetsLength: result.assets?.length || 0
+        });
       }
     } catch (error) {
       console.error('Image picker error:', error);
-      showModal('Hata', 'Resim seçilirken bir hata oluştu.', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata';
+      console.error('Error details:', {
+        message: errorMessage,
+        error: error
+      });
+      showModal('Hata', `Resim seçilirken bir hata oluştu: ${errorMessage}`, 'error');
     }
   }, [showModal]);
 
@@ -2251,47 +2378,91 @@ function HomeScreen() {
 
             <View style={{ marginBottom: 20 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Fotoğrafı *</Text>
-              <TouchableOpacity
-                style={{
-                  borderWidth: 2,
-                  borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
-                  borderStyle: 'dashed',
-                  borderRadius: 8,
-                  padding: 20,
-                  alignItems: 'center',
-                  backgroundColor: isFormEditable() ? '#F9FAFB' : '#F3F4F6',
-                  opacity: isFormEditable() ? 1 : 0.6
-                }}
-                onPress={isFormEditable() ? handleImagePicker : undefined}
-                disabled={!isFormEditable()}
-              >
-                {cargoImage ? (
-                  <View style={styles.imageContainer}>
-                    <Image source={{ uri: cargoImage }} style={{ width: 100, height: 100, borderRadius: 8 }} />
-                    <TouchableOpacity
-                      style={{
-                        position: 'absolute',
-                        top: -8,
-                        right: -8,
-                        backgroundColor: '#EF4444',
-                        borderRadius: 12,
-                        width: 24,
-                        height: 24,
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                      onPress={() => setCargoImage(null)}
-                    >
-                      <Ionicons name="close" size={16} color="#FFFFFF" />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <>
-                    <Ionicons name="camera" size={32} color="#9CA3AF" />
-                    <Text style={{ marginTop: 8, fontSize: 14, color: '#6B7280' }}>Yük fotoğrafı ekle</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {cargoImages.length > 0 ? (
+                <View
+                  style={{
+                    borderWidth: 2,
+                    borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
+                    borderRadius: 8,
+                    backgroundColor: isFormEditable() ? '#F9FAFB' : '#F3F4F6',
+                    opacity: isFormEditable() ? 1 : 0.6,
+                    minHeight: 130,
+                    maxHeight: 130
+                  }}
+                >
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={true}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 10, paddingVertical: 15 }}
+                    scrollEventThrottle={16}
+                    decelerationRate="fast"
+                    bounces={false}
+                  >
+                    {cargoImages.map((imageUri, index) => (
+                       <View key={index} style={{ marginRight: 8, position: 'relative' }}>
+                         <Image source={{ uri: imageUri }} style={{ width: 90, height: 90, borderRadius: 8 }} />
+                         <TouchableOpacity
+                           style={{
+                             position: 'absolute',
+                             top: -5,
+                             right: -5,
+                             backgroundColor: '#EF4444',
+                             borderRadius: 12,
+                             width: 24,
+                             height: 24,
+                             alignItems: 'center',
+                             justifyContent: 'center',
+                           }}
+                           onPress={(e) => {
+                             e.stopPropagation();
+                             setCargoImages(prev => prev.filter((_, i) => i !== index));
+                           }}
+                         >
+                           <Ionicons name="close" size={16} color="white" />
+                         </TouchableOpacity>
+                       </View>
+                     ))}
+                     <TouchableOpacity
+                       style={{
+                         width: 90,
+                         height: 90,
+                         borderWidth: 2,
+                         borderColor: '#D1D5DB',
+                         borderStyle: 'dashed',
+                         borderRadius: 8,
+                         alignItems: 'center',
+                         justifyContent: 'center',
+                         backgroundColor: '#FFFFFF',
+                         marginLeft: 8,
+                       }}
+                       onPress={isFormEditable() ? handleImagePicker : undefined}
+                       disabled={!isFormEditable()}
+                     >
+                       <Ionicons name="add" size={24} color="#9CA3AF" />
+                     </TouchableOpacity>
+                   </ScrollView>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={{
+                    borderWidth: 2,
+                    borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
+                    borderStyle: 'dashed',
+                    borderRadius: 8,
+                    padding: 20,
+                    alignItems: 'center',
+                    backgroundColor: isFormEditable() ? '#F9FAFB' : '#F3F4F6',
+                    opacity: isFormEditable() ? 1 : 0.6,
+                    minHeight: 80,
+                  }}
+                  onPress={isFormEditable() ? handleImagePicker : undefined}
+                  disabled={!isFormEditable()}
+                >
+                  <Ionicons name="camera" size={32} color="#9CA3AF" />
+                  <Text style={{ marginTop: 8, fontSize: 14, color: '#6B7280' }}>Yük fotoğrafı ekle</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={{ marginBottom: 20 }}>
@@ -2324,10 +2495,10 @@ function HomeScreen() {
               <TouchableOpacity
                 style={[
                   styles.createOrderButton,
-                  (!weight || !pickupCoords || !destinationCoords || !cargoImage) && { opacity: 0.5 }
+                  (!weight || !pickupCoords || !destinationCoords || cargoImages.length === 0) && { opacity: 0.5 }
                 ]}
                 onPress={handleCreateOrder}
-                disabled={!weight || !pickupCoords || !destinationCoords || !cargoImage}
+                disabled={!weight || !pickupCoords || !destinationCoords || cargoImages.length === 0}
               >
                 <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>Sipariş Oluştur</Text>
               </TouchableOpacity>
@@ -2995,6 +3166,62 @@ function HomeScreen() {
         </View>
       </Modal>
       
+      {/* Modern Image Picker Modal */}
+      <Modal
+        visible={showImagePickerModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowImagePickerModal(false)}
+      >
+        <View style={styles.imagePickerOverlay}>
+          <View style={styles.imagePickerModal}>
+            <View style={styles.imagePickerHeader}>
+              <Text style={styles.imagePickerTitle}>Fotoğraf Seç</Text>
+              <TouchableOpacity
+                onPress={() => setShowImagePickerModal(false)}
+                style={styles.imagePickerCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.imagePickerContent}>
+              <TouchableOpacity
+                style={styles.imagePickerOption}
+                onPress={() => {
+                  setShowImagePickerModal(false);
+                  setTimeout(() => pickImage('camera'), 1000);
+                }}
+              >
+                <View style={styles.imagePickerIconContainer}>
+                  <Ionicons name="camera" size={32} color="#10B981" />
+                </View>
+                <View style={styles.imagePickerOptionTextContainer}>
+                   <Text style={styles.imagePickerOptionTitle}>Kamera</Text>
+                   <Text style={styles.imagePickerOptionSubtitle}>Yeni fotoğraf çek</Text>
+                 </View>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.imagePickerOption}
+                onPress={() => {
+                  setShowImagePickerModal(false);
+                  setTimeout(() => pickImage('gallery'), 1000);
+                }}
+              >
+                <View style={styles.imagePickerIconContainer}>
+                  <Ionicons name="images" size={32} color="#F59E0B" />
+                </View>
+                <View style={styles.imagePickerOptionTextContainer}>
+                   <Text style={styles.imagePickerOptionTitle}>Galeri</Text>
+                   <Text style={styles.imagePickerOptionSubtitle}>Mevcut fotoğraflardan seç</Text>
+                 </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Loading Splash Screen */}
       <LoadingSplash 
         visible={isLocationLoading && !userLocation} 
@@ -3184,6 +3411,9 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     position: 'relative',
+    maxHeight: 120,
+    width: '100%',
+    overflow: 'visible',
   },
   distanceInfo: {
     flexDirection: 'row',
@@ -3384,6 +3614,84 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontWeight: '500',
   },
-});
+  // Image Picker Modal Styles
+  imagePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  imagePickerModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 350,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  imagePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  imagePickerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  imagePickerCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#F9FAFB',
+  },
+  imagePickerContent: {
+    padding: 20,
+    paddingTop: 10,
+  },
+  imagePickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  imagePickerIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  imagePickerOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  imagePickerOptionSubtitle: {
+     fontSize: 14,
+     color: '#6B7280',
+   },
+   imagePickerOptionTextContainer: {
+     flex: 1,
+   },
+ });
 
 export default HomeScreen;

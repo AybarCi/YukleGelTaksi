@@ -1058,6 +1058,31 @@ class SocketServer {
     }
   }
 
+  async broadcastOrderToNearbyDrivers(orderId, orderData) {
+    try {
+      console.log(`📡 Broadcasting order ${orderId} to nearby drivers`);
+      
+      // Tüm bağlı ve müsait sürücülere sipariş bilgisini gönder
+      this.connectedDrivers.forEach((driverInfo, driverId) => {
+        if (driverInfo.isAvailable && driverInfo.location) {
+          const driverSocket = this.io.sockets.sockets.get(driverInfo.socketId);
+          if (driverSocket) {
+            driverSocket.emit('new_order_available', {
+              orderId,
+              ...orderData
+            });
+            console.log(`✅ Order ${orderId} sent to driver ${driverId}`);
+          }
+        }
+      });
+      
+      console.log(`📡 Order ${orderId} broadcasted to ${this.connectedDrivers.size} drivers`);
+    } catch (error) {
+      console.error('❌ Error broadcasting order to drivers:', error);
+      throw error;
+    }
+  }
+
   async handleStopInspection(driverId, orderId) {
     try {
       // orderId'yi düzelt - eğer object ise id property'sini al

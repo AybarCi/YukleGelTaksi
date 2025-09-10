@@ -10,6 +10,7 @@ import {
   ScrollView,
   TextInput,
   Linking,
+  Image,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { StatusBar } from 'expo-status-bar';
@@ -61,6 +62,7 @@ interface OrderData {
   customer_last_name?: string;
   distance?: number;
   estimatedArrival?: number;
+  cargo_photo_urls?: string;
 }
 
 interface RoutePhase {
@@ -1487,12 +1489,28 @@ export default function DriverDashboardScreen() {
                             placeholder={orderDetails?.labor_count?.toString() || "1"}
                           />
                         </View>
-                        {orderDetails.cargo_photo_url && (
-                          <View style={styles.infoRow}>
-                            <Ionicons name="camera" size={16} color="#6B7280" />
-                            <Text style={styles.infoText}>Yük fotoğrafı mevcut</Text>
-                          </View>
-                        )}
+
+                      </View>
+                    )}
+
+                    {/* Cargo Photos */}
+                    {orderDetails && orderDetails.cargo_photo_urls && (
+                      <View style={styles.orderInfoSection}>
+                        <Text style={styles.sectionTitle}>Kargo Fotoğrafları</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosContainer}>
+                          {orderDetails.cargo_photo_urls.split(',').map((url: string, index: number) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={styles.photoThumbnail}
+                            >
+                              <Image
+                                source={{ uri: url.trim() }}
+                                style={styles.thumbnailImage}
+                                resizeMode="cover"
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
                       </View>
                     )}
 
@@ -2066,5 +2084,19 @@ export default function DriverDashboardScreen() {
      backgroundColor: '#EF4444',
      flex: 1,
      marginRight: 8,
+   },
+   photosContainer: {
+     marginTop: 8,
+   },
+   photoThumbnail: {
+     width: 80,
+     height: 80,
+     marginRight: 12,
+     borderRadius: 8,
+     overflow: 'hidden',
+   },
+   thumbnailImage: {
+     width: '100%',
+     height: '100%',
    },
  });

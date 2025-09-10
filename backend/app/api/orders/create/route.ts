@@ -60,10 +60,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const weightKg = parseFloat(formData.get('weightKg') as string) || 0;
     const laborRequired = formData.get('laborRequired') === 'true';
     const laborCount = parseInt(formData.get('laborCount') as string) || 0;
-    const cargoPhoto = formData.get('cargoPhoto') as File;
+    // Handle multiple cargo photos
+    const cargoPhotos: File[] = [];
+    let photoIndex = 0;
+    while (true) {
+      const photo = formData.get(`cargoPhoto${photoIndex}`) as File;
+      if (!photo || photo.size === 0) break;
+      cargoPhotos.push(photo);
+      photoIndex++;
+    }
+    
+    // Fallback to single photo for backward compatibility
+    const singleCargoPhoto = formData.get('cargoPhoto') as File;
+    if (singleCargoPhoto && singleCargoPhoto.size > 0) {
+      cargoPhotos.push(singleCargoPhoto);
+    }
 
     // Validate required fields
-    if (!pickupAddress || !destinationAddress || !cargoPhoto) {
+    if (!pickupAddress || !destinationAddress || cargoPhotos.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Gerekli alanlar eksik' },
         { status: 400 }
@@ -79,25 +93,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Save cargo photo
-    let cargoPhotoUrl = '';
-    if (cargoPhoto && cargoPhoto.size > 0) {
+    // Save cargo photos
+    const cargoPhotoUrls: string[] = [];
+    if (cargoPhotos.length > 0) {
       try {
-        const bytes = await cargoPhoto.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        
         // Create uploads directory if it doesn't exist
         const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'cargo-photos');
         await mkdir(uploadsDir, { recursive: true });
         
-        // Generate unique filename
-        const fileExtension = cargoPhoto.name.split('.').pop() || 'jpg';
-        const fileName = `${uuidv4()}.${fileExtension}`;
-        const filePath = path.join(uploadsDir, fileName);
-        
-        // Save file
-        await writeFile(filePath, buffer);
-        cargoPhotoUrl = `/uploads/cargo-photos/${fileName}`;
+        for (const photo of cargoPhotos) {
+          const bytes = await photo.arrayBuffer();
+          const buffer = Buffer.from(bytes);
+          
+          // Generate unique filename
+          const fileExtension = photo.name.split('.').pop() || 'jpg';
+          const fileName = `${uuidv4()}.${fileExtension}`;
+          const filePath = path.join(uploadsDir, fileName);
+          
+          // Save file
+          await writeFile(filePath, buffer);
+          cargoPhotoUrls.push(`/uploads/cargo-photos/${fileName}`);
+        }
       } catch (error) {
         console.error('File upload error:', error);
         return NextResponse.json(
@@ -150,7 +166,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .input('destination_address', destinationAddress)
       .input('destination_latitude', destinationLatitude)
       .input('destination_longitude', destinationLongitude)
-      .input('cargo_photo_url', cargoPhotoUrl)
+      .input('cargo_photo_urls', JSON.stringify(cargoPhotoUrls))
       .input('customer_notes', notes)
       .input('distance_km', distance)
       .input('weight_kg', weightKg)
@@ -164,7 +180,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         INSERT INTO orders (
           user_id, pickup_address, pickup_latitude, pickup_longitude,
           destination_address, destination_latitude, destination_longitude,
-          cargo_photo_url, customer_notes, distance_km,
+          cargo_photo_urls, customer_notes, distance_km,
           weight_kg, labor_count, base_price, distance_price,
           weight_price, labor_price, total_price, status, created_at
         )
@@ -172,7 +188,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         VALUES (
           @user_id, @pickup_address, @pickup_latitude, @pickup_longitude,
           @destination_address, @destination_latitude, @destination_longitude,
-          @cargo_photo_url, @customer_notes, @distance_km,
+          @cargo_photo_urls, @customer_notes, @distance_km,
           @weight_kg, @labor_count, @base_price, @distance_price,
           @weight_price, @labor_price, @total_price, 'pending', GETDATE()
         )

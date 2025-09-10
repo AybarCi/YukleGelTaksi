@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -67,11 +68,29 @@ export default function AccountDetailsScreen() {
 
   const pickImage = async () => {
     try {
-      // Request permission
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      // İlk olarak mevcut izinleri kontrol et
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      let mediaStatus = mediaPermission.status;
       
-      if (permissionResult.granted === false) {
-        showModal('İzin Gerekli', 'Fotoğraf seçmek için galeri erişim izni gereklidir.', 'warning');
+      // Eğer izin verilmemişse, izin iste
+      if (mediaStatus !== 'granted') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        mediaStatus = status;
+      }
+      
+      // İzin verilmediyse kullanıcıyı uyar
+      if (mediaStatus !== 'granted') {
+        Alert.alert(
+          'Galeri İzni Gerekli',
+          'Fotoğraf seçebilmek için galeri izni gereklidir. Ayarlardan izni açabilirsiniz.',
+          [
+            { text: 'İptal', style: 'cancel' },
+            { 
+              text: 'Ayarlara Git', 
+              onPress: () => Linking.openSettings() 
+            }
+          ]
+        );
         return;
       }
 

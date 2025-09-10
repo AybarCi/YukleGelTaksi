@@ -11,6 +11,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Modal,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -139,15 +140,34 @@ export default function DriverProfileScreen() {
 
   const openCamera = async () => {
     try {
-      const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+      // İlk olarak mevcut izinleri kontrol et
+      const cameraPermission = await ImagePicker.getCameraPermissionsAsync();
+      let cameraStatus = cameraPermission.status;
       
-      if (cameraPermission.granted === false) {
-        Alert.alert('İzin Gerekli', 'Kamera kullanmak için izin gerekli');
+      // Eğer izin verilmemişse, izin iste
+      if (cameraStatus !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        cameraStatus = status;
+      }
+      
+      // İzin verilmediyse kullanıcıyı uyar
+      if (cameraStatus !== 'granted') {
+        Alert.alert(
+          'Kamera İzni Gerekli',
+          'Fotoğraf çekebilmek için kamera izni gereklidir. Ayarlardan izni açabilirsiniz.',
+          [
+            { text: 'İptal', style: 'cancel' },
+            { 
+              text: 'Ayarlara Git', 
+              onPress: () => Linking.openSettings() 
+            }
+          ]
+        );
         return;
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -164,8 +184,34 @@ export default function DriverProfileScreen() {
 
   const openGallery = async () => {
     try {
+      // İlk olarak mevcut izinleri kontrol et
+      const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      let mediaStatus = mediaPermission.status;
+      
+      // Eğer izin verilmemişse, izin iste
+      if (mediaStatus !== 'granted') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        mediaStatus = status;
+      }
+      
+      // İzin verilmediyse kullanıcıyı uyar
+      if (mediaStatus !== 'granted') {
+        Alert.alert(
+          'Galeri İzni Gerekli',
+          'Fotoğraf seçebilmek için galeri izni gereklidir. Ayarlardan izni açabilirsiniz.',
+          [
+            { text: 'İptal', style: 'cancel' },
+            { 
+              text: 'Ayarlara Git', 
+              onPress: () => Linking.openSettings() 
+            }
+          ]
+        );
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
