@@ -50,6 +50,7 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
       },
       clear: () => {
         setInputText('');
+        
       },
     }));
 

@@ -21,7 +21,7 @@ interface CreateOrderRequest {
   distance: number;
   estimatedTime: number;
   notes?: string;
-  weightKg?: number;
+  vehicle_type_id: number;
   laborRequired?: boolean;
   laborCount?: number;
 }
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const distance = parseFloat(formData.get('distance') as string);
     const estimatedTime = parseInt(formData.get('estimatedTime') as string);
     const notes = formData.get('notes') as string || '';
-    const weightKg = parseFloat(formData.get('weightKg') as string) || 0;
+    const vehicle_type_id = parseInt(formData.get('vehicle_type_id') as string);
     const laborRequired = formData.get('laborRequired') === 'true';
     const laborCount = parseInt(formData.get('laborCount') as string) || 0;
     // Handle multiple cargo photos
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Validate required fields
-    if (!pickupAddress || !destinationAddress || cargoPhotos.length === 0) {
+    if (!pickupAddress || !destinationAddress || cargoPhotos.length === 0 || !vehicle_type_id) {
       return NextResponse.json(
         { success: false, error: 'Gerekli alanlar eksik' },
         { status: 400 }
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         },
         body: JSON.stringify({
           distance_km: distance,
-          weight_kg: weightKg || 0,
+          vehicle_type_id: vehicle_type_id,
           labor_count: laborCount || 0
         })
       });
@@ -182,11 +182,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .input('cargo_photo_urls', JSON.stringify(cargoPhotoUrls))
       .input('customer_notes', notes)
       .input('distance_km', distance)
-      .input('weight_kg', weightKg)
+      .input('vehicle_type_id', vehicle_type_id)
       .input('labor_count', laborCount)
       .input('base_price', priceCalculation.base_price)
       .input('distance_price', priceCalculation.distance_price)
-      .input('weight_price', priceCalculation.weight_price)
       .input('labor_price', priceCalculation.labor_price)
       .input('total_price', priceCalculation.total_price)
       .query(`
@@ -194,16 +193,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           user_id, pickup_address, pickup_latitude, pickup_longitude,
           destination_address, destination_latitude, destination_longitude,
           cargo_photo_urls, customer_notes, distance_km,
-          weight_kg, labor_count, base_price, distance_price,
-          weight_price, labor_price, total_price, status, created_at
+          vehicle_type_id, labor_count, base_price, distance_price,
+          labor_price, total_price, status, created_at
         )
         OUTPUT INSERTED.id, INSERTED.created_at
         VALUES (
           @user_id, @pickup_address, @pickup_latitude, @pickup_longitude,
           @destination_address, @destination_latitude, @destination_longitude,
           @cargo_photo_urls, @customer_notes, @distance_km,
-          @weight_kg, @labor_count, @base_price, @distance_price,
-          @weight_price, @labor_price, @total_price, 'pending', GETDATE()
+          @vehicle_type_id, @labor_count, @base_price, @distance_price,
+          @labor_price, @total_price, 'pending', GETDATE()
         )
       `);
 
@@ -238,7 +237,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           destinationAddress,
           destinationLatitude,
           destinationLongitude,
-          weight: weightKg || 0,
+          vehicle_type_id: vehicle_type_id,
           laborCount: laborCount || 0,
           estimatedPrice: priceCalculation.total_price
         };

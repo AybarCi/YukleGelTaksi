@@ -4,8 +4,8 @@ import { authenticateToken } from '../../../middleware/auth';
 
 interface CalculatePriceRequest {
   distance_km: number;
-  weight_kg: number;
   labor_count: number;
+  vehicle_type_id: number;
   pickup_latitude?: number;
   pickup_longitude?: number;
   destination_latitude?: number;
@@ -15,19 +15,17 @@ interface CalculatePriceRequest {
 interface PriceCalculationResult {
   base_price: number;
   distance_price: number;
-  weight_price: number;
   labor_price: number;
   total_price: number;
   breakdown: {
     base_fee: string;
     distance_fee: string;
-    weight_fee: string;
     labor_fee: string;
     total: string;
   };
   distance_km: number;
-  weight_kg: number;
   labor_count: number;
+  vehicle_type_id: number;
 }
 
 // POST - Fiyat hesaplama
@@ -43,19 +41,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body: CalculatePriceRequest = await request.json();
-    const { distance_km, weight_kg, labor_count } = body;
+    const { distance_km, labor_count, vehicle_type_id } = body;
 
     // Validation
-    if (distance_km === undefined || weight_kg === undefined || labor_count === undefined) {
+    if (distance_km === undefined || labor_count === undefined || vehicle_type_id === undefined) {
       return NextResponse.json(
-        { error: 'Mesafe (km), ağırlık (kg) ve hammal sayısı gereklidir' },
+        { error: 'Mesafe (km), hammal sayısı ve araç tipi gereklidir' },
         { status: 400 }
       );
     }
 
-    if (distance_km < 0 || weight_kg < 0 || labor_count < 0) {
+    if (distance_km < 0 || labor_count < 0 || vehicle_type_id <= 0) {
       return NextResponse.json(
-        { error: 'Mesafe, ağırlık ve hammal sayısı negatif olamaz' },
+        { error: 'Mesafe, hammal sayısı negatif olamaz ve araç tipi geçerli olmalıdır' },
         { status: 400 }
       );
     }
@@ -67,12 +65,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (weight_kg > 10000) {
-      return NextResponse.json(
-        { error: 'Maksimum ağırlık 10000 kg olabilir' },
-        { status: 400 }
-      );
-    }
+
 
     if (labor_count > 20) {
       return NextResponse.json(
@@ -84,59 +77,55 @@ export async function POST(request: NextRequest) {
     const dbInstance = DatabaseConnection.getInstance();
     const pool = await dbInstance.connect();
     
-    // Pricing ayarlarını al
+    // Araç tipi bazlı pricing ayarlarını al
     const pricingResult = await pool.request()
+      .input('vehicle_type_id', vehicle_type_id)
       .query(`
-        SELECT TOP 1 
-          base_price, price_per_km, price_per_kg, labor_price
-        FROM pricing_settings 
-        ORDER BY id DESC
+        SELECT 
+          vtp.base_price, 
+          vtp.price_per_km, 
+          vtp.labor_price,
+          vt.name as vehicle_type_name
+        FROM vehicle_type_pricing vtp
+        INNER JOIN vehicle_types vt ON vtp.vehicle_type_id = vt.id
+        WHERE vtp.vehicle_type_id = @vehicle_type_id AND vtp.is_active = 1
       `);
 
     let pricingSettings;
     if (pricingResult.recordset.length === 0) {
-      // Varsayılan değerler - backoffice ile uyumlu
-      pricingSettings = {
-        base_price: 2500.00,
-        price_per_km: 100.00,
-        price_per_kg: 20.00,
-        labor_price: 800.00
-      };
+      return NextResponse.json(
+        { error: 'Seçilen araç tipi için fiyatlandırma bulunamadı' },
+        { status: 404 }
+      );
     } else {
       const settings = pricingResult.recordset[0];
       pricingSettings = {
         base_price: parseFloat(settings.base_price),
         price_per_km: parseFloat(settings.price_per_km),
-        price_per_kg: parseFloat(settings.price_per_kg),
-        labor_price: parseFloat(settings.labor_price)
+        labor_price: parseFloat(settings.labor_price),
+        vehicle_type_name: settings.vehicle_type_name
       };
     }
 
-    // Fiyat hesaplama - Backoffice kurallarına göre
-    // Her zaman tüm parametreleri hesapla, sonra base ücret ile karşılaştır
+    // Fiyat hesaplama - Araç tipi bazlı
     
-    let basePrice, distancePrice, weightPrice, laborPrice, totalPrice;
+    let basePrice, distancePrice, laborPrice, totalPrice;
     
-    // Tüm parametreleri hesapla
+    // Parametreleri hesapla
     distancePrice = distance_km * pricingSettings.price_per_km;
-    weightPrice = weight_kg * pricingSettings.price_per_kg;
     laborPrice = labor_count * pricingSettings.labor_price;
     
-    // Hesaplanan toplam ücret
-    const calculatedPrice = distancePrice + weightPrice + laborPrice;
+    // Hesaplanan toplam ücret (mesafe + hammaliye)
+    const calculatedPrice = distancePrice + laborPrice;
     
-    // Base ücret + hammaliye
-    const baseWithLabor = pricingSettings.base_price + laborPrice;
-    
-    // Hangisi yüksekse onu kullan
-    if (baseWithLabor > calculatedPrice) {
-      // Base ücret daha yüksek - base ücret + hammaliye kullan
+    // Eğer hesaplanan ücret base ücretten düşükse base ücret uygulanır
+    if (calculatedPrice < pricingSettings.base_price) {
+      // Base ücret daha yüksek - base ücret uygulanır
       basePrice = pricingSettings.base_price;
       distancePrice = 0;
-      weightPrice = 0;
-      totalPrice = baseWithLabor;
+      totalPrice = pricingSettings.base_price;
     } else {
-      // Hesaplanan ücret daha yüksek - hesaplanan değerleri kullan
+      // Hesaplanan ücret daha yüksek - km + hammaliye kullanılır
       basePrice = 0;
       totalPrice = calculatedPrice;
     }
@@ -144,19 +133,17 @@ export async function POST(request: NextRequest) {
     const result: PriceCalculationResult = {
       base_price: basePrice,
       distance_price: distancePrice,
-      weight_price: weightPrice,
       labor_price: laborPrice,
       total_price: totalPrice,
       breakdown: {
-        base_fee: `Temel Ücret: ${basePrice.toFixed(2)} TL`,
+        base_fee: `Temel Ücret (${pricingSettings.vehicle_type_name}): ${basePrice.toFixed(2)} TL`,
         distance_fee: `Mesafe Ücreti (${distance_km} km): ${distancePrice.toFixed(2)} TL`,
-        weight_fee: `Ağırlık Ücreti (${weight_kg} kg): ${weightPrice.toFixed(2)} TL`,
         labor_fee: `Hammaliye Ücreti (${labor_count} hammal): ${laborPrice.toFixed(2)} TL`,
         total: `Toplam: ${totalPrice.toFixed(2)} TL`
       },
       distance_km,
-      weight_kg,
-      labor_count
+      labor_count,
+      vehicle_type_id
     };
 
     return NextResponse.json({

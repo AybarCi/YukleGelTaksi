@@ -8,7 +8,7 @@ const fs = require('fs');
     const pool = await db.connect();
     
     console.log('Reading migration file...');
-    const sql = fs.readFileSync('./migrations/create_customer_support_tickets_table.sql', 'utf8');
+    const sql = fs.readFileSync('./migrations/create_vehicle_types_table.sql', 'utf8');
     
     console.log('Executing migration...');
     await pool.request().query(sql);

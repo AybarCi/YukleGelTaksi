@@ -49,6 +49,13 @@ interface Driver {
   name?: string;
 }
 
+interface VehicleType {
+  id: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+}
+
 // Optimized marker components with React.memo
 const DriverMarker = memo(({ driver }: { driver: Driver }) => {
   if (!driver || typeof driver !== 'object' || !driver.id || 
@@ -130,7 +137,8 @@ function HomeScreen() {
   }, [drivers, safeDrivers]);
   
   // Yük bilgileri state'leri
-  const [weight, setWeight] = useState('');
+  const [selectedVehicleType, setSelectedVehicleType] = useState<VehicleType | null>(null);
+  const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([]);
   const [pickupLocation, setPickupLocation] = useState('');
   const [destinationLocation, setDestinationLocation] = useState('');
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
@@ -196,6 +204,9 @@ function HomeScreen() {
   // Free cancel modal için state
   const [freeCancelModalVisible, setFreeCancelModalVisible] = useState(false);
   const [freeCancelConfirmCode, setFreeCancelConfirmCode] = useState('');
+  
+  // Vehicle type modal için state
+  const [showVehicleTypeModal, setShowVehicleTypeModal] = useState(false);
   
   // BottomSheet için state'ler
   const screenHeight = Dimensions.get('window').height;
@@ -484,8 +495,13 @@ function HomeScreen() {
       console.log('destination_address set ediliyor:', order.destination_address);
       setDestinationLocation(order.destination_address);
       
-      console.log('weight_kg set ediliyor:', order.weight_kg);
-      setWeight(order.weight_kg ? order.weight_kg.toString() : '1');
+      // Araç tipi bilgisini ayarla (eğer varsa)
+      if (order.vehicle_type_id && vehicleTypes.length > 0) {
+        const vehicleType = vehicleTypes.find(type => type.id === order.vehicle_type_id);
+        setSelectedVehicleType(vehicleType || null);
+      } else {
+        setSelectedVehicleType(null);
+      }
       
       console.log('customer_notes set ediliyor:', order.customer_notes);
       setNotes(order.customer_notes || '');
@@ -580,7 +596,7 @@ function HomeScreen() {
       console.error('Sipariş verilerini doldurma hatası:', error);
       showModal('Hata', 'Sipariş verileri yüklenirken bir hata oluştu.', 'error');
     }
-  }, [setPickupLocation, setDestinationLocation, setWeight, setNotes, setPickupCoords, setDestinationCoords, showModal]);
+  }, [setPickupLocation, setDestinationLocation, setNotes, setPickupCoords, setDestinationCoords, showModal]);
 
   const checkExistingOrder = useCallback(async () => {
     try {
@@ -773,6 +789,30 @@ function HomeScreen() {
     }
   }, [token]);
 
+  // Araç tiplerini yükle
+  const loadVehicleTypes = async () => {
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-types`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const activeVehicleTypes = data.filter((type: VehicleType) => type.is_active);
+        setVehicleTypes(activeVehicleTypes);
+        console.log('✅ Araç tipleri yüklendi:', activeVehicleTypes);
+      } else {
+        console.error('❌ Araç tipleri yüklenemedi:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Araç tipleri yükleme hatası:', error);
+    }
+  };
+
   // Component mount ve initialization için useEffect
   useEffect(() => {
     const initializeApp = async () => {
@@ -800,6 +840,7 @@ function HomeScreen() {
     
     initializeApp();
     checkExistingOrder();
+    loadVehicleTypes();
     
     socketService.on('connection_error', (data: any) => {
       console.error('Socket bağlantı hatası:', data.error);
@@ -1089,7 +1130,10 @@ function HomeScreen() {
     });
 
     socketService.on('order_cancelled_successfully', (data: any) => {
-      console.log('Order cancelled successfully:', data);
+      console.log('🔴 Order cancelled successfully:', data);
+      console.log('🔴 pickupLocationRef.current:', pickupLocationRef.current);
+      console.log('🔴 destinationLocationRef.current:', destinationLocationRef.current);
+      
       setCancelOrderModalVisible(false);
       setUserCancelCode('');
       setCurrentOrder(null);
@@ -1101,7 +1145,6 @@ function HomeScreen() {
       setDestinationLocation('');
       setPickupCoords(null);
       setDestinationCoords(null);
-      setWeight('');
       setNotes('');
       setCargoImages([]);
       setDistance(null);
@@ -1110,10 +1153,16 @@ function HomeScreen() {
       
       // Input referanslarını temizle
       if (pickupLocationRef.current) {
+        console.log('🔴 Calling pickupLocationRef.current.clear()');
         pickupLocationRef.current.clear();
+      } else {
+        console.log('🔴 pickupLocationRef.current is null!');
       }
       if (destinationLocationRef.current) {
+        console.log('🔴 Calling destinationLocationRef.current.clear()');
         destinationLocationRef.current.clear();
+      } else {
+        console.log('🔴 destinationLocationRef.current is null!');
       }
       
       showModal('Sipariş İptal Edildi', data.message || 'Sipariş başarıyla iptal edildi!', 'success');
@@ -1574,7 +1623,7 @@ function HomeScreen() {
       formData.append('distance', (distance || 0).toString());
       formData.append('estimatedTime', (routeDuration || 30).toString());
       formData.append('notes', notes || '');
-      formData.append('weightKg', parseFloat(weight).toString());
+      formData.append('vehicleTypeId', selectedVehicleType?.id?.toString() || '');
       formData.append('laborRequired', 'true');
       formData.append('laborCount', '1');
       
@@ -1598,7 +1647,7 @@ function HomeScreen() {
       console.log('- pickupAddress:', pickupLocation);
       console.log('- destinationAddress:', destinationLocation);
       console.log('- notes:', notes);
-      console.log('- weightKg:', weight);
+      console.log('- vehicleTypeId:', selectedVehicleType?.id);
       console.log('- distance:', distance);
       console.log('- estimatedTime:', routeDuration);
       console.log('- cargoImages array length:', cargoImages.length);
@@ -1655,7 +1704,6 @@ function HomeScreen() {
         showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu. Yakındaki sürücülere bildirim gönderildi.', 'success');
         
         // Form alanlarını temizle
-        setWeight('');
         setNotes('');
         setCargoImages([]);
         setPickupLocation('');
@@ -2023,13 +2071,7 @@ function HomeScreen() {
 
   // Fiyat hesaplama fonksiyonu
   const calculatePrice = useCallback(async () => {
-    if (!distance || !weight) {
-      setEstimatedPrice(null);
-      return;
-    }
-
-    const weightNum = parseFloat(weight);
-    if (isNaN(weightNum) || weightNum <= 0) {
+    if (!distance || !selectedVehicleType) {
       setEstimatedPrice(null);
       return;
     }
@@ -2054,7 +2096,7 @@ function HomeScreen() {
         },
         body: JSON.stringify({
           distance_km: distance,
-          weight_kg: weightNum,
+          vehicle_type_id: selectedVehicleType.id,
           labor_count: 1 // Varsayılan hammal sayısı
         })
       });
@@ -2080,7 +2122,7 @@ function HomeScreen() {
     } finally {
       setPriceLoading(false);
     }
-   }, [distance, weight]);
+   }, [distance, selectedVehicleType]);
 
   // Fiyat hesaplama için useEffect
   useEffect(() => {
@@ -2371,29 +2413,41 @@ function HomeScreen() {
             (
                 <>
                   <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Ağırlığı (kg)</Text>
-              <TextInput
-                ref={(ref) => { inputRefs.current[0] = ref; }}
+              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Araç Tipi</Text>
+              <TouchableOpacity
                 style={[
                   {
                     borderWidth: 1,
                     borderColor: '#D1D5DB',
                     borderRadius: 8,
                     padding: 12,
-                    fontSize: 16,
                     backgroundColor: isFormEditable() ? '#FFFFFF' : '#F3F4F6',
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                   },
-                  activeInputIndex === 0 && { borderColor: '#FFD700', borderWidth: 2 },
-                  !isFormEditable() && { borderColor: '#E5E7EB', color: '#9CA3AF' }
+                  !isFormEditable() && { borderColor: '#E5E7EB' }
                 ]}
-                placeholder="Örn: 25"
-                value={weight}
-                onChangeText={setWeight}
-                keyboardType="numeric"
-                editable={isFormEditable()}
-                onFocus={() => setActiveInputIndex(0)}
-                onBlur={() => setActiveInputIndex(null)}
-              />
+                onPress={() => {
+                  if (isFormEditable()) {
+                    setShowVehicleTypeModal(true);
+                  }
+                }}
+                disabled={!isFormEditable()}
+              >
+                <Text style={[
+                  { fontSize: 16 },
+                  selectedVehicleType ? { color: '#1F2937' } : { color: '#9CA3AF' },
+                  !isFormEditable() && { color: '#9CA3AF' }
+                ]}>
+                  {selectedVehicleType ? selectedVehicleType.name : 'Araç tipi seçin'}
+                </Text>
+                <Ionicons 
+                  name="chevron-down" 
+                  size={20} 
+                  color={isFormEditable() ? '#6B7280' : '#9CA3AF'} 
+                />
+              </TouchableOpacity>
             </View>
 
             <View style={{ marginBottom: 20 }}>
@@ -3300,6 +3354,68 @@ function HomeScreen() {
                    <Text style={styles.imagePickerOptionSubtitle}>Mevcut fotoğraflardan seç</Text>
                  </View>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Vehicle Type Selection Modal */}
+      <Modal
+        visible={showVehicleTypeModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowVehicleTypeModal(false)}
+      >
+        <View style={styles.imagePickerOverlay}>
+          <View style={styles.imagePickerModal}>
+            <View style={styles.imagePickerHeader}>
+              <Text style={styles.imagePickerTitle}>Araç Tipi Seçin</Text>
+              <TouchableOpacity
+                style={styles.imagePickerCloseButton}
+                onPress={() => setShowVehicleTypeModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.imagePickerContent}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {vehicleTypes.map((vehicleType) => (
+                  <TouchableOpacity
+                    key={vehicleType.id}
+                    style={[
+                      styles.imagePickerOption,
+                      selectedVehicleType?.id === vehicleType.id && {
+                        backgroundColor: '#FEF3C7',
+                        borderColor: '#F59E0B',
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedVehicleType(vehicleType);
+                      setShowVehicleTypeModal(false);
+                    }}
+                  >
+                    <View style={[
+                      styles.imagePickerIconContainer,
+                      selectedVehicleType?.id === vehicleType.id && {
+                        backgroundColor: '#F59E0B',
+                      }
+                    ]}>
+                      <Ionicons 
+                        name="car" 
+                        size={24} 
+                        color={selectedVehicleType?.id === vehicleType.id ? '#FFFFFF' : '#F59E0B'} 
+                      />
+                    </View>
+                    <View style={styles.imagePickerOptionTextContainer}>
+                      <Text style={styles.imagePickerOptionTitle}>{vehicleType.name}</Text>
+                      <Text style={styles.imagePickerOptionSubtitle}>{vehicleType.description}</Text>
+                    </View>
+                    {selectedVehicleType?.id === vehicleType.id && (
+                      <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           </View>
         </View>

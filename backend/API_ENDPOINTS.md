@@ -1,6 +1,6 @@
 # YükleGel Taksi Backend API Endpoints
 
-Backend sunucusu `http://192.168.1.12:3000` adresinde çalışmaktadır.
+Backend sunucusu `http://192.168.1.171:3000` adresinde çalışmaktadır.
 
 ## Authentication Endpoints
 
@@ -239,12 +239,12 @@ Authorization: Bearer <token>
 
 ### Tüm Sürücüleri Listele
 ```
-GET http://192.168.1.12:3000/api/drivers
+GET http://192.168.1.171:3000/api/drivers
 ```
 
 ### Sürücü Kaydet
 ```
-POST http://192.168.1.12:3000/api/drivers/register
+POST http://192.168.1.171:3000/api/drivers/register
 Content-Type: application/json
 
 {

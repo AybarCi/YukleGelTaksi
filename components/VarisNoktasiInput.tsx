@@ -49,6 +49,7 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
       },
       clear: () => {
         setInputText('');
+        
       },
     }));
 
