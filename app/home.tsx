@@ -54,6 +54,7 @@ interface VehicleType {
   name: string;
   description: string;
   is_active: boolean;
+  image_url?: string;
 }
 
 // Optimized marker components with React.memo
@@ -149,6 +150,7 @@ function HomeScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
   const [routeDuration, setRouteDuration] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [weight, setWeight] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
@@ -787,10 +789,25 @@ function HomeScreen() {
     if (token) {
       socketService.connect(token);
     }
+  }, []);
+
+  // Token hazır olduğunda araç tiplerini yükle
+  useEffect(() => {
+    if (token) {
+      console.log('🔑 Token hazır, araç tipleri yükleniyor...');
+      loadVehicleTypes();
+    }
   }, [token]);
 
   // Araç tiplerini yükle
   const loadVehicleTypes = async () => {
+    if (!token) {
+      console.error('❌ Token bulunamadı, araç tipleri yüklenemedi');
+      return;
+    }
+
+    console.log('🔑 Token ile araç tipleri yükleniyor:', token.substring(0, 20) + '...');
+    
     try {
       const response = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-types`, {
         method: 'GET',
@@ -800,13 +817,28 @@ function HomeScreen() {
         },
       });
 
+      console.log('📡 API Response Status:', response.status);
+      console.log('📡 API Response Headers:', response.headers);
+
       if (response.ok) {
         const data = await response.json();
-        const activeVehicleTypes = data.filter((type: VehicleType) => type.is_active);
-        setVehicleTypes(activeVehicleTypes);
-        console.log('✅ Araç tipleri yüklendi:', activeVehicleTypes);
+        console.log('📦 API Response Data:', data);
+        console.log('📦 Data type:', typeof data);
+        console.log('📦 Is Array:', Array.isArray(data));
+        
+        // API response'unda data field'ı varsa onu kullan
+        const vehicleTypesArray = data.data || data;
+        
+        if (Array.isArray(vehicleTypesArray)) {
+          const activeVehicleTypes = vehicleTypesArray.filter((type: VehicleType) => type.is_active);
+          setVehicleTypes(activeVehicleTypes);
+          console.log('✅ Araç tipleri yüklendi:', activeVehicleTypes);
+        } else {
+          console.error('❌ API response is not an array:', vehicleTypesArray);
+        }
       } else {
-        console.error('❌ Araç tipleri yüklenemedi:', response.status);
+        const errorText = await response.text();
+        console.error('❌ Araç tipleri yüklenemedi:', response.status, errorText);
       }
     } catch (error) {
       console.error('❌ Araç tipleri yükleme hatası:', error);
@@ -840,7 +872,6 @@ function HomeScreen() {
     
     initializeApp();
     checkExistingOrder();
-    loadVehicleTypes();
     
     socketService.on('connection_error', (data: any) => {
       console.error('Socket bağlantı hatası:', data.error);
@@ -2581,6 +2612,26 @@ function HomeScreen() {
             </View>
 
             <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Ağırlığı (kg) *</Text>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 16,
+                  backgroundColor: isFormEditable() ? '#FFFFFF' : '#F3F4F6',
+                  color: isFormEditable() ? '#1F2937' : '#9CA3AF'
+                }}
+                placeholder="Yük ağırlığını kg cinsinden girin"
+                value={weight}
+                onChangeText={setWeight}
+                keyboardType="numeric"
+                editable={isFormEditable()}
+              />
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Notlar (Opsiyonel)</Text>
               <TextInput
                 style={{
@@ -3400,11 +3451,19 @@ function HomeScreen() {
                         backgroundColor: '#F59E0B',
                       }
                     ]}>
-                      <Ionicons 
-                        name="car" 
-                        size={24} 
-                        color={selectedVehicleType?.id === vehicleType.id ? '#FFFFFF' : '#F59E0B'} 
-                      />
+                      {vehicleType.image_url ? (
+                        <Image 
+                          source={{ uri: `${API_CONFIG.BASE_URL}${vehicleType.image_url}` }}
+                          style={styles.vehicleTypeImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Ionicons 
+                          name="car" 
+                          size={24} 
+                          color={selectedVehicleType?.id === vehicleType.id ? '#FFFFFF' : '#F59E0B'} 
+                        />
+                      )}
                     </View>
                     <View style={styles.imagePickerOptionTextContainer}>
                       <Text style={styles.imagePickerOptionTitle}>{vehicleType.name}</Text>
@@ -3889,8 +3948,13 @@ const styles = StyleSheet.create({
      color: '#6B7280',
    },
    imagePickerOptionTextContainer: {
-     flex: 1,
-   },
- });
+    flex: 1,
+  },
+  vehicleTypeImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+});
 
 export default HomeScreen;

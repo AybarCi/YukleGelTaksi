@@ -8,7 +8,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -16,6 +18,14 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import LoadingIndicator from '../components/LoadingIndicator';
 import { API_CONFIG } from '../config/api';
+
+interface VehicleType {
+  id: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  image_url?: string;
+}
 
 interface DriverFormData {
   tc_number: string;
@@ -58,11 +68,92 @@ export default function DriverRegistrationScreen() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([]);
 
-  // Sayfa yüklendiğinde kullanıcının mevcut başvurusunu kontrol et
+  // Form verilerini AsyncStorage'a kaydet
+  const saveFormData = async (data: DriverFormData, step: number) => {
+    try {
+      await AsyncStorage.setItem('driverRegistrationForm', JSON.stringify(data));
+      await AsyncStorage.setItem('driverRegistrationStep', step.toString());
+      // Kullanıcı tipini de kaydet
+      await AsyncStorage.setItem('userType', 'driver');
+    } catch (error) {
+      console.log('Form verileri kaydedilirken hata:', error);
+    }
+  };
+
+  // Form verilerini AsyncStorage'dan yükle
+  const loadFormData = async () => {
+    try {
+      const savedFormData = await AsyncStorage.getItem('driverRegistrationForm');
+      const savedStep = await AsyncStorage.getItem('driverRegistrationStep');
+      
+      if (savedFormData) {
+        const parsedData = JSON.parse(savedFormData);
+        setFormData(parsedData);
+      }
+      
+      if (savedStep) {
+        setCurrentStep(parseInt(savedStep));
+      }
+    } catch (error) {
+      console.log('Form verileri yüklenirken hata:', error);
+    }
+  };
+
+  // Form verilerini temizle
+  const clearFormData = async () => {
+    try {
+      await AsyncStorage.removeItem('driverRegistrationForm');
+      await AsyncStorage.removeItem('driverRegistrationStep');
+    } catch (error) {
+      console.log('Form verileri temizlenirken hata:', error);
+    }
+  };
+
+  // Sayfa yüklendiğinde önce kaydedilmiş form verilerini yükle, sonra başvuru durumunu kontrol et
   useEffect(() => {
-    checkExistingApplication();
+    const initializeForm = async () => {
+      await loadFormData();
+      await fetchVehicleTypes();
+      // Sadece form verileri yoksa başvuru durumunu kontrol et
+      const savedFormData = await AsyncStorage.getItem('driverRegistrationForm');
+      if (!savedFormData) {
+        checkExistingApplication();
+      }
+    };
+    
+    initializeForm();
   }, []);
+
+  const fetchVehicleTypes = async () => {
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-types/public`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          // Sadece aktif araç tiplerini filtrele
+          const activeVehicleTypes = result.data.filter((type: VehicleType) => type.is_active);
+          setVehicleTypes(activeVehicleTypes);
+          
+          // Eğer araç tipleri varsa ve formData'da vehicle_type yoksa, ilkini seç
+          if (activeVehicleTypes.length > 0 && !formData.vehicle_type) {
+            setFormData(prev => ({ ...prev, vehicle_type: activeVehicleTypes[0].name.toLowerCase() }));
+          }
+        }
+      } else {
+        console.log('Araç tipleri getirilemedi:', response.status);
+      }
+    } catch (error) {
+      console.log('Araç tipleri getirilirken hata:', error);
+    }
+  };
 
   const checkExistingApplication = async () => {
     try {
@@ -96,7 +187,10 @@ export default function DriverRegistrationScreen() {
   };
 
   const updateFormData = (field: keyof DriverFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+    // Form verileri her değiştiğinde kaydet
+    saveFormData(newFormData, currentStep);
   };
 
   // Adım validasyon fonksiyonları
@@ -178,8 +272,18 @@ export default function DriverRegistrationScreen() {
     }
     
     if (isValid) {
-      setCurrentStep(currentStep + 1);
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
+      // Adım değiştiğinde form verilerini kaydet
+      saveFormData(formData, nextStep);
     }
+  };
+
+  const handlePreviousStep = () => {
+    const previousStep = currentStep - 1;
+    setCurrentStep(previousStep);
+    // Geri giderken de form verilerini kaydet
+    saveFormData(formData, previousStep);
   };
 
   const pickDocument = async (field: 'driver_photo' | 'license_photo' | 'eligibility_certificate') => {
@@ -197,7 +301,10 @@ export default function DriverRegistrationScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setFormData(prev => ({ ...prev, [field]: result.assets[0] }));
+        const newFormData = { ...formData, [field]: result.assets[0] };
+        setFormData(newFormData);
+        // Belge seçildiğinde form verilerini kaydet
+        saveFormData(newFormData, currentStep);
       }
     } catch (error) {
       showModal('Hata', 'Dosya seçilirken bir hata oluştu.', 'error');
@@ -250,6 +357,8 @@ export default function DriverRegistrationScreen() {
       const result = await response.json();
 
       if (response.ok) {
+        // Başvuru başarılı, form verilerini temizle
+        await clearFormData();
         showModal(
           'Başvuru Tamamlandı',
           'Sürücü başvurunuz başarıyla alındı. Onay sürecini takip edebilirsiniz.',
@@ -372,26 +481,34 @@ export default function DriverRegistrationScreen() {
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Araç Tipi *</Text>
         <View style={styles.vehicleTypeContainer}>
-          {['sedan', 'pickup', 'van', 'truck'].map((type) => (
+          {vehicleTypes.map((vehicleType) => (
             <TouchableOpacity
-              key={type}
+              key={vehicleType.id}
               style={[
                 styles.vehicleTypeButton,
-                formData.vehicle_type === type && styles.vehicleTypeButtonActive
+                formData.vehicle_type === vehicleType.name.toLowerCase() && styles.vehicleTypeButtonActive
               ]}
-              onPress={() => updateFormData('vehicle_type', type)}
+              onPress={() => updateFormData('vehicle_type', vehicleType.name.toLowerCase())}
             >
+              {vehicleType.image_url && (
+                <Image 
+                  source={{ uri: `${API_CONFIG.BASE_URL}${vehicleType.image_url}` }}
+                  style={styles.vehicleTypeImage}
+                  resizeMode="cover"
+                />
+              )}
               <Text style={[
                 styles.vehicleTypeText,
-                formData.vehicle_type === type && styles.vehicleTypeTextActive
+                formData.vehicle_type === vehicleType.name.toLowerCase() && styles.vehicleTypeTextActive
               ]}>
-                {type === 'sedan' ? 'Sedan' : 
-                 type === 'pickup' ? 'Pickup' :
-                 type === 'van' ? 'Van' : 'Kamyon'}
+                {vehicleType.name}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
+        {vehicleTypes.length === 0 && (
+          <Text style={styles.noVehicleTypesText}>Araç tipleri yükleniyor...</Text>
+        )}
       </View>
 
       <View style={styles.inputGroup}>
@@ -489,7 +606,7 @@ export default function DriverRegistrationScreen() {
         {currentStep > 1 ? (
           <TouchableOpacity 
             style={styles.backButton}
-            onPress={() => setCurrentStep(currentStep - 1)}
+            onPress={handlePreviousStep}
           >
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
@@ -623,6 +740,8 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     borderRadius: 8,
     backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    minWidth: 100,
   },
   vehicleTypeButtonActive: {
     borderColor: '#FCD34D',
@@ -635,6 +754,13 @@ const styles = StyleSheet.create({
   },
   vehicleTypeTextActive: {
     color: '#000000',
+  },
+  noVehicleTypesText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   documentSection: {
     gap: 16,
@@ -685,5 +811,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  vehicleTypeImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    marginBottom: 8,
   },
 });

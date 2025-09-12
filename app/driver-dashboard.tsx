@@ -453,8 +453,8 @@ export default function DriverDashboardScreen() {
         return;
       }
 
-      console.log('API çağrısı yapılıyor:', `${API_CONFIG.BASE_URL}/api/drivers/status`);
-        const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/status`, {
+      console.log('API çağrısı yapılıyor:', `${API_CONFIG.BASE_URL}/api/drivers/profile`);
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -673,6 +673,28 @@ export default function DriverDashboardScreen() {
     try {
       const newStatus = !isOnline;
       
+      // Backend'de sürücü durumunu güncelle
+      if (token) {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/status`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            is_active: newStatus,
+            is_available: newStatus
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Sürücü durumu güncellenirken hata oluştu');
+        }
+
+        console.log('Sürücü durumu backend\'de güncellendi:', { is_active: newStatus, is_available: newStatus });
+      }
+      
       if (newStatus) {
         // Online olduğunda socket bağlantısını kur ve müsaitlik durumunu güncelle
         if (token) {
@@ -707,7 +729,8 @@ export default function DriverDashboardScreen() {
         'success'
       );
     } catch (error) {
-      showModal('Hata', 'Durum güncellenirken hata oluştu.', 'error');
+      console.error('Toggle online status error:', error);
+      showModal('Hata', error instanceof Error ? error.message : 'Durum güncellenirken hata oluştu.', 'error');
     }
   };
 
@@ -1176,7 +1199,20 @@ export default function DriverDashboardScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.placeholder} />
+        <TouchableOpacity 
+          style={[styles.statusButton, { backgroundColor: isOnline ? '#10B981' : '#EF4444', flexDirection: 'row', alignItems: 'center' }]} 
+          onPress={toggleOnlineStatus}
+        >
+          <Ionicons 
+            name={isOnline ? 'radio-button-on' : 'radio-button-off'} 
+            size={14} 
+            color="#FFFFFF" 
+            style={{ marginRight: 0 }}
+          />
+          {/* <Text style={[styles.statusButtonText, { fontSize: 10 }]}>
+            {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
+          </Text> */}
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Sürücü Paneli</Text>
         <TouchableOpacity style={styles.menuButton} onPress={() => router.push('/driver-menu')}>
           <Ionicons name="menu" size={24} color="#FFFFFF" />
@@ -1819,13 +1855,16 @@ export default function DriverDashboardScreen() {
     marginBottom: 8,
   },
   statusButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    borderRadius: 50,
     alignSelf: 'flex-start',
+    alignItems: 'center'
   },
   statusButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },

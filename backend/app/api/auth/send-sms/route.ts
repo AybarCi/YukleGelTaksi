@@ -46,17 +46,17 @@ export async function POST(request: NextRequest) {
     const db = DatabaseConnection.getInstance();
     const pool = await db.connect();
 
-    // Check rate limiting (max 3 SMS per hour) - Skip for test number 5069384413
+    // Check rate limiting (max 5 SMS per 30 minutes) - Skip for test number 5069384413
     if (phone !== '5069384413') {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
       const recentSmsResult = await pool.request()
         .input('phone_number', phone)
-        .input('oneHourAgo', oneHourAgo)
-        .query('SELECT COUNT(*) as count FROM sms_verification_codes WHERE phone_number = @phone_number AND created_at > @oneHourAgo');
+        .input('thirtyMinutesAgo', thirtyMinutesAgo)
+        .query('SELECT COUNT(*) as count FROM sms_verification_codes WHERE phone_number = @phone_number AND created_at > @thirtyMinutesAgo');
 
-      if (recentSmsResult.recordset[0]?.count >= 3) {
+      if (recentSmsResult.recordset[0]?.count >= 5) {
         return NextResponse.json(
-          { success: false, message: 'Çok fazla SMS talebi. Lütfen 1 saat sonra tekrar deneyin.' },
+          { success: false, message: 'Çok fazla SMS talebi. Lütfen 30 dakika sonra tekrar deneyin.' },
           { status: 429 }
         );
       }

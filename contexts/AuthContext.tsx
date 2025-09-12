@@ -424,7 +424,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ phone, code, user_type: userType || 'customer' }),
+        body: JSON.stringify({ phone, code, user_type: userType || 'passenger' }),
       });
 
       const data = await response.json();
@@ -467,6 +467,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sürücü durumu kontrol et ve yönlendir
   const checkDriverStatusAndRedirect = async (authToken: string) => {
     try {
+      // Önce AsyncStorage'dan kullanıcı tipini kontrol et
+      const storedUserType = await AsyncStorage.getItem('userType');
+      console.log('Stored user type:', storedUserType);
+      
       const driverStatusResponse = await fetch(`${API_BASE_URL}/api/drivers/status`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -488,6 +492,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (driverStatusResponse.status === 404) {
         console.log('No driver record found after SMS verification');
         // Sürücü kaydı yok - kayıt ekranına yönlendir
+        // Eğer kullanıcı daha önce sürücü kayıt sürecindeyse form verilerini koru
+        if (storedUserType === 'driver') {
+          console.log('User was in driver registration process, preserving form data');
+        }
         router.replace('/driver-registration');
       } else {
         console.log('Driver status check failed after SMS verification');
@@ -523,6 +531,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setRefreshToken(null);
       await clearAuthData();
+      // Kullanıcı tipini de temizle
+      await AsyncStorage.removeItem('userType');
       // Modal'ı kapat
       setModalVisible(false);
     } catch (error) {
@@ -592,7 +602,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateEmail = async (email: string): Promise<boolean> => {
     try {
-      const response = await makeAuthenticatedRequest('/auth/update-user-info', {
+      const response = await makeAuthenticatedRequest('/api/auth/update-user-info', {
         method: 'PUT',
         body: JSON.stringify({ 
           first_name: user?.full_name?.split(' ')[0] || '',
