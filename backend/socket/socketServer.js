@@ -10,7 +10,12 @@ class SocketServer {
       cors: {
         origin: "*",
         methods: ["GET", "POST"]
-      }
+      },
+      pingTimeout: 60000, // 60 saniye
+      pingInterval: 25000, // 25 saniye
+      transports: ['websocket', 'polling'],
+      allowEIO3: true,
+      connectTimeout: 45000 // 45 saniye
     });
     
     this.connectedDrivers = new Map(); // driverId -> { socketId, location, isAvailable }
@@ -193,6 +198,23 @@ class SocketServer {
       });
       console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: ${isAvailable}`);
       
+      // Sürücü event listener'larını ekle
+      socket.on('location_update', (locationData) => {
+        console.log(`📍 Received location update from driver ${driverId}:`, locationData);
+        this.updateDriverLocation(driverId, locationData);
+      });
+      
+      socket.on('availability_update', (availabilityData) => {
+        console.log(`🔄 Received availability update from driver ${driverId}:`, availabilityData);
+        this.updateDriverAvailability(driverId, availabilityData.isAvailable);
+      });
+      
+      // Sürücüyü tüm müşteri room'larına ekle
+      this.addDriverToCustomerRooms(socket);
+      
+      // Tüm müşterilere güncellenmiş sürücü listesini gönder
+      this.broadcastNearbyDriversToAllCustomers();
+      
       // Sürücüden konum güncellemesi iste
       socket.emit('request_location_update');
       console.log(`📡 Sent request_location_update to driver ${driverId}`);
@@ -207,16 +229,25 @@ class SocketServer {
         userId: driverId
       });
       console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: true (fallback)`);
+      
+      // Event listener'ları fallback durumunda da ekle
+      socket.on('location_update', (locationData) => {
+        console.log(`📍 Received location update from driver ${driverId}:`, locationData);
+        this.updateDriverLocation(driverId, locationData);
+      });
+      
+      socket.on('availability_update', (availabilityData) => {
+        console.log(`🔄 Received availability update from driver ${driverId}:`, availabilityData);
+        this.updateDriverAvailability(driverId, availabilityData.isAvailable);
+      });
+      
+      this.addDriverToCustomerRooms(socket);
+      
+      // Tüm müşterilere güncellenmiş sürücü listesini gönder
+      this.broadcastNearbyDriversToAllCustomers();
     }
 
-    // Sürücüyü tüm aktif müşteri room'larına ekle
-    this.addDriverToCustomerRooms(socket);
-
-    // Driver-specific event handlers
-    socket.on('location_update', (location) => {
-      // Konum güncellemesini memory ve veritabanında yap
-      this.updateDriverLocation(driverId, location);
-    });
+    // Driver-specific event handlers are already added above
 
     socket.on('availability_update', (isAvailable) => {
       // Uygunluk durumunu memory ve veritabanında güncelle
@@ -478,6 +509,10 @@ class SocketServer {
       );
       
       console.log(`✅ Driver ${driverId} availability updated in both memory and database: ${isAvailable}`);
+      
+      // Tüm müşterilere güncellenmiş sürücü listesini gönder
+      this.broadcastNearbyDriversToAllCustomers();
+      console.log(`📡 Broadcasted nearby drivers update after availability change for driver ${driverId}`);
     } catch (error) {
       console.error('❌ Error updating driver availability:', error);
     }

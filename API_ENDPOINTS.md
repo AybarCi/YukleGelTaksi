@@ -1,6 +1,6 @@
 # YükleGel Taksi API Endpoints
 
-Base URL: `http://192.168.1.171:3000/api`
+Base URL: `http://192.168.1.12:3000/api`
 
 ## Sürücü Endpoints
 
