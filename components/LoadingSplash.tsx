@@ -19,7 +19,6 @@ const LoadingSplash: React.FC<LoadingSplashProps> = ({
 }) => {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const scaleAnim = React.useRef(new Animated.Value(0.8)).current;
-  const rotateAnim = React.useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = React.useState(false);
 
   React.useEffect(() => {
@@ -40,19 +39,7 @@ const LoadingSplash: React.FC<LoadingSplashProps> = ({
         }),
       ]).start();
 
-      // Continuous rotation animation
-      const rotateAnimation = Animated.loop(
-        Animated.timing(rotateAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        })
-      );
-      rotateAnimation.start();
 
-      return () => {
-        rotateAnimation.stop();
-      };
     } else {
       // Fade out animation
       Animated.timing(fadeAnim, {
@@ -63,12 +50,9 @@ const LoadingSplash: React.FC<LoadingSplashProps> = ({
         setIsVisible(false);
       });
     }
-  }, [visible, fadeAnim, scaleAnim, rotateAnim]);
+  }, [visible, fadeAnim, scaleAnim]);
 
-  const rotate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
+
 
   if (!visible && !isVisible) {
     return null;
@@ -92,14 +76,13 @@ const LoadingSplash: React.FC<LoadingSplashProps> = ({
             styles.logoContainer,
             {
               transform: [
-                { scale: scaleAnim },
-                { rotate: rotate }
+                { scale: scaleAnim }
               ]
             }
           ]}
         >
           <Image 
-            source={require('../assets/images/logo1.png')}
+            source={require('../assets/images/logo_animation.gif')}
             style={{ width: 120, height: 120 }}
             resizeMode="contain"
           />

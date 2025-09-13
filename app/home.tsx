@@ -151,7 +151,6 @@ function HomeScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
   const [routeDuration, setRouteDuration] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
-  const [weight, setWeight] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
@@ -1653,7 +1652,7 @@ function HomeScreen() {
   }, [pickupCoords, token]);
 
   const handleCreateOrder = useCallback(async () => {
-    if (!weight || !pickupCoords || !destinationCoords || cargoImages.length === 0) {
+    if (!pickupCoords || !destinationCoords || cargoImages.length === 0) {
       showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
       return;
     }
@@ -1748,7 +1747,6 @@ function HomeScreen() {
           status: 'pending',
           pickupAddress: pickupLocation,
           destinationAddress: destinationLocation,
-          weight: parseFloat(weight),
           distance: distance,
           estimatedPrice: result.order.estimatedPrice,
           createdAt: new Date().toISOString(),
@@ -1779,7 +1777,7 @@ function HomeScreen() {
       console.error('Sipariş oluşturma hatası:', error);
       showModal('Hata', 'Sipariş oluşturulurken bir hata oluştu.', 'error');
     }
-  }, [weight, pickupCoords, destinationCoords, cargoImages, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal, checkDriverAvailability]);
+  }, [pickupCoords, destinationCoords, cargoImages, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal, checkDriverAvailability]);
 
   const handleCurrentLocationToggle = useCallback((value: boolean) => {
     setUseCurrentLocation(value);
@@ -2638,25 +2636,7 @@ function HomeScreen() {
               )}
             </View>
 
-            <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Ağırlığı (kg) *</Text>
-              <TextInput
-                style={{
-                  borderWidth: 1,
-                  borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
-                  borderRadius: 8,
-                  padding: 12,
-                  fontSize: 16,
-                  backgroundColor: isFormEditable() ? '#FFFFFF' : '#F3F4F6',
-                  color: isFormEditable() ? '#1F2937' : '#9CA3AF'
-                }}
-                placeholder="Yük ağırlığını kg cinsinden girin"
-                value={weight}
-                onChangeText={setWeight}
-                keyboardType="numeric"
-                editable={isFormEditable()}
-              />
-            </View>
+
 
             <View style={{ marginBottom: 20 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Notlar (Opsiyonel)</Text>
@@ -2688,10 +2668,10 @@ function HomeScreen() {
               <TouchableOpacity
                 style={[
                   styles.createOrderButton,
-                  (!weight || !pickupCoords || !destinationCoords || cargoImages.length === 0) && { opacity: 0.5 }
+                  (!pickupCoords || !destinationCoords || cargoImages.length === 0) && { opacity: 0.5 }
                 ]}
                 onPress={handleCreateOrder}
-                disabled={!weight || !pickupCoords || !destinationCoords || cargoImages.length === 0}
+                disabled={!pickupCoords || !destinationCoords || cargoImages.length === 0}
               >
                 <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>Sipariş Oluştur</Text>
               </TouchableOpacity>
@@ -3093,10 +3073,7 @@ function HomeScreen() {
                     <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.distance_km ? currentOrder.distance_km.toFixed(1) : 'Hesaplanıyor'} km</Text>
                   </View>
                   
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Yük Ağırlığı</Text>
-                    <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.weight_kg || 'Belirtilmemiş'} kg</Text>
-                  </View>
+
                   
                   <View style={{ marginBottom: 12 }}>
                     <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Toplam Tutar</Text>
