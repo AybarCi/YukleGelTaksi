@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import DatabaseConnection from '../../../config/database';
-import { authenticateToken } from '../../../middleware/auth';
-import { authenticateSupervisorToken } from '../../../middleware/supervisorAuth';
+import DatabaseConnection from '../../../../config/database';
+import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 
 interface VehicleTypePricing {
   id?: number;
@@ -15,11 +14,11 @@ interface VehicleTypePricing {
   updated_at?: string;
 }
 
-// GET - Tüm araç tipi fiyatlandırmalarını getir
+// GET - Tüm araç tipi fiyatlandırmalarını getir (Admin)
 export async function GET(request: NextRequest) {
   try {
-    // Normal kullanıcı token kontrolü (mobil uygulama için)
-    const authResult = await authenticateToken(request);
+    // Supervisor authentication kontrolü
+    const authResult = await authenticateSupervisorToken(request);
     if (!authResult.success) {
       const authErrorResponse = NextResponse.json(
         { error: authResult.message },
@@ -40,38 +39,36 @@ export async function GET(request: NextRequest) {
     const result = await pool.request()
       .query(`
         SELECT 
-          vtp.id,
-          vtp.vehicle_type_id,
+          COALESCE(vtp.id, 0) as id,
+          vt.id as vehicle_type_id,
           vt.name as vehicle_type_name,
-          vtp.base_price,
-          vtp.price_per_km,
-          vtp.labor_price,
-          vtp.is_active,
+          COALESCE(vtp.base_price, 50.00) as base_price,
+          COALESCE(vtp.price_per_km, 5.00) as price_per_km,
+          COALESCE(vtp.labor_price, 25.00) as labor_price,
+          COALESCE(vtp.is_active, 1) as is_active,
           vtp.created_at,
           vtp.updated_at
-        FROM vehicle_type_pricing vtp
-        INNER JOIN vehicle_types vt ON vtp.vehicle_type_id = vt.id
+        FROM vehicle_types vt
+        LEFT JOIN vehicle_type_pricing vtp ON vt.id = vtp.vehicle_type_id AND vtp.is_active = 1
         WHERE vt.is_active = 1
-        ORDER BY vt.name
+        ORDER BY vt.name ASC
       `);
 
     const response = NextResponse.json({
       success: true,
-      message: 'Araç tipi fiyatlandırmaları başarıyla getirildi',
       data: result.recordset
     });
-
+    
     // CORS headers ekle
     response.headers.set('Access-Control-Allow-Origin', '*');
     response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
+    
     return response;
-
   } catch (error) {
     console.error('Vehicle type pricing fetch error:', error);
     const errorResponse = NextResponse.json(
-      { error: 'Araç tipi fiyatlandırmaları getirilirken hata oluştu' },
+      { success: false, error: 'Araç tipi fiyatlandırmaları getirilirken hata oluştu' },
       { status: 500 }
     );
     
@@ -84,7 +81,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PUT - Araç tipi fiyatlandırmasını güncelle
+// PUT - Araç tipi fiyatlandırmasını güncelle (Admin)
 export async function PUT(request: NextRequest) {
   try {
     // Supervisor authentication kontrolü
@@ -121,9 +118,10 @@ export async function PUT(request: NextRequest) {
       return validationErrorResponse;
     }
 
+    // Negatif değer kontrolü
     if (base_price < 0 || price_per_km < 0 || labor_price < 0) {
       const negativeErrorResponse = NextResponse.json(
-        { error: 'Fiyatlandırma parametreleri negatif olamaz' },
+        { error: 'Fiyat değerleri negatif olamaz' },
         { status: 400 }
       );
       
@@ -138,64 +136,54 @@ export async function PUT(request: NextRequest) {
     const dbInstance = DatabaseConnection.getInstance();
     const pool = await dbInstance.connect();
     
-    // Mevcut ayar var mı kontrol et
+    // Önce mevcut kaydı kontrol et
     const existingResult = await pool.request()
       .input('vehicle_type_id', vehicle_type_id)
       .query('SELECT id FROM vehicle_type_pricing WHERE vehicle_type_id = @vehicle_type_id');
-
-    let result;
     
     if (existingResult.recordset.length > 0) {
       // Güncelle
-      const pricingId = existingResult.recordset[0].id;
-      result = await pool.request()
-        .input('id', pricingId)
+      await pool.request()
+        .input('vehicle_type_id', vehicle_type_id)
         .input('base_price', base_price)
         .input('price_per_km', price_per_km)
         .input('labor_price', labor_price)
         .query(`
           UPDATE vehicle_type_pricing 
-          SET 
-            base_price = @base_price,
-            price_per_km = @price_per_km,
-            labor_price = @labor_price,
-            updated_at = GETDATE()
-          OUTPUT INSERTED.*
-          WHERE id = @id
+          SET base_price = @base_price, 
+              price_per_km = @price_per_km, 
+              labor_price = @labor_price,
+              updated_at = GETDATE()
+          WHERE vehicle_type_id = @vehicle_type_id
         `);
     } else {
       // Yeni kayıt oluştur
-      result = await pool.request()
+      await pool.request()
         .input('vehicle_type_id', vehicle_type_id)
         .input('base_price', base_price)
         .input('price_per_km', price_per_km)
         .input('labor_price', labor_price)
         .query(`
           INSERT INTO vehicle_type_pricing (vehicle_type_id, base_price, price_per_km, labor_price)
-          OUTPUT INSERTED.*
           VALUES (@vehicle_type_id, @base_price, @price_per_km, @labor_price)
         `);
     }
 
-    const updatedSettings = result.recordset[0];
-    
     const response = NextResponse.json({
       success: true,
-      message: 'Araç tipi fiyatlandırması başarıyla güncellendi',
-      data: updatedSettings
+      message: 'Fiyatlandırma başarıyla güncellendi'
     });
-
+    
     // CORS headers ekle
     response.headers.set('Access-Control-Allow-Origin', '*');
     response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
+    
     return response;
-
   } catch (error) {
     console.error('Vehicle type pricing update error:', error);
     const errorResponse = NextResponse.json(
-      { error: 'Araç tipi fiyatlandırması güncellenirken hata oluştu' },
+      { success: false, error: 'Fiyatlandırma güncellenirken hata oluştu' },
       { status: 500 }
     );
     
@@ -208,14 +196,11 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// OPTIONS method for CORS
+// OPTIONS - CORS preflight
 export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
+  const response = new NextResponse(null, { status: 200 });
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  return response;
 }

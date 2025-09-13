@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const result = await pool.request()
       .query(`
-        SELECT id, name, description, is_active, created_at, updated_at
+        SELECT id, name, description, is_active, image_url, created_at, updated_at
         FROM vehicle_types
         WHERE is_active = 1
         ORDER BY name ASC

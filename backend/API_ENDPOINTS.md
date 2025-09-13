@@ -1,6 +1,6 @@
 # YükleGel Taksi Backend API Endpoints
 
-Backend sunucusu `http://192.168.1.171:3000` adresinde çalışmaktadır.
+Backend sunucusu `http://172.20.10.8:3000` adresinde çalışmaktadır.
 
 ## Authentication Endpoints
 

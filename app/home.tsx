@@ -55,6 +55,7 @@ interface VehicleType {
   description: string;
   is_active: boolean;
   image_url?: string;
+  base_price?: number;
 }
 
 // Optimized marker components with React.memo
@@ -809,7 +810,8 @@ function HomeScreen() {
     console.log('🔑 Token ile araç tipleri yükleniyor:', token.substring(0, 20) + '...');
     
     try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-types`, {
+      // Araç tiplerini al
+      const vehicleTypesResponse = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-types`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -817,28 +819,53 @@ function HomeScreen() {
         },
       });
 
-      console.log('📡 API Response Status:', response.status);
-      console.log('📡 API Response Headers:', response.headers);
+      // Fiyatlandırma verilerini al
+      const pricingResponse = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-type-pricing`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📦 API Response Data:', data);
-        console.log('📦 Data type:', typeof data);
-        console.log('📦 Is Array:', Array.isArray(data));
+      console.log('📡 Vehicle Types Response Status:', vehicleTypesResponse.status);
+      console.log('📡 Pricing Response Status:', pricingResponse.status);
+
+      if (vehicleTypesResponse.ok && pricingResponse.ok) {
+        const vehicleTypesData = await vehicleTypesResponse.json();
+        const pricingData = await pricingResponse.json();
+        
+        console.log('📦 Vehicle Types Data:', vehicleTypesData);
+        console.log('📦 Pricing Data:', pricingData);
         
         // API response'unda data field'ı varsa onu kullan
-        const vehicleTypesArray = data.data || data;
+        const vehicleTypesArray = vehicleTypesData.data || vehicleTypesData;
+        const pricingArray = pricingData.data || pricingData;
         
         if (Array.isArray(vehicleTypesArray)) {
           const activeVehicleTypes = vehicleTypesArray.filter((type: VehicleType) => type.is_active);
-          setVehicleTypes(activeVehicleTypes);
-          console.log('✅ Araç tipleri yüklendi:', activeVehicleTypes);
+          
+          // Fiyatlandırma verilerini araç tiplerine ekle
+          const vehicleTypesWithPricing = activeVehicleTypes.map((vehicleType: VehicleType) => {
+            const pricing = pricingArray.find((p: any) => p.vehicle_type_id === vehicleType.id);
+            return {
+              ...vehicleType,
+              base_price: pricing ? pricing.base_price : undefined
+            };
+          });
+          
+          setVehicleTypes(vehicleTypesWithPricing);
+          console.log('✅ Araç tipleri fiyatlandırma ile yüklendi:', vehicleTypesWithPricing);
         } else {
           console.error('❌ API response is not an array:', vehicleTypesArray);
         }
       } else {
-        const errorText = await response.text();
-        console.error('❌ Araç tipleri yüklenemedi:', response.status, errorText);
+        const vehicleTypesError = vehicleTypesResponse.ok ? null : await vehicleTypesResponse.text();
+        const pricingError = pricingResponse.ok ? null : await pricingResponse.text();
+        console.error('❌ Veri yükleme hatası:', {
+          vehicleTypes: vehicleTypesError,
+          pricing: pricingError
+        });
       }
     } catch (error) {
       console.error('❌ Araç tipleri yükleme hatası:', error);
@@ -3468,6 +3495,11 @@ function HomeScreen() {
                     <View style={styles.imagePickerOptionTextContainer}>
                       <Text style={styles.imagePickerOptionTitle}>{vehicleType.name}</Text>
                       <Text style={styles.imagePickerOptionSubtitle}>{vehicleType.description}</Text>
+                      {vehicleType.base_price && (
+                        <Text style={styles.vehicleTypeBasePrice}>
+                          Başlangıç ücreti: ₺{vehicleType.base_price}
+                        </Text>
+                      )}
                     </View>
                     {selectedVehicleType?.id === vehicleType.id && (
                       <Ionicons name="checkmark-circle" size={24} color="#10B981" />
@@ -3954,6 +3986,12 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
+  },
+  vehicleTypeBasePrice: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 4,
   },
 });
 
