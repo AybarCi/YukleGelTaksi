@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { AuthProvider } from '../contexts/AuthContext';
+import { Provider } from 'react-redux';
+import { store } from '../store';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -11,9 +12,9 @@ if (typeof global !== 'undefined' && !global.crypto) {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <AuthProvider>
+    <Provider store={store}>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="splash" />
@@ -36,8 +37,8 @@ export default function RootLayout() {
             <Stack.Screen name="terms-of-service" />
           </Stack>
           <StatusBar style="auto" />
-        </AuthProvider>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </Provider>
   );
 }

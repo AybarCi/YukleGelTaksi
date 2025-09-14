@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateToken } from '../../../../../middleware/auth';
 import sql from 'mssql';
@@ -27,14 +28,16 @@ export async function POST(request: NextRequest) {
 
     // Parse form data
     const formData = await request.formData();
-    const file = formData.get('photo') as File;
-
-    if (!file) {
+    const fileData = (formData as any).get('photo');
+    
+    if (!fileData || typeof fileData === 'string') {
       return NextResponse.json(
         { error: 'Profil fotoğrafı seçilmedi' },
         { status: 400 }
       );
     }
+    
+    const file = fileData as File;
 
     // Validate file type
     if (!ALLOWED_TYPES.includes(file.type)) {

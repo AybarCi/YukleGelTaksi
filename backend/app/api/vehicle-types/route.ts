@@ -20,10 +20,23 @@ export async function GET(request: NextRequest) {
 
     const result = await pool.request()
       .query(`
-        SELECT id, name, description, is_active, image_url, created_at, updated_at
-        FROM vehicle_types
-        WHERE is_active = 1
-        ORDER BY name ASC
+        SELECT 
+          vt.id, 
+          vt.name, 
+          vt.description, 
+          vt.is_active, 
+          vt.image_url, 
+          vt.created_at, 
+          vt.updated_at,
+          COALESCE(vtp.base_price, 50.00) as base_price,
+          COALESCE(vtp.price_per_km, 5.00) as price_per_km,
+          COALESCE(vtp.labor_price, 25.00) as price_per_minute,
+          1000 as capacity_kg,
+          'car' as icon
+        FROM vehicle_types vt
+        LEFT JOIN vehicle_type_pricing vtp ON vt.id = vtp.vehicle_type_id AND vtp.is_active = 1
+        WHERE vt.is_active = 1
+        ORDER BY vt.name ASC
       `);
 
     return NextResponse.json({

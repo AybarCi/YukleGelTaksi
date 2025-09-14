@@ -104,8 +104,8 @@ export default function ShipmentsScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.success && data.data && data.data.orders) {
-          setShipments(data.data.orders);
+        if (data.success && data.orders) {
+          setShipments(data.orders);
         } else {
           setShipments([]);
         }

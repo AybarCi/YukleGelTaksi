@@ -3,7 +3,8 @@ export const API_CONFIG = {
   BASE_URL: 'http://192.168.1.12:3000',
   FILES_URL: 'http://192.168.1.12:3000/api/files',
   GOOGLE_PLACES_API_KEY_IOS: 'AIzaSyCrQmf3XUB_QRY4jkxQqIbRUbYAVkhyHHA',
-  GOOGLE_PLACES_API_KEY_ANDROID: 'AIzaSyBDEJcd7kMGnzjUh4fDaP5ZFCct_9w0Pqw'
+  GOOGLE_PLACES_API_KEY_ANDROID: 'AIzaSyBDEJcd7kMGnzjUh4fDaP5ZFCct_9w0Pqw',
+  GOOGLE_MAPS_API_KEY: 'AIzaSyCrQmf3XUB_QRY4jkxQqIbRUbYAVkhyHHA' // Directions API için
 };
 
 // Environment'a göre URL'leri ayarla

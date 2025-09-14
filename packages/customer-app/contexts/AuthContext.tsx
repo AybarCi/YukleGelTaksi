@@ -440,11 +440,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         startTokenRefreshTimer();
         
         // SMS doğrulama sonrası kullanıcı tipine göre yönlendirme
+        console.log('SMS verification successful, user data:', userData);
+        console.log('User type:', userData.user_type);
         setTimeout(() => {
           if (userData.user_type === 'driver') {
+            console.log('Redirecting driver to status check');
             // Sürücü için durum kontrolü yap
             checkDriverStatusAndRedirect(authToken);
           } else {
+            console.log('Redirecting customer to info check');
             // Normal kullanıcı için bilgi kontrolü yap
             checkCustomerInfoAndRedirect(userData);
           }
@@ -483,11 +487,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
           console.log('Driver approved after SMS verification');
           // Onaylanmış ve aktif sürücü - dashboard'a yönlendir
-          router.replace('/driver-dashboard');
+          (router as any).replace('/driver-dashboard');
         } else {
           console.log('Driver not approved after SMS verification');
           // Henüz onaylanmamış sürücü - durum ekranına yönlendir
-          router.replace('/driver-status');
+          (router as any).replace('/driver-status');
         }
       } else if (driverStatusResponse.status === 404) {
         console.log('No driver record found after SMS verification');
@@ -496,27 +500,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (storedUserType === 'driver') {
           console.log('User was in driver registration process, preserving form data');
         }
-        router.replace('/driver-registration');
+        (router as any).replace('/driver-registration');
       } else {
         console.log('Driver status check failed after SMS verification');
         // Hata durumunda kayıt ekranına yönlendir
-        router.replace('/driver-registration');
+        (router as any).replace('/driver-registration');
       }
     } catch (error) {
       console.error('Error checking driver status after SMS verification:', error);
       // Network hatası - kayıt ekranına yönlendir
-      router.replace('/driver-registration');
+      (router as any).replace('/driver-registration');
     }
   };
 
   // Müşteri bilgi kontrolü yap ve yönlendir
   const checkCustomerInfoAndRedirect = (userData: User) => {
+    console.log('Checking customer info for redirect:', userData);
+    console.log('userData.full_name:', userData.full_name);
     // Ad/soyad eksikse user-info ekranına yönlendir
     if (!userData.full_name || userData.full_name.trim().length === 0) {
-      console.log('User info incomplete');
+      console.log('User info incomplete - redirecting to user-info');
       router.replace('/user-info');
     } else {
-      console.log('User info complete');
+      console.log('User info complete - redirecting to home');
       // Bilgiler tamamsa ana ekrana yönlendir
       router.replace('/home');
     }

@@ -4,7 +4,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   Modal,
   ScrollView,
@@ -39,6 +38,17 @@ import { API_CONFIG } from '../config/api';
 import YukKonumuInput, { YukKonumuInputRef } from '../components/YukKonumuInput';
 import VarisNoktasiInput, { VarisNoktasiInputRef } from '../components/VarisNoktasiInput';
 import LoadingSplash from '../components/LoadingSplash';
+import CancelOrderModal from '../components/CancelOrderModal';
+import FreeCancelModal from '../components/FreeCancelModal';
+import PendingOrderModal from '../components/PendingOrderModal';
+import ImagePickerModal from '../components/ImagePickerModal';
+import VehicleTypeModal from '../components/VehicleTypeModal';
+import OrderCard from '../components/OrderCard';
+import { DriverMarker, PickupMarker, DestinationMarker } from './components/MapMarkers';
+import { calculateZoomLevel, animateToRegionWithOffset, animateToShowBothPoints } from './utils/mapUtils';
+import { useImagePicker } from './utils/imageUtils';
+import { usePriceCalculation } from './utils/priceUtils';
+import { styles } from './styles';
 
 
 interface Driver {
@@ -58,61 +68,7 @@ interface VehicleType {
   base_price?: number;
 }
 
-// Optimized marker components with React.memo
-const DriverMarker = memo(({ driver }: { driver: Driver }) => {
-  if (!driver || typeof driver !== 'object' || !driver.id || 
-      typeof driver.latitude !== 'number' || typeof driver.longitude !== 'number') {
-    return null;
-  }
-  return (
-    <Marker
-      key={driver.id}
-      coordinate={{
-        latitude: driver.latitude,
-        longitude: driver.longitude,
-      }}
-      title={driver.name || `Sürücü ${driver.id}`}
-      description="Müsait sürücü"
-      tracksViewChanges={false}
-    >
-      <View style={styles.driverMarker}>
-        <MaterialIcons name="local-shipping" size={20} color="#FFFFFF" />
-      </View>
-    </Marker>
-  );
-});
 
-const PickupMarker = memo(({ coords }: { coords: { latitude: number; longitude: number } }) => {
-  return (
-    <Marker
-      key={`pickup-${coords.latitude}-${coords.longitude}`}
-      coordinate={coords}
-      title="Yükün Konumu"
-      description="Yükün alınacağı adres"
-      tracksViewChanges={false}
-    >
-      <View style={styles.pickupMarker}>
-        <MaterialIcons name="inventory" size={20} color="#FFFFFF" />
-      </View>
-    </Marker>
-  );
-});
-
-const DestinationMarker = memo(({ coords }: { coords: { latitude: number; longitude: number } }) => {
-  return (
-    <Marker
-      key={`destination-${coords.latitude}-${coords.longitude}`}
-      coordinate={coords}
-      title="Varış Noktası"
-      description="Yükün teslim edileceği adres"
-      tracksViewChanges={false}
-    >
-      <View style={styles.destinationMarker}>
-        <MaterialIcons name="flag" size={20} color="#FFFFFF" />
-      </View>
-    </Marker>
-  );
-});
 
 function HomeScreen() {
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -1546,70 +1502,11 @@ function HomeScreen() {
     }
   }, [calculateDistance]);
 
-  const calculateZoomLevel = useCallback((distance: number) => {
-    // Mesafeye göre zoom seviyesi hesapla - optimize edilmiş değerler (daha geniş görüş alanı)
-    if (distance <= 1) {
-      return { latitudeDelta: 0.008, longitudeDelta: 0.006 }; // Çok yakın mesafe
-    } else if (distance <= 5) {
-      return { latitudeDelta: 0.025, longitudeDelta: 0.02 }; // Yakın mesafe
-    } else if (distance <= 15) {
-      return { latitudeDelta: 0.08, longitudeDelta: 0.06 }; // Orta mesafe
-    } else if (distance <= 50) {
-      return { latitudeDelta: 0.6, longitudeDelta: 0.48 }; // Uzak mesafe - daha da artırıldı
-    } else if (distance <= 100) {
-      return { latitudeDelta: 1.2, longitudeDelta: 0.96 }; // Çok uzak mesafe - daha da artırıldı
-    } else if (distance <= 200) {
-      return { latitudeDelta: 2.0, longitudeDelta: 1.6 }; // Aşırı uzak mesafe - daha da artırıldı
-    } else {
-      return { latitudeDelta: 3.0, longitudeDelta: 2.4 }; // Çok aşırı uzak mesafe - daha da artırıldı
-    }
-  }, []);
 
-  // BottomSheet yüksekliğini hesaba katarak harita ortalama fonksiyonu
-  const animateToRegionWithOffset = useCallback((latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number) => {
-    if (!mapRef.current) return;
-    
-    const currentBottomSheetHeight = (bottomSheetHeight as any)._value;
-    
-    // Görünür harita alanının ortasına konumlandırmak için offset hesapla
-    // BottomSheet'in yarısı kadar yukarı kaydır ki rota görünür alanda ortalansın
-    const offsetRatio = (currentBottomSheetHeight * 0.3) / screenHeight;
-    const latitudeOffset = latitudeDelta * offsetRatio;
-    
-    mapRef.current.animateToRegion({
-      latitude: latitude - latitudeOffset,
-      longitude: longitude,
-      latitudeDelta: latitudeDelta,
-      longitudeDelta: longitudeDelta,
-    }, 1000); // Animasyon süresini kısalttım
-  }, [bottomSheetHeight, screenHeight]);
 
-  const animateToShowBothPoints = useCallback((pickup: any, destination: any) => {
-    if (!mapRef.current || !pickup || !destination) return;
 
-    const distance = calculateDistance(
-      pickup.latitude,
-      pickup.longitude,
-      destination.latitude,
-      destination.longitude
-    );
 
-    // Rotanın tamamını göstermek için daha geniş zoom seviyesi hesapla
-    const latDiff = Math.abs(pickup.latitude - destination.latitude);
-    const lngDiff = Math.abs(pickup.longitude - destination.longitude);
-    
-    // Padding ekleyerek rotanın kenarlarının görünmesini sağla
-    const paddingFactor = 1.8; // Daha geniş görüş alanı için artırıldı
-    const latitudeDelta = Math.max(latDiff * paddingFactor, 0.01);
-    const longitudeDelta = Math.max(lngDiff * paddingFactor, 0.01);
-    
-    // İki nokta arasındaki orta noktayı hesapla
-    const centerLat = (pickup.latitude + destination.latitude) / 2;
-    const centerLng = (pickup.longitude + destination.longitude) / 2;
 
-    // BottomSheet offset'i ile animasyon yap
-    animateToRegionWithOffset(centerLat, centerLng, latitudeDelta, longitudeDelta);
-  }, [calculateDistance, animateToRegionWithOffset]);
   
   useEffect(() => {
     if (pickupCoords && destinationCoords) {
@@ -1624,7 +1521,7 @@ function HomeScreen() {
         // Kısa bir gecikme ile animasyon yap ki kullanıcı etkileşimi algılanabilsin
         setTimeout(() => {
           if (Date.now() - currentTime < 500 && !userInteractedWithMap) {
-            animateToShowBothPoints(pickupCoords, destinationCoords);
+            animateToShowBothPoints(mapRef, bottomSheetHeight, pickupCoords, destinationCoords);
           }
         }, 100);
       }
@@ -1835,9 +1732,9 @@ function HomeScreen() {
     // Haritayı güncelle
     if (mapRef.current) {
       if (destinationCoords) {
-        animateToShowBothPoints(coords, destinationCoords);
+        animateToShowBothPoints(mapRef, bottomSheetHeight, coords, destinationCoords);
       } else {
-        animateToRegionWithOffset(coords.latitude, coords.longitude, 0.008, 0.006);
+        animateToRegionWithOffset(mapRef, bottomSheetHeight, coords.latitude, coords.longitude, 0.008, 0.006);
       }
     }
   }, [userLocation, destinationCoords, getCurrentLocation, animateToShowBothPoints, animateToRegionWithOffset]);
@@ -1883,9 +1780,9 @@ function HomeScreen() {
     // Haritayı güncelle
     if (mapRef.current) {
       if (pickupCoords) {
-        animateToShowBothPoints(pickupCoords, coords);
+        animateToShowBothPoints(mapRef, bottomSheetHeight, pickupCoords, coords);
       } else {
-        animateToRegionWithOffset(coords.latitude, coords.longitude, 0.008, 0.006);
+        animateToRegionWithOffset(mapRef, bottomSheetHeight, coords.latitude, coords.longitude, 0.008, 0.006);
       }
     }
   }, [userLocation, pickupCoords, getCurrentLocation, animateToShowBothPoints, animateToRegionWithOffset]);
@@ -1921,10 +1818,10 @@ function HomeScreen() {
       console.log('Animating map to pickup location');
       // Eğer destination da varsa, her iki noktayı göster
       if (destinationCoords) {
-        animateToShowBothPoints(coords, destinationCoords);
+        animateToShowBothPoints(mapRef, bottomSheetHeight, coords, destinationCoords);
       } else {
         // Sadece pickup noktasını göster
-        animateToRegionWithOffset(location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+        animateToRegionWithOffset(mapRef, bottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
       }
     }
     console.log('=== END PICKUP LOCATION SELECT ===');
@@ -1961,10 +1858,10 @@ function HomeScreen() {
       console.log('Animating map to destination location');
       // Eğer pickup da varsa, her iki noktayı göster
       if (pickupCoords) {
-        animateToShowBothPoints(pickupCoords, coords);
+        animateToShowBothPoints(mapRef, bottomSheetHeight, pickupCoords, coords);
       } else {
         // Sadece destination noktasını göster
-        animateToRegionWithOffset(location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+        animateToRegionWithOffset(mapRef, bottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
       }
     }
     console.log('=== END DESTINATION LOCATION SELECT ===');
@@ -1972,229 +1869,24 @@ function HomeScreen() {
 
   const [showImagePickerModal, setShowImagePickerModal] = useState(false);
 
-  const handleImagePicker = useCallback(() => {
-    setShowImagePickerModal(true);
-  }, []);
+  // Image picker hook'unu kullan
+  const { handleImagePicker, pickImage } = useImagePicker(
+    cameraPermission,
+    requestCameraPermission,
+    setCargoImages,
+    showModal,
+    setShowImagePickerModal
+  );
 
-  const pickImage = useCallback(async (source: 'camera' | 'gallery') => {
-    try {
-      let result;
-      if (source === 'camera') {
-        // useCameraPermissions hook'unu kullan
-        console.log('🔍 Kamera izni kontrol ediliyor...');
-        console.log('📱 Mevcut kamera izni durumu:', cameraPermission?.status);
-        
-        // Eğer izin verilmemişse, izin iste
-        if (cameraPermission?.status !== 'granted') {
-          console.log('📝 Kamera izni isteniyor...');
-          const permissionResult = await requestCameraPermission();
-          console.log('📋 İzin sonucu:', permissionResult?.status);
-          
-          if (permissionResult?.status !== 'granted') {
-            Alert.alert(
-              'Kamera İzni Gerekli',
-              'Fotoğraf çekebilmek için kamera izni gereklidir. Ayarlardan izni açabilirsiniz.',
-              [
-                { text: 'İptal', style: 'cancel' },
-                { 
-                  text: 'Ayarlara Git', 
-                  onPress: () => Linking.openSettings() 
-                }
-              ]
-            );
-            return;
-          }
-        }
-        
-        console.log('✅ Kamera izni onaylandı');
-        console.log('📸 Kamera açılıyor...');
-        
-        // Android'de kamera açma sorunları için kısa bir bekleme süresi ekle
-        if (Platform.OS === 'android') {
-          console.log('⏳ Android için bekleme süresi...');
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-        
-        // Kamera açma işlemini try-catch ile sarmalayalım
-        try {
-          console.log('🚀 launchCameraAsync çağrılıyor...');
-          result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-            base64: false,
-            exif: false,
-          });
-          console.log('📷 Kamera sonucu alındı:', {
-            canceled: result.canceled,
-            assetsLength: result.assets?.length
-          });
-        } catch (cameraError) {
-          console.error('❌ Kamera açma hatası:', cameraError);
-          throw new Error('Kamera açılamadı. Lütfen tekrar deneyin.');
-        }
-      } else {
-        // Galeri seçimi için izin kontrolü
-        console.log('🔍 Galeri izni kontrol ediliyor...');
-        const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
-        let mediaStatus = mediaPermission.status;
-        console.log('📱 Mevcut galeri izni durumu:', mediaStatus);
-        
-        // Eğer izin verilmemişse, izin iste
-        if (mediaStatus !== 'granted') {
-          console.log('📝 Galeri izni isteniyor...');
-          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          mediaStatus = permissionResult.status;
-          console.log('📋 İzin sonucu:', mediaStatus);
-        }
-        
-        // İzin verilmediyse kullanıcıyı uyar
-        if (mediaStatus !== 'granted') {
-          console.log('❌ Galeri izni reddedildi');
-          Alert.alert(
-            'Galeri İzni Gerekli',
-            'Fotoğraf seçebilmek için galeri izni gereklidir. Ayarlardan izni açabilirsiniz.',
-            [
-              { text: 'İptal', style: 'cancel' },
-              { 
-                text: 'Ayarlara Git', 
-                onPress: () => Linking.openSettings() 
-              }
-            ]
-          );
-          return;
-        }
-        
-        console.log('✅ Galeri izni onaylandı');
-        
-        console.log('📱 Galeri açılıyor...');
-        // result = await ImagePicker.launchImageLibraryAsync({
-        //   mediaTypes: ['images'],
-        //   allowsMultipleSelection: true,
-        //   quality: 0.8,
-        //   base64: false,
-        //   exif: false,
-        // });
-        result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-        console.log('🖼️ Galeri sonucu alındı:', {
-          canceled: result.canceled,
-          assetsLength: result.assets?.length
-        });
-      }
-      
-      console.log('🔍 Result kontrolü:', {
-        canceled: result.canceled,
-        assets: result.assets,
-        assetsLength: result.assets?.length,
-        resultType: typeof result,
-        resultKeys: Object.keys(result)
-      });
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        console.log('✅ Fotoğraf seçimi başarılı, işleniyor...');
-        const newImages = result.assets.map((asset, index) => {
-          console.log(`📸 Asset ${index}:`, {
-            uri: asset.uri,
-            width: asset.width,
-            height: asset.height,
-            type: asset.type
-          });
-          return asset.uri;
-        });
-        console.log('🖼️ Yeni resimler:', newImages);
-        
-        setCargoImages(prev => {
-          const updated = [...prev, ...newImages];
-          console.log('📋 Güncellenmiş cargoImages:', updated);
-          console.log('📊 Toplam fotoğraf sayısı:', updated.length);
-          return updated;
-        });
-        
-        // Başarı mesajı göster
-        showModal('Başarılı', `${newImages.length} fotoğraf başarıyla eklendi.`, 'success');
-      } else {
-        console.log('❌ Resim seçilmedi veya iptal edildi:', {
-          canceled: result.canceled,
-          hasAssets: !!result.assets,
-          assetsLength: result.assets?.length || 0
-        });
-      }
-    } catch (error) {
-      console.error('Image picker error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata';
-      console.error('Error details:', {
-        message: errorMessage,
-        error: error
-      });
-      showModal('Hata', `Resim seçilirken bir hata oluştu: ${errorMessage}`, 'error');
-    }
-  }, [showModal]);
-
-  // Fiyat hesaplama fonksiyonu
-  const calculatePrice = useCallback(async () => {
-    if (!distance || !selectedVehicleType) {
-      setEstimatedPrice(null);
-      return;
-    }
-
-    try {
-      setPriceLoading(true);
-      const token = await AsyncStorage.getItem('auth_token');
-      
-      console.log('Token for price calculation:', token ? 'Token exists' : 'Token is null');
-      
-      if (!token) {
-        console.error('No token found for price calculation');
-        setEstimatedPrice(null);
-        return;
-      }
-      
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/calculate-price`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          distance_km: distance,
-          vehicle_type_id: selectedVehicleType.id,
-          labor_count: 1 // Varsayılan hammal sayısı
-        })
-      });
-
-      const data = await response.json();
-      
-      console.log('Price calculation response:', {
-        status: response.status,
-        ok: response.ok,
-        data: data
-      });
-      
-      if (response.ok) {
-        console.log('Setting estimated price:', data.data.total_price);
-        setEstimatedPrice(data.data.total_price);
-      } else {
-        console.error('Price calculation error:', data.error);
-        setEstimatedPrice(null);
-      }
-    } catch (error) {
-      console.error('Price calculation error:', error);
-      setEstimatedPrice(null);
-    } finally {
-      setPriceLoading(false);
-    }
-   }, [distance, selectedVehicleType]);
+  // Price calculation hook'unu kullan
+  const { calculatePrice } = usePriceCalculation(setPriceLoading, setEstimatedPrice);
 
   // Fiyat hesaplama için useEffect
   useEffect(() => {
-    calculatePrice();
-  }, [calculatePrice]);
+    if (distance && selectedVehicleType) {
+      calculatePrice(distance, selectedVehicleType);
+    }
+  }, [distance, selectedVehicleType, calculatePrice]);
 
   return (
     <View style={styles.container}>
@@ -2293,7 +1985,7 @@ function HomeScreen() {
           style={styles.floatingRouteButton}
           onPress={() => {
             setUserInteractedWithMap(false);
-            animateToShowBothPoints(pickupCoords, destinationCoords);
+            animateToShowBothPoints(mapRef, bottomSheetHeight, pickupCoords, destinationCoords);
           }}
         >
           <MaterialIcons name="route" size={24} color="#FFFFFF" />
@@ -2331,153 +2023,32 @@ function HomeScreen() {
 
             {/* Devam eden sipariş varsa güzel kart göster - sadece ilk yüklemede */}
             {currentOrder && !pickupCoords && !destinationCoords ? (
-              <View style={{ paddingVertical: 8 }}>
-                <TouchableOpacity
-                  style={styles.ongoingOrderCard}
-                  onPress={() => {
-                    if (currentOrder) {
-                      // fillOrderData fonksiyonunu kullanarak form alanlarını doldur
-                      fillOrderData(currentOrder);
-                      
-                      // Harita üzerinde rota çiz
-                      if (currentOrder.pickup_latitude && currentOrder.pickup_longitude && 
-                          currentOrder.destination_latitude && currentOrder.destination_longitude) {
-                        getDirectionsRoute(
-                          {
-                            latitude: parseFloat(currentOrder.pickup_latitude),
-                            longitude: parseFloat(currentOrder.pickup_longitude)
-                          },
-                          {
-                            latitude: parseFloat(currentOrder.destination_latitude),
-                            longitude: parseFloat(currentOrder.destination_longitude)
-                          }
-                        );
-                      }
+              <OrderCard
+                currentOrder={currentOrder}
+                onPress={() => {
+                  if (currentOrder) {
+                    // fillOrderData fonksiyonunu kullanarak form alanlarını doldur
+                    fillOrderData(currentOrder);
+                    
+                    // Harita üzerinde rota çiz
+                    if (currentOrder.pickup_latitude && currentOrder.pickup_longitude && 
+                        currentOrder.destination_latitude && currentOrder.destination_longitude) {
+                      getDirectionsRoute(
+                        {
+                          latitude: parseFloat(currentOrder.pickup_latitude),
+                          longitude: parseFloat(currentOrder.pickup_longitude)
+                        },
+                        {
+                          latitude: parseFloat(currentOrder.destination_latitude),
+                          longitude: parseFloat(currentOrder.destination_longitude)
+                        }
+                      );
                     }
-                  }}
-                >
-                  <View style={styles.cardHeader}>
-                    <View style={styles.statusBadge}>
-                      <View style={styles.statusDot} />
-                      <Text style={styles.statusText}>
-                        {currentOrder?.status === 'pending' && 'Bekliyor'}
-                        {currentOrder?.status === 'inspecting' && 'İnceleniyor'}
-                        {['accepted', 'confirmed'].includes(currentOrder?.status || '') && 'Onaylandı'}
-                        {currentOrder?.status === 'in_progress' && 'Sürücü yolda'}
-                        {currentOrder?.status === 'started' && 'Yük alındı'}
-                        {currentOrder?.status === 'transporting' && 'Taşıma durumunda'}
-                        {currentOrder?.status === 'completed' && 'Teslimat tamamlandı'}
-                      </Text>
-                    </View>
-                    <MaterialIcons name="arrow-forward-ios" size={16} color="#6B7280" />
-                  </View>
-                  
-                  <View style={styles.cardContent}>
-                    <View style={styles.orderInfo}>
-                      <MaterialIcons name="local-shipping" size={24} color="#F59E0B" />
-                      <View style={styles.orderDetails}>
-                        <Text style={styles.orderTitle}>Aktif Siparişiniz</Text>
-                        <Text style={styles.orderSubtitle}>
-                          {currentOrder?.pickup_address ? 
-                            `${currentOrder.pickup_address.substring(0, 30)}...` : 
-                            'Yük taşıma siparişi'
-                          }
-                        </Text>
-                        <Text style={styles.orderStatus}>
-                          Sipariş #{currentOrder?.id} • {getOrderStatusText(currentOrder?.status)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  
-                  <View style={styles.cardFooter}>
-                    {/* Aşamalı takip göstergesi */}
-                    <View style={styles.phaseTrackingContainer}>
-                      <View style={styles.phaseStep}>
-                        <View style={[
-                          styles.phaseCircle,
-                          ['pending', 'inspecting'].includes(currentOrder?.status || '') ? styles.phaseActive :
-                          ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseCompleted : styles.phaseInactive
-                        ]}>
-                          <MaterialIcons 
-                            name={currentOrder?.status === 'inspecting' ? 'search' : 'schedule'} 
-                            size={12} 
-                            color={['pending', 'inspecting'].includes(currentOrder?.status || '') ? '#F59E0B' : 
-                                   ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
-                          />
-                        </View>
-                        <Text style={styles.phaseLabel}>{currentOrder?.status === 'inspecting' ? 'İnceleniyor' : 'Bekliyor'}</Text>
-                      </View>
-                      
-                      <View style={[
-                        styles.phaseLine,
-                        ['accepted', 'confirmed', 'in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
-                      ]} />
-                      
-                      <View style={styles.phaseStep}>
-                        <View style={[
-                          styles.phaseCircle,
-                          ['accepted', 'confirmed'].includes(currentOrder?.status || '') ? styles.phaseActive :
-                          ['in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseCompleted : styles.phaseInactive
-                        ]}>
-                          <MaterialIcons 
-                            name="local-shipping" 
-                            size={12} 
-                            color={['accepted', 'confirmed'].includes(currentOrder?.status || '') ? '#F59E0B' : 
-                                   ['in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
-                          />
-                        </View>
-                        <Text style={styles.phaseLabel}>Yolda</Text>
-                      </View>
-                      
-                      <View style={[
-                        styles.phaseLine,
-                        ['in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
-                      ]} />
-                      
-                      <View style={styles.phaseStep}>
-                        <View style={[
-                          styles.phaseCircle,
-                          currentOrder?.status === 'in_progress' ? styles.phaseActive :
-                          ['started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseCompleted : styles.phaseInactive
-                        ]}>
-                          <MaterialIcons 
-                            name="inventory" 
-                            size={12} 
-                            color={currentOrder?.status === 'in_progress' ? '#F59E0B' : 
-                                   ['started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
-                          />
-                        </View>
-                        <Text style={styles.phaseLabel}>Yük Alımı</Text>
-                      </View>
-                      
-                      <View style={[
-                        styles.phaseLine,
-                        ['started', 'completed'].includes(currentOrder?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
-                      ]} />
-                      
-                      <View style={styles.phaseStep}>
-                        <View style={[
-                          styles.phaseCircle,
-                          currentOrder?.status === 'started' ? styles.phaseActive :
-                          currentOrder?.status === 'completed' ? styles.phaseCompleted : styles.phaseInactive
-                        ]}>
-                          <MaterialIcons 
-                            name="place" 
-                            size={12} 
-                            color={currentOrder?.status === 'started' ? '#F59E0B' : 
-                                   currentOrder?.status === 'completed' ? '#FFFFFF' : '#9CA3AF'} 
-                          />
-                        </View>
-                        <Text style={styles.phaseLabel}>Teslimat</Text>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </View>
+                  }
+                }}
+                styles={styles}
+              />
             ) : (
-              // Form alanları
-            (
                 <>
                   <View style={{ marginBottom: 20 }}>
               <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Araç Tipi</Text>
@@ -2714,18 +2285,14 @@ function HomeScreen() {
                   <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Siparişi İptal Et</Text>
                 </View>
               </TouchableOpacity>
-            )}  
-                </>  
-              )
             )}
             
             <View style={{ height: 100 }} />
+                </>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </Animated.View>
-
-
-
       <Modal
         visible={locationModalVisible}
         animationType="fade"
@@ -2773,377 +2340,42 @@ function HomeScreen() {
       </Modal>
 
       {/* Cancel Order Modal - Confirm Code */}
-      <Modal
+      <CancelOrderModal
         visible={cancelOrderModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setCancelOrderModalVisible(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          justifyContent: 'center',
-          alignItems: 'center'
-        }}>
-          <View style={{
-            backgroundColor: '#FFFFFF',
-            margin: 20,
-            borderRadius: 12,
-            padding: 20,
-            width: '85%',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4,
-            elevation: 5
-          }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#10B981', textAlign: 'center' }}>
-              ✅ Doğrulama Kodu Girin
-            </Text>
-            
-            <Text style={{ fontSize: 16, marginBottom: 20, color: '#6B7280', textAlign: 'center' }}>
-              Sipariş iptal işlemini tamamlamak için 4 haneli doğrulama kodunu girin:
-            </Text>
-            
-            {/* 4 ayrı input kutusu */}
-            <View style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginBottom: 30
-            }}>
-              {[0, 1, 2, 3].map((index) => (
-                <TextInput
-                  key={index}
-                  style={{
-                    width: 60,
-                    height: 60,
-                    borderWidth: 2,
-                    borderColor: confirmCodeInputs[index] ? '#F59E0B' : '#E5E7EB',
-                    backgroundColor: '#F9FAFB',
-                    borderRadius: 12,
-                    textAlign: 'center',
-                    fontSize: 24,
-                    fontWeight: 'bold',
-                    color: '#1F2937',
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 2,
-                    elevation: 2
-                  }}
-                  value={confirmCodeInputs[index]}
-                  onChangeText={(text) => {
-                    if (text.length <= 1 && /^[0-9]*$/.test(text)) {
-                      const newInputs = [...confirmCodeInputs];
-                      newInputs[index] = text;
-                      setConfirmCodeInputs(newInputs);
-                      setUserCancelCode(newInputs.join(''));
-                      
-                      // Eğer bir karakter girildi ve sonraki input varsa, ona geç
-                      if (text && index < 3) {
-                        confirmCodeInputRefs.current[index + 1]?.focus();
-                      }
-                    }
-                  }}
-                  onKeyPress={({ nativeEvent }) => {
-                    // Backspace tuşuna basıldığında önceki input'a geç
-                    if (nativeEvent.key === 'Backspace' && !confirmCodeInputs[index] && index > 0) {
-                      confirmCodeInputRefs.current[index - 1]?.focus();
-                    }
-                  }}
-                  keyboardType="numeric"
-                  maxLength={1}
-                  ref={(ref) => {
-                    if (ref) {
-                      confirmCodeInputRefs.current[index] = ref;
-                    }
-                  }}
-                />
-              ))}
-            </View>
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#6B7280',
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
-                  borderRadius: 8,
-                  flex: 1,
-                  marginRight: 10
-                }}
-                onPress={() => {
-                  setCancelOrderModalVisible(false);
-                  setUserCancelCode('');
-                  setConfirmCodeInputs(['', '', '', '']);
-                  setTimeout(() => {
-                    confirmCodeInputRefs.current[0]?.focus();
-                  }, 100);
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>Vazgeç</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={{
-                  backgroundColor: userCancelCode.length === 4 ? '#10B981' : '#9CA3AF',
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
-                  borderRadius: 8,
-                  flex: 1,
-                  marginLeft: 10
-                }}
-                disabled={userCancelCode.length !== 4}
-                onPress={() => {
-                   if (userCancelCode.length === 4 && cancelOrderId) {
-                     console.log('🔴 Confirm code ile iptal işlemi:', userCancelCode);
-                     const success = socketService.cancelOrderWithCode(cancelOrderId, userCancelCode);
-                     if (success) {
-                       setCancelOrderModalVisible(false);
-                       setUserCancelCode('');
-                       setConfirmCodeInputs(['', '', '', '']);
-                       showModal('Başarılı', 'Sipariş iptal işlemi başlatıldı.', 'success');
-                     } else {
-                       showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
-                     }
-                   }
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>İptal Et</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setCancelOrderModalVisible(false)}
+        cancelOrderId={cancelOrderId}
+        userCancelCode={userCancelCode}
+        setUserCancelCode={setUserCancelCode}
+        confirmCodeInputs={confirmCodeInputs}
+        setConfirmCodeInputs={setConfirmCodeInputs}
+        confirmCodeInputRefs={confirmCodeInputRefs}
+        showModal={showModal}
+      />
 
 
 
       {/* Free Cancel Modal */}
-      <Modal
+      <FreeCancelModal
         visible={freeCancelModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setFreeCancelModalVisible(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          justifyContent: 'center',
-          alignItems: 'center'
-        }}>
-          <View style={{
-            backgroundColor: '#FFFFFF',
-            margin: 20,
-            borderRadius: 12,
-            padding: 20,
-            width: '80%',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4,
-            elevation: 5
-          }}>
-            <View style={{ alignItems: 'center', marginBottom: 20 }}>
-              <Ionicons name="checkmark-circle" size={48} color="#10B981" />
-            </View>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#1F2937', textAlign: 'center' }}>
-              Ücretsiz İptal
-            </Text>
-            <Text style={{ fontSize: 16, marginBottom: 20, color: '#6B7280', textAlign: 'center', lineHeight: 22 }}>
-              Siparişinizi ücretsiz olarak iptal edebilirsiniz. Lütfen onay kodunu girin:
-            </Text>
-            <TextInput
-              style={{
-                borderWidth: 1,
-                borderColor: '#D1D5DB',
-                borderRadius: 8,
-                padding: 12,
-                fontSize: 18,
-                textAlign: 'center',
-                marginBottom: 20,
-                letterSpacing: 4
-              }}
-              placeholder="0000"
-              value={freeCancelConfirmCode}
-              onChangeText={setFreeCancelConfirmCode}
-              keyboardType="numeric"
-              maxLength={4}
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#6B7280',
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
-                  borderRadius: 8,
-                  flex: 1,
-                  marginRight: 10
-                }}
-                onPress={() => {
-                  setFreeCancelModalVisible(false);
-                  setFreeCancelConfirmCode('');
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#10B981',
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
-                  borderRadius: 8,
-                  flex: 1,
-                  marginLeft: 10
-                }}
-                onPress={() => {
-                  if (freeCancelConfirmCode.length === 4) {
-                     socketService.verifyCancelCode(currentOrder.id, freeCancelConfirmCode);
-                     setFreeCancelModalVisible(false);
-                     setFreeCancelConfirmCode('');
-                   } else {
-                     showModal('Hata', 'Lütfen 4 haneli onay kodunu girin.', 'error');
-                   }
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>İptal Et</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setFreeCancelModalVisible(false)}
+        freeCancelConfirmCode={freeCancelConfirmCode}
+        setFreeCancelConfirmCode={setFreeCancelConfirmCode}
+        currentOrder={currentOrder}
+        showModal={showModal}
+      />
 
-      {/* Pending Order Modal */}
-      <Modal
+      <PendingOrderModal
         visible={pendingOrderModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setPendingOrderModalVisible(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          justifyContent: 'center',
-          alignItems: 'center'
-        }}>
-          <View style={{
-            backgroundColor: '#FFFFFF',
-            margin: 20,
-            borderRadius: 12,
-            padding: 20,
-            width: '85%',
-            maxHeight: '70%',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4,
-            elevation: 5
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-              <Ionicons name="information-circle" size={24} color="#F59E0B" />
-              <Text style={{ fontSize: 18, fontWeight: 'bold', marginLeft: 8, color: '#1F2937' }}>
-                Devam Eden Sipariş
-              </Text>
-            </View>
-            
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={{ fontSize: 16, marginBottom: 16, color: '#6B7280', lineHeight: 22 }}>
-                Devam eden bir siparişiniz bulundu. Sipariş detaylarını aşağıda görebilirsiniz:
-              </Text>
-              
-              {currentOrder && (
-                <View style={{ backgroundColor: '#F9FAFB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Durum</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: currentOrder.status === 'pending' ? '#F59E0B' : 
-                                       currentOrder.status === 'accepted' ? '#10B981' : '#3B82F6',
-                        marginRight: 8
-                      }} />
-                      <Text style={{ fontSize: 14, color: '#1F2937', fontWeight: '500' }}>
-                        {getOrderStatusText(currentOrder.status)}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Alış Noktası</Text>
-                    <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.pickup_address}</Text>
-                  </View>
-                  
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Varış Noktası</Text>
-                    <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.destination_address}</Text>
-                  </View>
-                  
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Mesafe</Text>
-                    <Text style={{ fontSize: 14, color: '#1F2937' }}>{currentOrder.distance_km ? currentOrder.distance_km.toFixed(1) : 'Hesaplanıyor'} km</Text>
-                  </View>
-                  
-
-                  
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4 }}>Toplam Tutar</Text>
-                    <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>
-                      ₺{currentOrder.total_price ? currentOrder.total_price.toFixed(2) : 'Hesaplanıyor'}
-                    </Text>
-                  </View>
-                  
-                  {currentOrder.cargo_photo_urls && (
-                    <View>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 }}>Yük Fotoğrafları</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                        {(JSON.parse(currentOrder.cargo_photo_urls) as string[]).map((imageUri: string, index: number) => (
-                          <View key={index} style={{ marginRight: 8 }}>
-                            <Image
-                              source={{ uri: imageUri }}
-                              style={{
-                                width: 80,
-                                height: 80,
-                                borderRadius: 8,
-                                backgroundColor: '#F3F4F6'
-                              }}
-                              resizeMode="cover"
-                            />
-                          </View>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
-                </View>
-              )}
-              
-              <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 20, lineHeight: 20 }}>
-                Sipariş bilgileriniz form alanlarına getirilecektir.
-              </Text>
-            </ScrollView>
-            
-            <View style={{ marginTop: 16 }}>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#F59E0B',
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
-                  borderRadius: 8,
-                  width: '100%'
-                }}
-                onPress={() => {
-                  if (currentOrder) {
-                    fillOrderData(currentOrder);
-                  }
-                  setPendingOrderModalVisible(false);
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>Tamam</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setPendingOrderModalVisible(false)}
+        currentOrder={currentOrder}
+        onConfirm={() => {
+          if (currentOrder) {
+            fillOrderData(currentOrder);
+          }
+          setPendingOrderModalVisible(false);
+        }}
+        getOrderStatusText={getOrderStatusText}
+      />
 
       {/* Cancel Order Confirmation Modal */}
       <Modal
@@ -3369,136 +2601,19 @@ function HomeScreen() {
         </View>
       </Modal>
       
-      {/* Modern Image Picker Modal */}
-      <Modal
+      <ImagePickerModal
         visible={showImagePickerModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowImagePickerModal(false)}
-      >
-        <View style={styles.imagePickerOverlay}>
-          <View style={styles.imagePickerModal}>
-            <View style={styles.imagePickerHeader}>
-              <Text style={styles.imagePickerTitle}>Fotoğraf Seç</Text>
-              <TouchableOpacity
-                onPress={() => setShowImagePickerModal(false)}
-                style={styles.imagePickerCloseButton}
-              >
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.imagePickerContent}>
-              <TouchableOpacity
-                style={styles.imagePickerOption}
-                onPress={() => {
-                  setShowImagePickerModal(false);
-                  setTimeout(() => pickImage('camera'), 1000);
-                }}
-              >
-                <View style={styles.imagePickerIconContainer}>
-                  <Ionicons name="camera" size={32} color="#10B981" />
-                </View>
-                <View style={styles.imagePickerOptionTextContainer}>
-                   <Text style={styles.imagePickerOptionTitle}>Kamera</Text>
-                   <Text style={styles.imagePickerOptionSubtitle}>Yeni fotoğraf çek</Text>
-                 </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.imagePickerOption}
-                onPress={() => {
-                  setShowImagePickerModal(false);
-                  setTimeout(() => pickImage('gallery'), 1000);
-                }}
-              >
-                <View style={styles.imagePickerIconContainer}>
-                  <Ionicons name="images" size={32} color="#F59E0B" />
-                </View>
-                <View style={styles.imagePickerOptionTextContainer}>
-                   <Text style={styles.imagePickerOptionTitle}>Galeri</Text>
-                   <Text style={styles.imagePickerOptionSubtitle}>Mevcut fotoğraflardan seç</Text>
-                 </View>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setShowImagePickerModal(false)}
+        onPickImage={pickImage}
+      />
 
-      {/* Vehicle Type Selection Modal */}
-      <Modal
+      <VehicleTypeModal
         visible={showVehicleTypeModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowVehicleTypeModal(false)}
-      >
-        <View style={styles.imagePickerOverlay}>
-          <View style={styles.imagePickerModal}>
-            <View style={styles.imagePickerHeader}>
-              <Text style={styles.imagePickerTitle}>Araç Tipi Seçin</Text>
-              <TouchableOpacity
-                style={styles.imagePickerCloseButton}
-                onPress={() => setShowVehicleTypeModal(false)}
-              >
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.imagePickerContent}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {vehicleTypes.map((vehicleType) => (
-                  <TouchableOpacity
-                    key={vehicleType.id}
-                    style={[
-                      styles.imagePickerOption,
-                      selectedVehicleType?.id === vehicleType.id && {
-                        backgroundColor: '#FEF3C7',
-                        borderColor: '#F59E0B',
-                      }
-                    ]}
-                    onPress={() => {
-                      setSelectedVehicleType(vehicleType);
-                      setShowVehicleTypeModal(false);
-                    }}
-                  >
-                    <View style={[
-                      styles.imagePickerIconContainer,
-                      selectedVehicleType?.id === vehicleType.id && {
-                        backgroundColor: '#F59E0B',
-                      }
-                    ]}>
-                      {vehicleType.image_url ? (
-                        <Image 
-                          source={{ uri: `${API_CONFIG.BASE_URL}${vehicleType.image_url}` }}
-                          style={styles.vehicleTypeImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Ionicons 
-                          name="car" 
-                          size={24} 
-                          color={selectedVehicleType?.id === vehicleType.id ? '#FFFFFF' : '#F59E0B'} 
-                        />
-                      )}
-                    </View>
-                    <View style={styles.imagePickerOptionTextContainer}>
-                      <Text style={styles.imagePickerOptionTitle}>{vehicleType.name}</Text>
-                      <Text style={styles.imagePickerOptionSubtitle}>{vehicleType.description}</Text>
-                      {vehicleType.base_price && (
-                        <Text style={styles.vehicleTypeBasePrice}>
-                          Başlangıç ücreti: ₺{vehicleType.base_price}
-                        </Text>
-                      )}
-                    </View>
-                    {selectedVehicleType?.id === vehicleType.id && (
-                      <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setShowVehicleTypeModal(false)}
+        vehicleTypes={vehicleTypes}
+        selectedVehicleType={selectedVehicleType}
+        onSelectVehicleType={setSelectedVehicleType}
+      />
 
       {/* Loading Splash Screen */}
       <LoadingSplash 
@@ -3509,478 +2624,6 @@ function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 10,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  menuButton: {
-    padding: 8,
-  },
-  fullMapContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  fullMap: {
-    flex: 1,
-  },
-  floatingMenuButton: {
-    position: 'absolute',
-    top: 60,
-    left: 20,
-    backgroundColor: '#FFD700',
-    borderRadius: 25,
-    width: 50,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  floatingRouteButton: {
-    position: 'absolute',
-    top: 60,
-    right: 20,
-    backgroundColor: '#10B981',
-    borderRadius: 25,
-    width: 50,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  bottomSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    height: '60%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  bottomSheetHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#D1D5DB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  mapPlaceholder: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driversInfo: {
-    position: 'absolute',
-    top: 120,
-    left: 20,
-    right: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 8,
-    padding: 12,
-  },
-  driverInfo: {
-    fontSize: 14,
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  driverMarker: {
-    backgroundColor: '#10B981',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-  },
-  pickupMarker: {
-    backgroundColor: '#F59E0B',
-    borderRadius: 18,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  destinationMarker: {
-    backgroundColor: '#10B981',
-    borderRadius: 18,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  formContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  formTitleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
-  keyboardDismissButton: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  keyboardDismissText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  createOrderButton: {
-    backgroundColor: '#FFD700',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  imageContainer: {
-    position: 'relative',
-    maxHeight: 120,
-    width: '100%',
-    overflow: 'visible',
-  },
-  distanceInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 20,
-  },
 
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  ongoingOrderCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 0,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#F59E0B',
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#92400E',
-  },
-  cardContent: {
-    marginBottom: 16,
-  },
-  orderInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  orderDetails: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  orderTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  orderSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  orderStatus: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  phaseTrackingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  phaseStep: {
-    alignItems: 'center',
-    flex: 1,
-    minWidth: 0,
-  },
-  phaseCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  phaseActive: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
-  },
-  phaseCompleted: {
-    backgroundColor: '#10B981',
-  },
-  phaseInactive: {
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  phaseLine: {
-    height: 2,
-    width: 20,
-    marginHorizontal: 0,
-  },
-  phaseLineCompleted: {
-    backgroundColor: '#10B981',
-  },
-  phaseLineInactive: {
-    backgroundColor: '#E5E7EB',
-  },
-  phaseLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: '#6B7280',
-    textAlign: 'center',
-    flexWrap: 'wrap',
-    maxWidth: 40,
-  },
-  currentPhaseText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#374151',
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 8,
-    flexWrap: 'wrap',
-  },
-  compactOrderCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginVertical: 8,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
-    borderLeftWidth: 4,
-    borderLeftColor: '#10B981',
-  },
-  compactCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  compactOrderInfo: {
-    flex: 1,
-  },
-  compactIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F0FDF4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  compactOrderDetails: {
-    flex: 1,
-  },
-  compactOrderTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  compactOrderStatus: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '500',
-  },
-  // Image Picker Modal Styles
-  imagePickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  imagePickerModal: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    width: '100%',
-    maxWidth: 350,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  imagePickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  imagePickerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  imagePickerCloseButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#F9FAFB',
-  },
-  imagePickerContent: {
-    padding: 20,
-    paddingTop: 10,
-  },
-  imagePickerOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  imagePickerIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  imagePickerOptionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  imagePickerOptionSubtitle: {
-     fontSize: 14,
-     color: '#6B7280',
-   },
-   imagePickerOptionTextContainer: {
-    flex: 1,
-  },
-  vehicleTypeImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  vehicleTypeBasePrice: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '600',
-    marginTop: 4,
-  },
-});
 
 export default HomeScreen;

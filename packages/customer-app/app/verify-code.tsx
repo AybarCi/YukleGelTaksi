@@ -117,21 +117,21 @@ export default function VerifyCodeScreen() {
               console.log('Driver status response:', driverData);
               
               if (driverData.exists === false) {
-                // Sürücü kaydı yok, kayıt ekranına yönlendir
-                router.replace('/driver-registration');
-              } else if (driverData.data && driverData.data.is_approved) {
-                // Sürücü onaylanmış, durum ekranına yönlendir
-                router.replace('/driver-status');
+                // Sürücü kaydı yok, user-info ekranına yönlendir
+                router.replace('/user-info');
+              } else if (driverData && driverData.data && driverData.data.is_approved) {
+                // Sürücü onaylanmış, home ekranına yönlendir
+                router.replace('/home');
               } else {
-                // Sürücü henüz onaylanmamış, kayıt ekranına yönlendir (belge yükleme için)
-                router.replace('/driver-registration');
+                // Sürücü henüz onaylanmamış, user-info ekranına yönlendir
+                router.replace('/user-info');
               }
             } else if (response.status === 404) {
               // Sürücü kaydı yok, modal ile bilgilendir ve kayıt ekranına yönlendir
-              showModal('Bilgi', 'Sürücü kaydınız bulunamadı. Kayıt işlemini tamamlamanız gerekiyor.', 'info', [
+              showModal('Bilgi', 'Kullanıcı bilgileriniz bulunamadı. Bilgilerinizi tamamlamanız gerekiyor.', 'info', [
                 {
                   text: 'Tamam',
-                  onPress: () => router.replace('/driver-registration')
+                  onPress: () => router.replace('/user-info')
                 }
               ]);
             } else {
@@ -167,13 +167,21 @@ export default function VerifyCodeScreen() {
             
             if (userResponse.ok) {
               const userData = await userResponse.json();
+              console.log('User profile data received:', userData);
+              console.log('userData.first_name:', userData.first_name);
+              console.log('userData.last_name:', userData.last_name);
+              console.log('userData.full_name:', userData.full_name);
+              console.log('userData.email:', userData.email);
+              
               // Eğer first_name VE last_name VE email hepsi boş/null ise user-info ekranına yönlendir
               // Aksi halde kullanıcının bilgileri var demektir, direkt home'a git
-              if ((!userData.data.first_name || userData.data.first_name.trim() === '') && 
-                  (!userData.data.last_name || userData.data.last_name.trim() === '') &&
-                  (!userData.data.email || userData.data.email.trim() === '' || userData.data.email.includes('yuklegeltaksi.com'))) {
+              if ((!userData.first_name || userData.first_name.trim() === '') && 
+                  (!userData.last_name || userData.last_name.trim() === '') &&
+                  (!userData.email || userData.email.trim() === '' || userData.email.includes('yuklegeltaksi.com'))) {
+                console.log('User info incomplete, redirecting to user-info');
                 router.replace('/user-info');
               } else {
+                console.log('User info complete, redirecting to home');
                 router.replace('/home');
               }
             } else if (userResponse.status === 404) {

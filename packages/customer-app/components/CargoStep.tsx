@@ -7,9 +7,10 @@ interface CargoStepProps {
   onUpdate: (data: any) => void;
   onNext: () => void;
   onBack: () => void;
+  onImagePicker?: () => void;
 }
 
-export default function CargoStep({ data, onUpdate, onNext, onBack }: CargoStepProps) {
+export default function CargoStep({ data, onUpdate, onNext, onBack, onImagePicker }: CargoStepProps) {
   const cargoTypes = [
     { id: 'furniture', name: 'Mobilya', icon: Armchair, color: '#8B5CF6' },
     { id: 'appliance', name: 'Beyaz Eşya', icon: Package, color: '#3B82F6' },
@@ -86,7 +87,7 @@ export default function CargoStep({ data, onUpdate, onNext, onBack }: CargoStepP
       </View>
 
       {/* Photo Upload */}
-      <TouchableOpacity style={styles.photoButton}>
+      <TouchableOpacity style={styles.photoButton} onPress={onImagePicker}>
         <Camera size={20} color="#6B7280" />
         <Text style={styles.photoButtonText}>Fotoğraf Ekle (İsteğe bağlı)</Text>
       </TouchableOpacity>

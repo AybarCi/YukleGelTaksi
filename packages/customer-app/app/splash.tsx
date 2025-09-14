@@ -48,7 +48,7 @@ export default function SplashScreen() {
         if (user && token) {
           // Kullanıcı giriş yapmış
           if (user.user_type === 'driver') {
-            router.replace('/driver-dashboard');
+            router.replace('/home');
           } else {
             // Müşteri için profil kontrolü
             if (!user.full_name || user.full_name.trim().length === 0) {
