@@ -5,8 +5,8 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 ## Environment Variables
 
 ```
-REACT_APP_API_URL=http://192.168.1.12:3000/api
-REACT_APP_FILES_URL=http://192.168.1.12:3000/api/files
+REACT_APP_API_URL=http://192.168.1.134:3000/api
+REACT_APP_FILES_URL=http://192.168.1.134:3000/api/files
 ```
 
 ## Available Scripts

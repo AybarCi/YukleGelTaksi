@@ -35,6 +35,10 @@ import { useCameraPermissions } from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
+import { useAppDispatch, useAppSelector } from '../store';
+import { fetchActiveOrders, fetchCancellationFee, createOrder } from '../store/slices/orderSlice';
+import { loadVehicleTypes } from '../store/slices/vehicleSlice';
+import { checkDriverAvailability } from '../store/slices/driverSlice';
 import YukKonumuInput, { YukKonumuInputRef } from '../components/YukKonumuInput';
 import VarisNoktasiInput, { VarisNoktasiInputRef } from '../components/VarisNoktasiInput';
 import LoadingSplash from '../components/LoadingSplash';
@@ -71,6 +75,11 @@ interface VehicleType {
 
 
 function HomeScreen() {
+  const dispatch = useAppDispatch();
+  const { currentOrder: reduxCurrentOrder, loading: orderLoading, error: orderError } = useAppSelector(state => state.order);
+  const { vehicleTypes: reduxVehicleTypes, selectedVehicleType: reduxSelectedVehicleType, loading: vehicleLoading } = useAppSelector(state => state.vehicle);
+  const { availability: driverAvailability, loading: driverLoading } = useAppSelector(state => state.driver);
+  
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -96,7 +105,7 @@ function HomeScreen() {
   
   // Yük bilgileri state'leri
   const [selectedVehicleType, setSelectedVehicleType] = useState<VehicleType | null>(null);
-  const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([]);
+  // vehicleTypes artık Redux'tan geliyor, local state kaldırıldı
   const [pickupLocation, setPickupLocation] = useState('');
   const [destinationLocation, setDestinationLocation] = useState('');
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
@@ -321,91 +330,26 @@ function HomeScreen() {
   // Sipariş iptal etme başlatma - cezai şart kontrolü ile birlikte modal göster
   const initiateCancelOrder = useCallback(async () => {
     try {
-      // Önce API'den aktif sipariş kontrolü yap
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,confirmed,in_progress,started&limit=1`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // Redux action ile aktif sipariş kontrolü yap
+      const result = await dispatch(fetchActiveOrders()).unwrap();
       
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data.orders && result.data.orders.length > 0) {
-          const activeOrder = result.data.orders[0];
-          setCurrentOrder(activeOrder);
-          
-          // Cezai şart kontrolü için backend'e istek gönder
-          try {
-            const feeResponse = await fetch(`${API_CONFIG.BASE_URL}/api/orders/${activeOrder.id}/cancellation-fee`, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-
-            let cancellationFee = 0;
-            if (feeResponse.ok) {
-              const feeResult = await feeResponse.json();
-              cancellationFee = feeResult.data?.cancellationFee || 0;
-            }
+      if (result.success && result.data.orders && result.data.orders.length > 0) {
+        const activeOrder = result.data.orders[0];
+        setCurrentOrder(activeOrder);
+        
+        // Redux action ile cezai şart kontrolü
+        try {
+          const feeResult = await dispatch(fetchCancellationFee()).unwrap();
+          let cancellationFee = 0;
+          if (feeResult.success && feeResult.data) {
+            cancellationFee = feeResult.data.cancellationFee || 0;
+          }
             
-            if (cancellationFee > 0) {
-              // Cezai şart varsa ödeme modalı göster
-              showModal(
-                '⚠️ Cezai Şart Var', 
-                `Sipariş durumunuz nedeniyle ${cancellationFee} TL cezai şart uygulanacaktır.\n\nİptal etmek istediğinizden emin misiniz?`,
-                'warning',
-                [
-                  {
-                    text: 'Vazgeç',
-                    style: 'cancel'
-                  },
-                  {
-                     text: 'Evet, İptal Et',
-                     onPress: () => {
-                       // Kullanıcı cezai şartı kabul etti, confirm code üret
-                       console.log('🔴 Kullanıcı cezai şartı kabul etti, confirm code üretimi için cancelOrder çağrılıyor...');
-                       console.log('🔗 Socket bağlantı durumu:', socketService.getConnectionStatus());
-                       console.log('📋 Current Order ID:', activeOrder.id);
-                       const success = socketService.cancelOrder(activeOrder.id);
-                       console.log('✅ cancelOrder çağrısı sonucu:', success);
-                       if (!success) {
-                         showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
-                       }
-                       // Backend'den cancel_order_confirmation_required eventi geldiğinde confirm code modalı açılacak
-                     }
-                   }
-                ]
-              );
-            } else {
-              // Cezai şart yoksa da modal göster
-              showModal(
-                '✅ Cezai Şart Yok', 
-                'Sipariş durumunuz nedeniyle herhangi bir cezai şart uygulanmayacaktır.\n\nİptal etmek istediğinizden emin misiniz?',
-                'warning',
-                [
-                  {
-                    text: 'Vazgeç',
-                    style: 'cancel'
-                  },
-                  {
-                     text: 'Evet, İptal Et',
-                     onPress: () => {
-                       // Cezai şart yok, backend'e cancel_order gönder (confirm code üretimi için)
-                       console.log('🔴 Cezai şart yok, backend\'e cancel_order gönderiliyor...');
-                       socketService.cancelOrder(activeOrder.id);
-                     }
-                   }
-                ]
-              );
-            }
-          } catch (feeError) {
-            console.error('Fee check error:', feeError);
-            // Hata durumunda da modal göster
+          if (cancellationFee > 0) {
+            // Cezai şart varsa ödeme modalı göster
             showModal(
-              '❓ Cezai Şart Durumu Belirsiz', 
-              'Cezai şart durumu kontrol edilemedi. Yine de iptal etmek istediğinizden emin misiniz?',
+              '⚠️ Cezai Şart Var', 
+              `Sipariş durumunuz nedeniyle ${cancellationFee} TL cezai şart uygulanacaktır.\n\nİptal etmek istediğinizden emin misiniz?`,
               'warning',
               [
                 {
@@ -415,32 +359,77 @@ function HomeScreen() {
                 {
                    text: 'Evet, İptal Et',
                    onPress: () => {
-                     // Hata durumunda da confirm code üret
-                     console.log('🔴 Fee check hatası, confirm code üretimi için cancelOrder çağrılıyor...');
+                     // Kullanıcı cezai şartı kabul etti, confirm code üret
+                     console.log('🔴 Kullanıcı cezai şartı kabul etti, confirm code üretimi için cancelOrder çağrılıyor...');
+                     console.log('🔗 Socket bağlantı durumu:', socketService.getConnectionStatus());
+                     console.log('📋 Current Order ID:', activeOrder.id);
                      const success = socketService.cancelOrder(activeOrder.id);
+                     console.log('✅ cancelOrder çağrısı sonucu:', success);
                      if (!success) {
                        showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
                      }
+                     // Backend'den cancel_order_confirmation_required eventi geldiğinde confirm code modalı açılacak
+                   }
+                 }
+              ]
+            );
+          } else {
+            // Cezai şart yoksa da modal göster
+            showModal(
+              '✅ Cezai Şart Yok', 
+              'Sipariş durumunuz nedeniyle herhangi bir cezai şart uygulanmayacaktır.\n\nİptal etmek istediğinizden emin misiniz?',
+              'warning',
+              [
+                {
+                  text: 'Vazgeç',
+                  style: 'cancel'
+                },
+                {
+                   text: 'Evet, İptal Et',
+                   onPress: () => {
+                     // Cezai şart yok, backend'e cancel_order gönder (confirm code üretimi için)
+                     console.log('🔴 Cezai şart yok, backend\'e cancel_order gönderiliyor...');
+                     socketService.cancelOrder(activeOrder.id);
                    }
                  }
               ]
             );
           }
-        } else {
-          showModal('Hata', 'Aktif sipariş bulunamadı.', 'error');
+        } catch (feeError) {
+          console.error('Fee check error:', feeError);
+          // Hata durumunda da modal göster
+          showModal(
+            '❓ Cezai Şart Durumu Belirsiz', 
+            'Cezai şart durumu kontrol edilemedi. Yine de iptal etmek istediğinizden emin misiniz?',
+            'warning',
+            [
+              {
+                text: 'Vazgeç',
+                style: 'cancel'
+              },
+              {
+                 text: 'Evet, İptal Et',
+                 onPress: () => {
+                   // Hata durumunda da confirm code üret
+                   console.log('🔴 Fee check hatası, confirm code üretimi için cancelOrder çağrılıyor...');
+                   const success = socketService.cancelOrder(activeOrder.id);
+                   if (!success) {
+                     showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+                   }
+                 }
+               }
+            ]
+          );
         }
       } else {
-        showModal('Hata', 'Sipariş bilgileri alınamadı.', 'error');
+        showModal('Hata', 'Aktif sipariş bulunamadı.', 'error');
       }
     } catch (error) {
       console.error('Cancel order error:', error);
       showModal('Hata', 'Sipariş iptal edilirken bir hata oluştu.', 'error');
     }
-  }, [showModal, token]);
-  
+  }, [dispatch, showModal]);
 
-
-  // AsyncStorage'dan mevcut sipariş bilgilerini kontrol et
   // Sipariş verilerini form alanlarına dolduran fonksiyon
    const fillOrderData = useCallback(async (order: any) => {
     try {
@@ -454,8 +443,8 @@ function HomeScreen() {
       setDestinationLocation(order.destination_address);
       
       // Araç tipi bilgisini ayarla (eğer varsa)
-      if (order.vehicle_type_id && vehicleTypes.length > 0) {
-        const vehicleType = vehicleTypes.find(type => type.id === order.vehicle_type_id);
+      if (order.vehicle_type_id && reduxVehicleTypes.length > 0) {
+          const vehicleType = reduxVehicleTypes.find((type: any) => type.id === order.vehicle_type_id);
         setSelectedVehicleType(vehicleType || null);
       } else {
         setSelectedVehicleType(null);
@@ -554,59 +543,54 @@ function HomeScreen() {
       console.error('Sipariş verilerini doldurma hatası:', error);
       showModal('Hata', 'Sipariş verileri yüklenirken bir hata oluştu.', 'error');
     }
-  }, [setPickupLocation, setDestinationLocation, setNotes, setPickupCoords, setDestinationCoords, showModal]);
+  }, [reduxVehicleTypes, setPickupLocation, setDestinationLocation, setNotes, setPickupCoords, setDestinationCoords, setCargoImages, setSelectedVehicleType, showModal]);
 
   const checkExistingOrder = useCallback(async () => {
     try {
-      // Yeni API endpoint'ini kullanarak devam eden siparişleri kontrol et
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,confirmed,in_progress&limit=1`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // Redux action ile devam eden siparişleri kontrol et
+      const result = await dispatch(fetchActiveOrders()).unwrap();
       
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data.orders && result.data.orders.length > 0) {
-          const activeOrder = result.data.orders[0];
-          
-          // Devam eden sipariş varsa order'ı set et
-          setCurrentOrder(activeOrder);
-          
-          // Eğer sipariş kabul edilmiş durumda ise sürücü takibini başlat
-          if (activeOrder.status === 'accepted' || activeOrder.status === 'confirmed' || activeOrder.status === 'in_progress') {
-            if (activeOrder.driver_id) {
-              setAssignedDriver({
-                id: activeOrder.driver_id,
-                latitude: activeOrder.driver_latitude || 0,
-                longitude: activeOrder.driver_longitude || 0,
-                heading: activeOrder.driver_heading || 0,
-                name: activeOrder.driver_name
-              });
-              setIsTrackingDriver(true);
-              
-              // ETA bilgisi varsa set et
-              if (activeOrder.estimated_arrival) {
-                setEstimatedArrival(activeOrder.estimated_arrival);
-              }
+      if (result.success && result.data.orders && result.data.orders.length > 0) {
+        const activeOrder = result.data.orders[0];
+        
+        // Devam eden sipariş varsa order'ı set et
+        setCurrentOrder(activeOrder);
+        
+        // Eğer sipariş kabul edilmiş durumda ise sürücü takibini başlat
+        if (activeOrder.status === 'accepted' || activeOrder.status === 'confirmed' || activeOrder.status === 'in_progress') {
+          if (activeOrder.driver_id) {
+            setAssignedDriver({
+              id: activeOrder.driver_id,
+              latitude: activeOrder.driver_latitude || 0,
+              longitude: activeOrder.driver_longitude || 0,
+              heading: activeOrder.driver_heading || 0,
+              name: activeOrder.driver_name
+            });
+            setIsTrackingDriver(true);
+            
+            // ETA bilgisi varsa set et
+            if (activeOrder.estimated_arrival) {
+              setEstimatedArrival(activeOrder.estimated_arrival);
             }
           }
-        } else {
-          // Devam eden sipariş yok, AsyncStorage'ı temizle
-          setCurrentOrder(null);
-          setAssignedDriver(null);
-          setIsTrackingDriver(false);
-          setEstimatedArrival(null);
-          await AsyncStorage.removeItem('currentOrder');
         }
+        
+        // Form alanlarını doldur
+        await fillOrderData(activeOrder);
       } else {
-        // API'den sipariş bulunamadıysa AsyncStorage'ı temizle
+        // Devam eden sipariş yok, AsyncStorage'ı temizle
+        setCurrentOrder(null);
+        setAssignedDriver(null);
+        setIsTrackingDriver(false);
+        setEstimatedArrival(null);
         await AsyncStorage.removeItem('currentOrder');
       }
     } catch (error) {
       console.error('Mevcut sipariş kontrol hatası:', error);
+      // Hata durumunda da AsyncStorage'ı temizle
+      await AsyncStorage.removeItem('currentOrder');
     }
-  }, [token, isLocationLoading, userLocation, fillOrderData]);
+  }, [dispatch, fillOrderData]);
 
   // Aktif input alanını scroll etmek için fonksiyon
   const scrollToInput = useCallback((inputIndex: number) => {
@@ -751,81 +735,9 @@ function HomeScreen() {
   useEffect(() => {
     if (token) {
       console.log('🔑 Token hazır, araç tipleri yükleniyor...');
-      loadVehicleTypes();
+      dispatch(loadVehicleTypes());
     }
-  }, [token]);
-
-  // Araç tiplerini yükle
-  const loadVehicleTypes = async () => {
-    if (!token) {
-      console.error('❌ Token bulunamadı, araç tipleri yüklenemedi');
-      return;
-    }
-
-    console.log('🔑 Token ile araç tipleri yükleniyor:', token.substring(0, 20) + '...');
-    
-    try {
-      // Araç tiplerini al
-      const vehicleTypesResponse = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-types`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      // Fiyatlandırma verilerini al
-      const pricingResponse = await fetch(`${API_CONFIG.BASE_URL}/api/vehicle-type-pricing`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      console.log('📡 Vehicle Types Response Status:', vehicleTypesResponse.status);
-      console.log('📡 Pricing Response Status:', pricingResponse.status);
-
-      if (vehicleTypesResponse.ok && pricingResponse.ok) {
-        const vehicleTypesData = await vehicleTypesResponse.json();
-        const pricingData = await pricingResponse.json();
-        
-        console.log('📦 Vehicle Types Data:', vehicleTypesData);
-        console.log('📦 Pricing Data:', pricingData);
-        
-        // API response'unda data field'ı varsa onu kullan
-        const vehicleTypesArray = vehicleTypesData.data || vehicleTypesData;
-        const pricingArray = pricingData.data || pricingData;
-        
-        if (Array.isArray(vehicleTypesArray)) {
-          const activeVehicleTypes = vehicleTypesArray.filter((type: VehicleType) => type.is_active);
-          
-          // Fiyatlandırma verilerini araç tiplerine ekle
-          const vehicleTypesWithPricing = activeVehicleTypes.map((vehicleType: VehicleType) => {
-            const pricing = pricingArray.find((p: any) => p.vehicle_type_id === vehicleType.id);
-            return {
-              ...vehicleType,
-              base_price: pricing ? pricing.base_price : undefined
-            };
-          });
-          
-          setVehicleTypes(vehicleTypesWithPricing);
-          console.log('✅ Araç tipleri fiyatlandırma ile yüklendi:', vehicleTypesWithPricing);
-        } else {
-          console.error('❌ API response is not an array:', vehicleTypesArray);
-        }
-      } else {
-        const vehicleTypesError = vehicleTypesResponse.ok ? null : await vehicleTypesResponse.text();
-        const pricingError = pricingResponse.ok ? null : await pricingResponse.text();
-        console.error('❌ Veri yükleme hatası:', {
-          vehicleTypes: vehicleTypesError,
-          pricing: pricingError
-        });
-      }
-    } catch (error) {
-      console.error('❌ Araç tipleri yükleme hatası:', error);
-    }
-  };
+  }, [token, dispatch]);
 
   // Component mount ve initialization için useEffect
   useEffect(() => {
@@ -1416,7 +1328,7 @@ function HomeScreen() {
   // Google Directions API ile gerçek araç yolu rotası alma
   const getDirectionsRoute = useCallback(async (origin: {latitude: number, longitude: number}, destination: {latitude: number, longitude: number}) => {
     try {
-      const GOOGLE_MAPS_API_KEY = 'AIzaSyBh078SvpaOnhvq5QGkGJ4hQV-Z0mpI81M';
+      const GOOGLE_MAPS_API_KEY = API_CONFIG.GOOGLE_MAPS_API_KEY;
       
       const originStr = `${origin.latitude},${origin.longitude}`;
       const destinationStr = `${destination.latitude},${destination.longitude}`;
@@ -1533,82 +1445,51 @@ function HomeScreen() {
     }
   }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints, userInteractedWithMap]);
   
-  const checkDriverAvailability = useCallback(async () => {
-    if (!pickupCoords) {
-      return { hasAvailableDrivers: false, error: 'Konum bilgisi bulunamadı' };
-    }
-
-    try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/check-availability`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          pickupLatitude: pickupCoords.latitude,
-          pickupLongitude: pickupCoords.longitude
-        })
-      });
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      console.error('Sürücü kontrolü hatası:', error);
-      return { hasAvailableDrivers: false, error: 'Sürücü kontrolü yapılamadı' };
-    }
-  }, [pickupCoords, token]);
-
   const handleCreateOrder = useCallback(async () => {
     if (!pickupCoords || !destinationCoords || cargoImages.length === 0) {
       showModal('Eksik Bilgi', 'Lütfen tüm alanları doldurun.', 'warning');
       return;
     }
     
-    // Önce yakında sürücü olup olmadığını kontrol et
-    const driverCheck = await checkDriverAvailability();
-    if (!driverCheck.hasAvailableDrivers) {
-      showModal(
-        'Yakın Sürücü Bulunamadı', 
-        `Şu anda yakınınızda müsait sürücü bulunmamaktadır. ${driverCheck.message || 'Lütfen daha sonra tekrar deneyiniz.'}`, 
-        'warning'
-      );
+    // Redux action ile sürücü müsaitliğini kontrol et
+    try {
+      const driverCheck = await dispatch(checkDriverAvailability({
+        pickupLatitude: pickupCoords.latitude,
+        pickupLongitude: pickupCoords.longitude,
+        vehicleTypeId: selectedVehicleType?.id || 1
+      })).unwrap();
+      
+      if (!driverCheck.available) {
+        showModal(
+          'Yakın Sürücü Bulunamadı', 
+          `Şu anda yakınınızda müsait sürücü bulunmamaktadır. Tahmini bekleme süresi: ${driverCheck.estimatedWaitTime} dakika.`, 
+          'warning'
+        );
+        return;
+      }
+    } catch (error) {
+      console.error('Sürücü kontrolü hatası:', error);
+      showModal('Hata', 'Sürücü kontrolü yapılamadı. Lütfen tekrar deneyiniz.', 'error');
       return;
     }
     
     try {
-      // FormData oluştur
-      const formData = new FormData();
-      formData.append('pickupAddress', pickupLocation);
-      formData.append('pickupLatitude', pickupCoords.latitude.toString());
-      formData.append('pickupLongitude', pickupCoords.longitude.toString());
-      formData.append('destinationAddress', destinationLocation);
-      formData.append('destinationLatitude', destinationCoords.latitude.toString());
-      formData.append('destinationLongitude', destinationCoords.longitude.toString());
-      formData.append('distance', (distance || 0).toString());
-      formData.append('estimatedTime', (routeDuration || 30).toString());
-      formData.append('notes', notes || '');
-      formData.append('vehicleTypeId', selectedVehicleType?.id?.toString() || '');
-      formData.append('laborRequired', 'true');
-      formData.append('laborCount', '1');
+      const orderData = {
+        pickupAddress: pickupLocation,
+        pickupLatitude: pickupCoords.latitude,
+        pickupLongitude: pickupCoords.longitude,
+        destinationAddress: destinationLocation,
+        destinationLatitude: destinationCoords.latitude,
+        destinationLongitude: destinationCoords.longitude,
+        distance: distance || 0,
+        estimatedTime: Number(routeDuration) || 30,
+        notes: notes || '',
+        vehicleTypeId: selectedVehicleType?.id?.toString() || '',
+        cargoImages: cargoImages,
+      };
       
-      // Cargo images'ları FormData'ya ekle
-      if (cargoImages.length > 0) {
-        for (let i = 0; i < cargoImages.length; i++) {
-          // React Native'de ImagePicker URI'larını doğrudan kullan
-          const fileExtension = cargoImages[i].split('.').pop() || 'jpg';
-          formData.append(`cargoPhoto${i}`, {
-            uri: cargoImages[i],
-            type: `image/${fileExtension}`,
-            name: `cargo${i}.${fileExtension}`
-          } as any, `cargo${i}.${fileExtension}`);
-        }
-      }
-      
-      // FormData içeriğini logla
       console.log('=== FRONTEND REQUEST LOG ===');
-      console.log('API URL:', `${API_CONFIG.BASE_URL}/api/orders/create`);
-      console.log('FormData keys and values:');
+      console.log('Order data:');
       console.log('- pickupAddress:', pickupLocation);
       console.log('- destinationAddress:', destinationLocation);
       console.log('- notes:', notes);
@@ -1617,75 +1498,36 @@ function HomeScreen() {
       console.log('- estimatedTime:', routeDuration);
       console.log('- cargoImages array length:', cargoImages.length);
       console.log('- cargoImages array:', cargoImages);
-      console.log('- Cargo photos added to FormData:', cargoImages.length, 'photos');
       console.log('================================');
       
-      // API'ye sipariş gönder
-      let response = await fetch(`${API_CONFIG.BASE_URL}/api/orders/create`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
+      // Redux action ile sipariş oluştur
+      const result = await dispatch(createOrder({
+        orderData,
+        token: token!,
+        refreshAuthToken
+      })).unwrap();
       
-      // Token süresi dolmuşsa yenile ve tekrar dene
-      if (response.status === 401) {
-        const refreshSuccess = await refreshAuthToken();
-        if (refreshSuccess) {
-          response = await fetch(`${API_CONFIG.BASE_URL}/api/orders/create`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            },
-            body: formData
-          });
-        } else {
-          showModal('Oturum Süresi Doldu', 'Lütfen tekrar giriş yapın.', 'error');
-          return;
-        }
-      }
+      // Sipariş oluşturulduktan sonra aktif siparişleri yeniden yükle
+      dispatch(fetchActiveOrders());
       
-      const result = await response.json();
+      showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu. Yakındaki sürücülere bildirim gönderildi.', 'success');
       
-      if (result.success) {
-        // Sipariş bilgilerini AsyncStorage'a kaydet
-        const orderInfo = {
-          orderId: result.order.id,
-          status: 'pending',
-          pickupAddress: pickupLocation,
-          destinationAddress: destinationLocation,
-          distance: distance,
-          estimatedPrice: result.order.estimatedPrice,
-          createdAt: new Date().toISOString(),
-          cargoImages: JSON.stringify(cargoImages),
-          notes: notes
-        };
-        
-        await AsyncStorage.setItem('currentOrder', JSON.stringify(orderInfo));
-        setCurrentOrder(result.order);
-        
-        showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu. Yakındaki sürücülere bildirim gönderildi.', 'success');
-        
-        // Form alanlarını temizle
-        setNotes('');
-        setCargoImages([]);
-        setPickupLocation('');
-        setDestinationLocation('');
-        setPickupCoords(null);
-        setDestinationCoords(null);
-        setDistance(null);
-        setRouteCoordinates([]);
-        setRouteDuration(null);
-      } else {
-        showModal('Hata', result.error || 'Sipariş oluşturulurken bir hata oluştu.', 'error');
-      }
+      // Form alanlarını temizle
+      setNotes('');
+      setCargoImages([]);
+      setPickupLocation('');
+      setDestinationLocation('');
+      setPickupCoords(null);
+      setDestinationCoords(null);
+      setDistance(null);
+      setRouteCoordinates([]);
+      setRouteDuration(null);
       
     } catch (error) {
       console.error('Sipariş oluşturma hatası:', error);
-      showModal('Hata', 'Sipariş oluşturulurken bir hata oluştu.', 'error');
+      showModal('Hata', error instanceof Error ? error.message : 'Sipariş oluşturulurken bir hata oluştu.', 'error');
     }
-  }, [pickupCoords, destinationCoords, cargoImages, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal, checkDriverAvailability]);
+  }, [pickupCoords, destinationCoords, cargoImages, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal, selectedVehicleType, token, dispatch, refreshAuthToken]);
 
   const handleCurrentLocationToggle = useCallback((value: boolean) => {
     setUseCurrentLocation(value);
@@ -2610,7 +2452,7 @@ function HomeScreen() {
       <VehicleTypeModal
         visible={showVehicleTypeModal}
         onClose={() => setShowVehicleTypeModal(false)}
-        vehicleTypes={vehicleTypes}
+        vehicleTypes={reduxVehicleTypes}
         selectedVehicleType={selectedVehicleType}
         onSelectVehicleType={setSelectedVehicleType}
       />

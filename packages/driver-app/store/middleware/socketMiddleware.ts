@@ -19,7 +19,7 @@ class SocketManager {
       return;
     }
 
-    this.socket = io(process.env.EXPO_PUBLIC_SOCKET_URL || 'ws://localhost:3001', {
+    this.socket = io(process.env.EXPO_PUBLIC_SOCKET_URL || 'ws://192.168.1.134:3001', {
       auth: {
         token,
         userType: 'driver'

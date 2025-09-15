@@ -35,7 +35,7 @@ class SocketManager {
     }
 
     // Socket server genellikle farklı port kullanır
-    const socketUrl = process.env.EXPO_PUBLIC_SOCKET_URL || 'ws://192.168.1.12:3001';
+    const socketUrl = process.env.EXPO_PUBLIC_SOCKET_URL || 'ws://192.168.1.134:3001';
     
     this.socket = io(socketUrl, {
       auth: {

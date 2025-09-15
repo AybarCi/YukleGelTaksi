@@ -6,7 +6,7 @@ const path = require('path');
 const config = {
   user: 'sa',
   password: 'YourStrong@Passw0rd',
-  server: '192.168.1.12',
+  server: '192.168.1.134',
   database: 'YukleGelTaksi',
   options: {
     encrypt: false,

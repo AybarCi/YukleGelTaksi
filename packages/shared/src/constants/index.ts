@@ -1,7 +1,7 @@
 // API Configuration
 export const API_CONFIG = {
-  BASE_URL: 'http://localhost:3001/api',
-  SOCKET_URL: 'http://localhost:3001',
+  BASE_URL: 'http://192.168.1.134:3001/api',
+  SOCKET_URL: 'http://192.168.1.134:3001',
   TIMEOUT: 10000,
 };
 

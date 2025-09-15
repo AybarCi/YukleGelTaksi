@@ -59,4 +59,13 @@ export const selectNetworkStatus = (state: RootState) => state.ui.isNetworkConne
 export const selectGlobalLoading = (state: RootState) => state.ui.loading.global;
 export const selectOverlayLoading = (state: RootState) => state.ui.loading.overlay;
 
+// Order selectors
+export const selectOrder = (state: RootState) => state.order;
+export const selectCurrentOrder = (state: RootState) => state.order.currentOrder;
+export const selectOrderLoading = (state: RootState) => state.order.loading;
+export const selectOrderError = (state: RootState) => state.order.error;
+export const selectCreateOrderLoading = (state: RootState) => state.order.createOrderLoading;
+export const selectCheckOrderLoading = (state: RootState) => state.order.checkOrderLoading;
+export const selectCancelOrderLoading = (state: RootState) => state.order.cancelOrderLoading;
+
 export default store;

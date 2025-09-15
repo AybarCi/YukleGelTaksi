@@ -4,7 +4,7 @@ class ApiService {
   private baseUrl: string;
   private authToken: string | null = null;
 
-  constructor(baseUrl: string = 'http://localhost:3001/api') {
+  constructor(baseUrl: string = 'http://192.168.1.134:3001/api') {
     this.baseUrl = baseUrl;
   }
 

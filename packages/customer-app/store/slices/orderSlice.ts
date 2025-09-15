@@ -192,6 +192,70 @@ export const checkExistingOrder = createAsyncThunk(
   }
 );
 
+// Aktif siparişleri getirme async thunk
+export const fetchActiveOrders = createAsyncThunk(
+  'order/fetchActiveOrders',
+  async (_, { rejectWithValue }) => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('Token bulunamadı');
+      }
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,confirmed,in_progress,started&limit=1`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Aktif siparişler getirilemedi');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Aktif siparişler getirme hatası:', error);
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Aktif siparişler getirilemedi'
+      );
+    }
+  }
+);
+
+// İptal ücreti getirme async thunk
+export const fetchCancellationFee = createAsyncThunk(
+  'order/fetchCancellationFee',
+  async (_, { rejectWithValue }) => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('Token bulunamadı');
+      }
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=cancelled&limit=1`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'İptal ücreti getirilemedi');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('İptal ücreti getirme hatası:', error);
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'İptal ücreti getirilemedi'
+      );
+    }
+  }
+);
+
 // Sipariş iptal etme async thunk
 // Sipariş iptal ücreti hesaplama
 export const calculateCancellationFee = createAsyncThunk(
@@ -348,6 +412,35 @@ const orderSlice = createSlice({
       })
       .addCase(cancelOrder.rejected, (state, action) => {
         state.cancelOrderLoading = false;
+        state.error = action.payload as string;
+      })
+      // Fetch Active Orders
+      .addCase(fetchActiveOrders.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchActiveOrders.fulfilled, (state, action) => {
+        state.loading = false;
+        if (action.payload && action.payload.length > 0) {
+          state.currentOrder = action.payload[0];
+        }
+        state.error = null;
+      })
+      .addCase(fetchActiveOrders.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // Fetch Cancellation Fee
+      .addCase(fetchCancellationFee.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchCancellationFee.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+      })
+      .addCase(fetchCancellationFee.rejected, (state, action) => {
+        state.loading = false;
         state.error = action.payload as string;
       });
   },

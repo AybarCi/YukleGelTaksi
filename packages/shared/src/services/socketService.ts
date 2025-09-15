@@ -7,7 +7,7 @@ class SocketService {
   private userType: UserType;
   private userId: string | null = null;
 
-  constructor(serverUrl: string = 'http://localhost:3001', userType: UserType) {
+  constructor(serverUrl: string = 'http://192.168.1.134:3001', userType: UserType) {
     this.serverUrl = serverUrl;
     this.userType = userType;
   }
