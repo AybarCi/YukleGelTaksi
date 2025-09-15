@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import SplashLoader from '../components/SplashLoader';
 import { API_CONFIG } from '../config/api';
 
 interface OrderHistory {
@@ -236,9 +237,11 @@ export default function DriverOrderHistoryScreen() {
         }
       >
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Yükleniyor...</Text>
-          </View>
+          <SplashLoader 
+          visible={true} 
+          text="Sipariş geçmişi yükleniyor..." 
+          logoSize={120} 
+        />
         ) : orders.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="document-text-outline" size={64} color="#D1D5DB" />

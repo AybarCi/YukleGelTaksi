@@ -81,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadStoredAuth = async () => {
     try {
-      const storedToken = await AsyncStorage.getItem('auth_token');
+      let storedToken = await AsyncStorage.getItem('auth_token');
       const storedRefreshToken = await AsyncStorage.getItem('refresh_token');
       const storedUser = await AsyncStorage.getItem('user_data');
       
@@ -129,6 +129,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const { token: newToken } = refreshData.data;
               setToken(newToken);
               await AsyncStorage.setItem('auth_token', newToken);
+              // Yeni token'ı storedToken değişkenine ata
+              storedToken = newToken;
             } else {
               // Refresh token also expired, logout user
               await clearAuthData();
@@ -518,7 +520,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       console.log('User info complete');
       // Bilgiler tamamsa ana ekrana yönlendir
-      router.replace('/home');
+      router.replace('/driver-dashboard');
     }
   };
 

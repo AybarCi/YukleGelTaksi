@@ -174,7 +174,7 @@ export default function VerifyCodeScreen() {
                   (!userData.data.email || userData.data.email.trim() === '' || userData.data.email.includes('yuklegeltaksi.com'))) {
                 router.replace('/user-info');
               } else {
-                router.replace('/home');
+                router.replace('/driver-dashboard');
               }
             } else if (userResponse.status === 404) {
               // Kullanıcı profili bulunamadı, modal ile bilgilendir ve user-info ekranına yönlendir

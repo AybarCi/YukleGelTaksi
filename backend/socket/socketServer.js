@@ -212,12 +212,16 @@ class SocketServer {
       // Sürücüyü tüm müşteri room'larına ekle
       this.addDriverToCustomerRooms(socket);
       
-      // Tüm müşterilere güncellenmiş sürücü listesini gönder
-      this.broadcastNearbyDriversToAllCustomers();
-      
       // Sürücüden konum güncellemesi iste
       socket.emit('request_location_update');
       console.log(`📡 Sent request_location_update to driver ${driverId}`);
+      
+      // Konum alındıktan sonra müşterilere gönder - 2 saniye bekle
+      setTimeout(() => {
+        console.log(`⏰ Broadcasting nearby drivers after driver ${driverId} connection`);
+        this.broadcastNearbyDriversToAllCustomers();
+      }, 2000);
+      
     } catch (error) {
       console.error('❌ Error fetching driver availability:', error);
       // Fallback olarak true kullan
@@ -243,8 +247,14 @@ class SocketServer {
       
       this.addDriverToCustomerRooms(socket);
       
-      // Tüm müşterilere güncellenmiş sürücü listesini gönder
-      this.broadcastNearbyDriversToAllCustomers();
+      // Sürücüden konum güncellemesi iste
+      socket.emit('request_location_update');
+      
+      // Konum alındıktan sonra müşterilere gönder - 2 saniye bekle
+      setTimeout(() => {
+        console.log(`⏰ Broadcasting nearby drivers after driver ${driverId} connection (fallback)`);
+        this.broadcastNearbyDriversToAllCustomers();
+      }, 2000);
     }
 
     // Driver-specific event handlers are already added above
@@ -775,6 +785,12 @@ class SocketServer {
   }
 
   broadcastDriverLocationToCustomers(driverId, location) {
+    // Validate inputs
+    if (!driverId || !location) {
+      console.error('❌ Invalid parameters for broadcastDriverLocationToCustomers:', { driverId, location });
+      return;
+    }
+
     // Broadcast driver location update to all connected customers
     this.broadcastToAllCustomers('driver_location_update', {
       driverId: driverId.toString(),
@@ -813,7 +829,14 @@ class SocketServer {
       const connectedDriversWithLocation = [];
       
       for (const [driverId, driverData] of this.connectedDrivers) {
-        if (driverData.location && driverData.isAvailable) {
+        console.log(`🔍 Checking driver ${driverId}:`, {
+          hasLocation: !!driverData.location,
+          isAvailable: driverData.isAvailable,
+          location: driverData.location
+        });
+        
+        // Konum ve müsaitlik kontrolü - daha esnek hale getirdik
+        if (driverData.location && (driverData.isAvailable !== false)) {
           // Veritabanından sürücü detaylarını getir
           const db = DatabaseConnection.getInstance();
           const pool = await db.connect();
@@ -827,13 +850,22 @@ class SocketServer {
                 d.last_name,
                 d.vehicle_plate,
                 d.vehicle_model,
-                d.vehicle_color
+                d.vehicle_color,
+                d.is_active,
+                d.is_available
               FROM drivers d
               WHERE d.id = @driverId AND d.is_active = 1
             `);
           
           if (result.recordset && result.recordset.length > 0) {
             const driver = result.recordset[0];
+            console.log(`✅ Adding driver ${driverId} to nearby list:`, {
+              name: driver.first_name,
+              isActive: driver.is_active,
+              isAvailable: driver.is_available,
+              location: driverData.location
+            });
+            
             connectedDriversWithLocation.push({
               id: driver.id.toString(),
               latitude: driverData.location.latitude,
@@ -843,7 +875,11 @@ class SocketServer {
               vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
               plate: driver.vehicle_plate
             });
+          } else {
+            console.log(`❌ Driver ${driverId} not found in database or not active`);
           }
+        } else {
+          console.log(`❌ Driver ${driverId} skipped - no location or not available`);
         }
       }
       

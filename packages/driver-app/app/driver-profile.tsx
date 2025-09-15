@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../config/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import SplashLoader from '../components/SplashLoader';
 
 interface DriverProfile {
   id: number;
@@ -277,9 +278,11 @@ export default function DriverProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Yükleniyor...</Text>
-      </View>
+      <SplashLoader 
+        visible={true} 
+        text="Profil bilgileri yükleniyor..." 
+        logoSize={120}
+      />
     );
   }
 

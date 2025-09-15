@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import SplashLoader from '../components/SplashLoader';
 import { API_CONFIG } from '../config/api';
 
 interface SupportTicket {
@@ -222,21 +223,11 @@ const DriverSupportTicketsPage = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="arrow-back" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Destek Taleplerim</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4ECDC4" />
-          <Text style={styles.loadingText}>Destek talepleri yükleniyor...</Text>
-        </View>
-      </SafeAreaView>
+      <SplashLoader 
+        visible={true} 
+        text="Destek talepleri yükleniyor..." 
+        logoSize={120} 
+      />
     );
   }
 

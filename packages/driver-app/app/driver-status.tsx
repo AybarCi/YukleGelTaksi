@@ -11,7 +11,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
-import LoadingIndicator from '../components/LoadingIndicator';
+import SplashLoader from '../components/SplashLoader';
 import { API_CONFIG } from '../config/api';
 
 interface DriverStatus {
@@ -120,12 +120,11 @@ export default function DriverStatusScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
-        <LoadingIndicator 
-          visible={true} 
-          text="Durum kontrol ediliyor..." 
-        />
-      </View>
+      <SplashLoader 
+        visible={true} 
+        text="Durum kontrol ediliyor..." 
+        logoSize={120}
+      />
     );
   }
 

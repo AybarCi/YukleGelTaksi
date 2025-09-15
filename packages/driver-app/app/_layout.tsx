@@ -4,6 +4,7 @@ import { Provider } from 'react-redux';
 import { store } from '../store';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { AuthProvider } from '../contexts/AuthContext';
 
 // Crypto polyfill for React Native
 if (typeof global !== 'undefined' && !global.crypto) {
@@ -13,9 +14,10 @@ if (typeof global !== 'undefined' && !global.crypto) {
 export default function RootLayout() {
   return (
     <Provider store={store}>
-      <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <Stack screenOptions={{ headerShown: false }}>
+      <AuthProvider>
+        <SafeAreaProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="splash" />
             <Stack.Screen name="phone-auth" />
@@ -39,6 +41,7 @@ export default function RootLayout() {
           <StatusBar style="auto" />
         </GestureHandlerRootView>
       </SafeAreaProvider>
-    </Provider>
+    </AuthProvider>
+  </Provider>
   );
 }

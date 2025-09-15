@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import SplashLoader from '../components/SplashLoader';
 import { API_CONFIG } from '../config/api';
 
 const { width } = Dimensions.get('window');
@@ -207,9 +208,11 @@ export default function DriverEarningsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Yükleniyor...</Text>
-      </View>
+      <SplashLoader 
+          visible={true} 
+          text="Kazanç bilgileri yükleniyor..." 
+          logoSize={120} 
+        />
     );
   }
 

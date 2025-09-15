@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_CONFIG } from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
 import CustomModal from '../components/CustomModal';
+import SplashLoader from '../components/SplashLoader';
 interface DriverSettings {
   notifications_enabled: boolean;
   location_sharing_enabled: boolean;
@@ -206,9 +207,11 @@ export default function DriverSettingsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Yükleniyor...</Text>
-      </View>
+      <SplashLoader 
+        visible={true} 
+        text="Ayarlar yükleniyor..." 
+        logoSize={120} 
+      />
     );
   }
 

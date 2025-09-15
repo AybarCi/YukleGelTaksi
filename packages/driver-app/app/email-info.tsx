@@ -43,7 +43,7 @@ export default function EmailInfoScreen() {
       
       if (success) {
         // Ana ekrana geç
-        router.replace('/home');
+        router.replace('/driver-dashboard');
       }
     } catch (error) {
       showModal('Hata', 'Bir hata oluştu. Lütfen tekrar deneyin.', 'error');

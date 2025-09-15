@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_CONFIG } from '../config/api';
+import SplashLoader from '../components/SplashLoader';
 interface Review {
   id: number;
   customer_name: string;
@@ -188,9 +189,11 @@ export default function DriverReviewsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Yükleniyor...</Text>
-      </View>
+      <SplashLoader 
+        visible={true} 
+        text="Değerlendirmeler yükleniyor..." 
+        logoSize={120}
+      />
     );
   }
 

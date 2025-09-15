@@ -10,7 +10,6 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
 import { useAuth } from '../contexts/AuthContext';
 
 
@@ -68,10 +67,7 @@ export default function SplashScreen() {
       // Konum izni iste
       const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
       
-      // Bildirim izni iste
-      const { status: notificationStatus } = await Notifications.requestPermissionsAsync();
-      
-      console.log('İzinler kontrol edildi:', { locationStatus, notificationStatus });
+      console.log('İzinler kontrol edildi:', { locationStatus });
       
     } catch (error) {
       console.error('İzin hatası:', error);

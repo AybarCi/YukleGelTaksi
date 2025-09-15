@@ -27,6 +27,13 @@ import * as Location from 'expo-location';
 import { API_CONFIG } from '../config/api';
 import socketService from '../services/socketService';
 
+import { Header } from '../components/driver-dashboard/Header';
+import { MapComponent } from '../components/driver-dashboard/MapComponent';
+import { ActiveOrderCard } from '../components/driver-dashboard/ActiveOrderCard';
+import { default as CustomerList } from '../components/driver-dashboard/CustomerList';
+import { DriverInfo as DashboardDriverInfo, OrderData as DashboardOrderData, LocationCoords, MapRegion } from '../types/dashboard';
+import ToggleButton from '../components/ToggleButton';
+
 const { width, height } = Dimensions.get('window');
 
 interface Customer {
@@ -91,7 +98,7 @@ export default function DriverDashboardScreen() {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
-  const [menuVisible, setMenuVisible] = useState(false);
+
   const [showInspectionModal, setShowInspectionModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Customer | null>(null);
   const [inspectingOrders, setInspectingOrders] = useState<Set<number>>(new Set());
@@ -99,6 +106,7 @@ export default function DriverDashboardScreen() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [laborCount, setLaborCount] = useState('1');
   const [laborPrice, setLaborPrice] = useState(800); // Default değer pricing_settings tablosundan
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Fotoğraf modal state'leri
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
@@ -197,8 +205,28 @@ export default function DriverDashboardScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
   const [routeDuration, setRouteDuration] = useState<number | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [driverLocation, setDriverLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 41.0082,
+    longitude: 28.9784,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  });
   const mapRef = useRef<MapView>(null);
+
+  // Handle pickup complete function
+  const handlePickupComplete = (orderId: number) => {
+    console.log('Pickup completed for order:', orderId);
+    setCurrentPhase('delivery');
+    // API call to update order status
+  };
+
+  // Handle delivery complete function
+  const handleDeliveryComplete = (orderId: number) => {
+    console.log('Delivery completed for order:', orderId);
+    setActiveOrder(null);
+    setCurrentPhase(null);
+    // API call to complete order
+  };
 
   useEffect(() => {
     loadDriverInfo();
@@ -556,10 +584,6 @@ export default function DriverDashboardScreen() {
       };
       
       setCurrentLocation(newLocation);
-      setDriverLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
       
       // Socket ile konum gönder
       if (socketService.isSocketConnected()) {
@@ -570,12 +594,12 @@ export default function DriverDashboardScreen() {
         });
       }
       
-      // Konum takibini başlat (her 10 saniyede bir güncelle)
+      // Konum takibini başlat (her 5 saniyede bir güncelle)
       locationWatchRef.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 10000, // 10 saniye
-          distanceInterval: 10, // 10 metre
+          timeInterval: 5000, // 5 saniye
+          distanceInterval: 5, // 5 metre
         },
         (location) => {
           const newLocation = {
@@ -586,18 +610,22 @@ export default function DriverDashboardScreen() {
           };
           
           setCurrentLocation(newLocation);
-          setDriverLocation({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          });
           
-          // Socket ile konum gönder
-          if (socketService.isSocketConnected() && isOnline) {
+          // Socket ile konum gönder - isOnline kontrolünü kaldırdık
+          if (socketService.isSocketConnected()) {
+            console.log('Konum güncelleniyor:', {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              heading: location.coords.heading || 0,
+            });
+            
             socketService.updateLocation({
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
               heading: location.coords.heading || 0,
             });
+          } else {
+            console.log('Socket bağlantısı yok, konum gönderilemedi');
           }
         }
       );
@@ -661,13 +689,25 @@ export default function DriverDashboardScreen() {
       } else {
         const errorData = await response.json();
         console.error('Bekleyen siparişler yüklenirken hata:', errorData);
-        showModal('Hata', errorData.message || 'Bekleyen siparişler yüklenirken bir hata oluştu.', 'error');
+        
+        // Sürücü konumu bulunamadı veya sürücü aktif değil hatası için özel mesaj
+        if (errorData.error === "Sürücü konumu bulunamadı veya sürücü aktif değil") {
+          showModal('Çevrimdışı Durum', 'Çevrimdışı olduğunuzda yeni siparişleri listeleyemezsiniz.', 'error');
+        } else {
+          showModal('Hata', errorData.message || 'Bekleyen siparişler yüklenirken bir hata oluştu.', 'error');
+        }
       }
     } catch (error) {
       console.error('Bekleyen siparişler yüklenirken hata:', error);
       showModal('Bağlantı Hatası', 'Sunucuya bağlanırken bir hata oluştu. Lütfen internet bağlantınızı kontrol edin.', 'error');
     }
   };
+
+  const refreshCustomers = useCallback(async () => {
+    setIsRefreshing(true);
+    await loadCustomers();
+    setIsRefreshing(false);
+  }, []);
 
   const toggleOnlineStatus = async () => {
     try {
@@ -1022,7 +1062,7 @@ export default function DriverDashboardScreen() {
   
   // Navigasyonu başlat
   const startNavigation = useCallback(async () => {
-    if (!activeOrder || !driverLocation) {
+    if (!activeOrder || !currentLocation) {
       showModal('Hata', 'Aktif sipariş veya konum bilgisi bulunamadı', 'error');
       return;
     }
@@ -1052,15 +1092,15 @@ export default function DriverDashboardScreen() {
         
         if (!routeResult.success) {
           // Fallback olarak Google Directions API kullan
-          await getDirectionsRoute(driverLocation, destination);
+          await getDirectionsRoute(currentLocation, destination);
         }
       } else {
         // currentPhase null ise sadece Google Directions API kullan
-        await getDirectionsRoute(driverLocation, destination);
+        await getDirectionsRoute(currentLocation, destination);
       }
       
       // Harici navigasyon uygulamasını aç
-      const url = `https://www.google.com/maps/dir/?api=1&origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${destination?.latitude},${destination?.longitude}&travelmode=driving`;
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.latitude},${currentLocation.longitude}&destination=${destination?.latitude},${destination?.longitude}&travelmode=driving`;
       
       const supported = await Linking.canOpenURL(url);
       if (supported) {
@@ -1073,7 +1113,7 @@ export default function DriverDashboardScreen() {
       showModal('Hata', 'Navigasyon başlatılamadı', 'error');
       setIsNavigating(false);
     }
-  }, [activeOrder, driverLocation, currentPhase, calculateRouteFromAPI, getDirectionsRoute, showModal]);
+  }, [activeOrder, currentLocation, currentPhase, calculateRouteFromAPI, getDirectionsRoute, showModal]);
   
   const handleLogout = async () => {
     showModal(
@@ -1195,365 +1235,88 @@ export default function DriverDashboardScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={[styles.statusButton, { backgroundColor: isOnline ? '#10B981' : '#EF4444', flexDirection: 'row', alignItems: 'center' }]} 
-          onPress={toggleOnlineStatus}
-        >
-          <Ionicons 
-            name={isOnline ? 'radio-button-on' : 'radio-button-off'} 
-            size={14} 
-            color="#FFFFFF" 
-            style={{ marginRight: 0 }}
-          />
-          {/* <Text style={[styles.statusButtonText, { fontSize: 10 }]}>
-            {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
-          </Text> */}
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Sürücü Paneli</Text>
-        <TouchableOpacity style={styles.menuButton} onPress={() => router.push('/driver-menu')}>
-          <Ionicons name="menu" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
+      {/* Hamburger Menu Button */}
+      <TouchableOpacity
+        style={styles.hamburgerButton}
+        onPress={() => router.push('/driver-menu')}
+      >
+        <Ionicons name="menu" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
 
-      {/* Map */}
-      <View style={styles.mapContainer}>
-        <MapView
-          ref={mapRef}
-          provider={PROVIDER_GOOGLE}
-          style={styles.map}
-          initialRegion={{
-            latitude: currentLocation.latitude - 0.001,
-            longitude: currentLocation.longitude,
-            latitudeDelta: 0.008,
-            longitudeDelta: 0.006,
-          }}
-          region={activeOrder ? undefined : {
-            latitude: currentLocation.latitude - 0.001,
-            longitude: currentLocation.longitude,
-            latitudeDelta: 0.008,
-            longitudeDelta: 0.006,
-          }}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
-          followsUserLocation={!activeOrder}
-          userLocationPriority="high"
-          userLocationUpdateInterval={3000}
-          userLocationAnnotationTitle="Konumunuz"
-          zoomEnabled={true}
-          scrollEnabled={true}
-          pitchEnabled={true}
-          rotateEnabled={true}
-        >
-          <Marker
-            coordinate={{
-              latitude: currentLocation.latitude,
-              longitude: currentLocation.longitude,
-            }}
-            title="Konumunuz"
-            description="Mevcut konum"
-          />
-          
-          {/* Aktif sipariş varsa pickup ve destination marker'ları göster */}
-          {activeOrder && currentPhase === 'pickup' && (
-            <Marker
-              coordinate={{
-                latitude: activeOrder.pickup_latitude,
-                longitude: activeOrder.pickup_longitude,
-              }}
-              title="Yük Alma Noktası"
-              description={activeOrder.pickupAddress}
-              pinColor="green"
-            />
-          )}
-          
-          {activeOrder && currentPhase === 'delivery' && (
-            <Marker
-              coordinate={{
-                latitude: activeOrder.delivery_latitude,
-                longitude: activeOrder.delivery_longitude,
-              }}
-              title="Varış Noktası"
-              description={activeOrder.destinationAddress}
-              pinColor="red"
-            />
-          )}
-          
-          {/* Rota çizgisi */}
-          {routeCoordinates.length > 0 && (
-            <Polyline
-              coordinates={routeCoordinates}
-              strokeColor="#FFD700"
-              strokeWidth={4}
-            />
-          )}
-        </MapView>
-        
-        {/* Navigasyon butonu */}
-        {activeOrder && (
-          <TouchableOpacity
-            style={styles.navigationButton}
-            onPress={startNavigation}
-          >
-            <MaterialIcons name="navigation" size={24} color="#FFFFFF" />
-            <Text style={styles.navigationButtonText}>Navigasyon</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Aktif Sipariş Kartı */}
-      {activeOrder && (
-        <View style={styles.activeOrderContainer}>
-          <View style={styles.activeOrderHeader}>
-            <Text style={styles.activeOrderTitle}>
-              {currentPhase === 'pickup' ? 'Yük Alma' : 'Teslimat'} - {activeOrder.customerName}
-            </Text>
-            <View style={[styles.phaseIndicator, { backgroundColor: currentPhase === 'pickup' ? '#10B981' : '#EF4444' }]}>
-              <Text style={styles.phaseIndicatorText}>
-                {currentPhase === 'pickup' ? 'Yük Alma' : 'Teslimat'}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.activeOrderInfo}>
-            <View style={styles.activeOrderRow}>
-              <Ionicons name="location" size={16} color="#6B7280" />
-              <Text style={styles.activeOrderText}>
-                {currentPhase === 'pickup' ? activeOrder.pickupAddress : activeOrder.destinationAddress}
-              </Text>
-            </View>
-            
-            {routeDuration && (
-              <View style={styles.activeOrderRow}>
-                <Ionicons name="time" size={16} color="#6B7280" />
-                <Text style={styles.activeOrderText}>
-                  Tahmini Süre: {Math.round(routeDuration / 60)} dakika
-                </Text>
-              </View>
-            )}
-          </View>
-          
-          <View style={styles.activeOrderActions}>
-            {currentPhase === 'pickup' && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.pickupButton]}
-                onPress={() => updateOrderStatus(activeOrder.id, 'started')}
-              >
-                <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Yük Alındı</Text>
-              </TouchableOpacity>
-            )}
-            
-            {currentPhase === 'delivery' && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deliveryButton]}
-                onPress={() => updateOrderStatus(activeOrder.id, 'completed')}
-              >
-                <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>Teslim Edildi</Text>
-              </TouchableOpacity>
-            )}
-            
-            <TouchableOpacity
-              style={[styles.actionButton, styles.callButton]}
-              onPress={() => {
-                const phoneNumber = activeOrder.customerPhone?.replace(/[^0-9]/g, '');
-                if (phoneNumber) {
-                  Linking.openURL(`tel:${phoneNumber}`);
-                }
-              }}
-            >
-              <Ionicons name="call" size={20} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>Ara</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-      
-      {/* Customer List */}
-      <View style={styles.customerListContainer}>
-        <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>Müşteri İstekleri</Text>
-          <TouchableOpacity onPress={loadCustomers}>
-            <Ionicons name="refresh" size={24} color="#6B7280" />
-          </TouchableOpacity>
-        </View>
-        
-        <FlatList
-          data={(customers || []).filter(c => c.status === 'waiting' || c.status === 'accepted' || c.status === 'inspecting')}
-          renderItem={renderCustomerItem}
-          keyExtractor={(item) => item.id ? item.id.toString() : Math.random().toString()}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="car" size={48} color="#D1D5DB" />
-              <Text style={styles.emptyText}>Henüz müşteri isteği yok</Text>
-            </View>
-          }
+      {/* Online/Offline Status Toggle */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 60,
+          right: 20,
+          zIndex: 1000,
+          elevation: 5,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 4,
+        }}
+      >
+        <ToggleButton
+          isOn={isOnline}
+          onToggle={toggleOnlineStatus}
+          onColors={['#10B981', '#34D399']}
+          offColors={['#EF4444', '#F87171']}
+          size="medium"
         />
       </View>
 
-      {/* Hamburger Menu Modal */}
-       <Modal
-         visible={menuVisible}
-         animationType="slide"
-         transparent
-         onRequestClose={() => setMenuVisible(false)}
-       >
-         <View style={styles.modalOverlay}>
-           <View style={styles.menuContainer}>
-             <View style={styles.menuHeader}>
-               <View style={styles.profileSection}>
-                 <View style={styles.profileImage}>
-                   <Ionicons name="person" size={32} color="#FFD700" />
-                 </View>
-                 <View style={styles.profileInfo}>
-                   {driverInfo && (
-                      <Text style={styles.driverNameMenu}>
-                        {`${driverInfo.first_name} ${driverInfo.last_name}`}
-                      </Text>
-                    )}
-                   <View style={styles.ratingContainer}>
-                     <Ionicons name="star" size={16} color="#FCD34D" />
-                     <Text style={styles.ratingText}>4.8</Text>
-                     <Text style={styles.ratingCount}>(127 değerlendirme)</Text>
-                   </View>
-                   <View style={[styles.statusBadgeMenu, { backgroundColor: isOnline ? '#FFD700' : '#EF4444' }]}>
-                     <Text style={styles.statusBadgeText}>
-                       {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
-                     </Text>
-                   </View>
-                 </View>
-               </View>
-               <TouchableOpacity 
-                 style={styles.closeButton}
-                 onPress={() => setMenuVisible(false)}
-               >
-                 <Ionicons name="close" size={24} color="#000000" />
-               </TouchableOpacity>
-             </View>
+      {/* Map */}
+      <MapComponent
+        region={mapRegion}
+        driverLocation={currentLocation}
+        routeCoordinates={routeCoordinates}
+        activeOrder={activeOrder}
+        currentPhase={currentPhase || 'pickup'}
+        isNavigating={isNavigating}
+        onStartNavigation={() => startNavigation()}
+        onRegionChange={(region) => setMapRegion(region)}
+      />
 
-             <ScrollView style={styles.menuContent}>
-               {/* Sürücü Bilgileri */}
-               <TouchableOpacity 
-                 style={styles.menuItem}
-                 onPress={() => {
-                   setMenuVisible(false);
-                   router.push('/driver-profile');
-                 }}
-               >
-                 <Ionicons name="person-outline" size={24} color="#374151" />
-                 <View style={styles.menuItemContent}>
-                   <Text style={styles.menuItemTitle}>Sürücü Bilgileri</Text>
-                   <Text style={styles.menuItemSubtitle}>Profil bilgilerinizi görüntüleyin ve düzenleyin</Text>
-                 </View>
-                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-               </TouchableOpacity>
-               
-               {/* Sipariş Geçmişi */}
-               <TouchableOpacity 
-                 style={styles.menuItem}
-                 onPress={() => {
-                   setMenuVisible(false);
-                   router.push('/driver-order-history');
-                 }}
-               >
-                 <Ionicons name="time-outline" size={24} color="#374151" />
-                 <View style={styles.menuItemContent}>
-                   <Text style={styles.menuItemTitle}>Sipariş Geçmişi</Text>
-                   <Text style={styles.menuItemSubtitle}>Tamamladığınız siparişleri görüntüleyin</Text>
-                 </View>
-                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-               </TouchableOpacity>
-               
-               {/* Kazançlar */}
-               <TouchableOpacity 
-                 style={styles.menuItem}
-                 onPress={() => {
-                   setMenuVisible(false);
-                   router.push('/driver-earnings');
-                 }}
-               >
-                 <Ionicons name="wallet-outline" size={24} color="#374151" />
-                 <View style={styles.menuItemContent}>
-                   <Text style={styles.menuItemTitle}>Kazançlarım</Text>
-                   <Text style={styles.menuItemSubtitle}>Günlük ve aylık kazançlarınızı görüntüleyin</Text>
-                 </View>
-                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-               </TouchableOpacity>
-               
-               {/* Değerlendirmeler */}
-               <TouchableOpacity 
-                 style={styles.menuItem}
-                 onPress={() => {
-                   setMenuVisible(false);
-                   router.push('/driver-reviews');
-                 }}
-               >
-                 <Ionicons name="star-outline" size={24} color="#374151" />
-                 <View style={styles.menuItemContent}>
-                   <Text style={styles.menuItemTitle}>Değerlendirmeler</Text>
-                   <Text style={styles.menuItemSubtitle}>Müşteri değerlendirmelerinizi görüntüleyin</Text>
-                 </View>
-                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-               </TouchableOpacity>
-               
-               {/* Ayarlar */}
-               <TouchableOpacity 
-                 style={styles.menuItem}
-                 onPress={() => {
-                   setMenuVisible(false);
-                   router.push('/driver-settings');
-                 }}
-               >
-                 <Ionicons name="settings-outline" size={24} color="#374151" />
-                 <View style={styles.menuItemContent}>
-                   <Text style={styles.menuItemTitle}>Ayarlar</Text>
-                   <Text style={styles.menuItemSubtitle}>Uygulama ayarlarını düzenleyin</Text>
-                 </View>
-                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-               </TouchableOpacity>
-               
-               {/* Yardım ve Destek */}
-               <TouchableOpacity 
-                 style={styles.menuItem}
-                 onPress={() => {
-                   setMenuVisible(false);
-                   router.push('/settings');
-                 }}
-               >
-                 <Ionicons name="help-circle-outline" size={24} color="#374151" />
-                 <View style={styles.menuItemContent}>
-                   <Text style={styles.menuItemTitle}>Yardım ve Destek</Text>
-                   <Text style={styles.menuItemSubtitle}>SSS ve destek talebi oluşturun</Text>
-                 </View>
-                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-               </TouchableOpacity>
-               
-               <View style={styles.menuDivider} />
-               
-               {/* Çıkış Yap */}
-               <TouchableOpacity 
-                 style={styles.menuItem}
-                 onPress={() => {
-                   setMenuVisible(false);
-                   handleLogout();
-                 }}
-               >
-                 <Ionicons name="log-out-outline" size={24} color="#EF4444" />
-                 <View style={styles.menuItemContent}>
-                   <Text style={[styles.menuItemTitle, { color: '#EF4444' }]}>Çıkış Yap</Text>
-                   <Text style={styles.menuItemSubtitle}>Hesabınızdan çıkış yapın</Text>
-                 </View>
-               </TouchableOpacity>
-             </ScrollView>
-           </View>
-         </View>
-       </Modal>
+      {/* Aktif Sipariş Kartı */}
+      {activeOrder && currentPhase && (
+        <ActiveOrderCard
+          activeOrder={activeOrder}
+          currentPhase={currentPhase}
+          routeDuration={routeDuration || undefined}
+          onPickupComplete={handlePickupComplete}
+          onDeliveryComplete={handleDeliveryComplete}
+        />
+      )}
+
+      {/* Navigation Button */}
+      {activeOrder && (
+        <TouchableOpacity
+          style={styles.navigationButton}
+          onPress={() => startNavigation()}
+        >
+          <Ionicons name="navigate" size={20} color="#FFFFFF" />
+          <Text style={styles.navigationButtonText}>Navigasyon</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Customer List */}
+      <CustomerList 
+        customers={customers}
+        onInspectOrder={inspectOrder}
+        onUpdateOrderStatus={(orderId, status) => {
+          // Status güncelleme işlemi
+          console.log('Status update:', orderId, status);
+        }}
+        inspectingOrders={inspectingOrders}
+        maskPhoneNumber={(phone) => phone.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2')}
+        onRefresh={refreshCustomers}
+        isRefreshing={isRefreshing}
+      />
+
+
 
         {/* Sipariş İnceleme Modalı */}
         <Modal
@@ -1855,18 +1618,20 @@ export default function DriverDashboardScreen() {
     marginBottom: 8,
   },
   statusButton: {
-    width: 44,
-    height: 44,
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    borderRadius: 50,
+    width: 80,
+    height: 60,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 12,
     alignSelf: 'flex-start',
-    alignItems: 'center'
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusButtonText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textAlign: 'center',
   },
   menuButton: {
     width: 44,
@@ -1988,7 +1753,24 @@ export default function DriverDashboardScreen() {
      marginVertical: 8,
    },
   mapContainer: {
-    height: height * 0.4,
+    flex: 1,
+  },
+  hamburgerButton: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFD700',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   map: {
     flex: 1,
