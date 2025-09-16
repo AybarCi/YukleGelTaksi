@@ -1,4 +1,4 @@
-import DatabaseConnection from './config/database.ts';
+import DatabaseConnection from './config/database';
 
 async function truncateTables() {
   try {
@@ -16,7 +16,7 @@ async function truncateTables() {
 
     console.log('\n🎉 Tüm tablolar başarıyla temizlendi!');
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Hata oluştu:', error.message);
     console.error('Stack trace:', error.stack);
   } finally {

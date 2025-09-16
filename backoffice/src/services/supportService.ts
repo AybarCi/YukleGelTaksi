@@ -96,7 +96,7 @@ class SupportService {
   // Get all support tickets
   async getAllTickets(): Promise<SupportTicketsResponse> {
     try {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/support-tickets`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/support-tickets`, {
         headers: this.getAuthHeaders()
       });
       return response.data;
@@ -108,7 +108,7 @@ class SupportService {
   // Get specific support ticket by ID
   async getTicketById(ticketId: number): Promise<SingleTicketResponse> {
     try {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/support-tickets/${ticketId}`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`, {
         headers: this.getAuthHeaders()
       });
       return response.data;
@@ -121,10 +121,10 @@ class SupportService {
   async updateTicket(ticketId: number, updateData: UpdateTicketRequest): Promise<SingleTicketResponse> {
     try {
       console.log('🔥 supportService.updateTicket called with:', { ticketId, updateData });
-      console.log('🔥 Full URL:', `${API_CONFIG.BASE_URL}/api/admin/support-tickets/${ticketId}`);
+      console.log('🔥 Full URL:', `${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`);
       console.log('🔥 Headers:', this.getAuthHeaders());
       
-      const response = await axios.put(`${API_CONFIG.BASE_URL}/api/admin/support-tickets/${ticketId}`, updateData, {
+      const response = await axios.put(`${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`, updateData, {
         headers: this.getAuthHeaders()
       });
       
@@ -159,7 +159,7 @@ class SupportService {
   // Bulk operations
   async bulkUpdate(bulkData: BulkUpdateRequest): Promise<BulkUpdateResponse> {
     try {
-      const response = await axios.post(`${API_CONFIG.BASE_URL}/api/admin/support-tickets/bulk`, bulkData, {
+      const response = await axios.post(`${API_CONFIG.BASE_URL}/admin/support-tickets/bulk`, bulkData, {
         headers: this.getAuthHeaders()
       });
       return response.data;
@@ -206,7 +206,7 @@ class SupportService {
   // Delete ticket (optional)
   async deleteTicket(ticketId: number): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await axios.delete(`${API_CONFIG.BASE_URL}/api/admin/support-tickets/${ticketId}`, {
+      const response = await axios.delete(`${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`, {
         headers: this.getAuthHeaders()
       });
       return response.data;
@@ -220,7 +220,7 @@ class SupportService {
   // Get all customer support tickets
   async getAllCustomerTickets(): Promise<CustomerSupportTicketsResponse> {
     try {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/customer-support-tickets`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`, {
         headers: this.getAuthHeaders()
       });
       return response.data;
@@ -232,7 +232,7 @@ class SupportService {
   // Get specific customer support ticket by ID
   async getCustomerTicketById(ticketId: number): Promise<SingleCustomerTicketResponse> {
     try {
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/customer-support-tickets/${ticketId}`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`, {
         headers: this.getAuthHeaders()
       });
       return response.data;
@@ -245,10 +245,10 @@ class SupportService {
   async updateCustomerTicket(ticketId: number, updateData: UpdateTicketRequest): Promise<SingleCustomerTicketResponse> {
     try {
       console.log('🔥 supportService.updateCustomerTicket called with:', { ticketId, updateData });
-      console.log('🔥 Full URL:', `${API_CONFIG.BASE_URL}/api/admin/customer-support-tickets/${ticketId}`);
+      console.log('🔥 Full URL:', `${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`);
       console.log('🔥 Headers:', this.getAuthHeaders());
       
-      const response = await axios.put(`${API_CONFIG.BASE_URL}/api/admin/customer-support-tickets/${ticketId}`, updateData, {
+      const response = await axios.put(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`, updateData, {
         headers: this.getAuthHeaders()
       });
       
@@ -265,7 +265,7 @@ class SupportService {
   // Delete customer support ticket
   async deleteCustomerTicket(ticketId: number): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await axios.delete(`${API_CONFIG.BASE_URL}/api/admin/customer-support-tickets/${ticketId}`, {
+      const response = await axios.delete(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`, {
         headers: this.getAuthHeaders()
       });
       return response.data;

@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { SocketEvents, Location, UserType } from '../types';
+import { API_CONFIG } from '../config/environment';
 
 class SocketService {
   private socket: Socket | null = null;
@@ -7,7 +8,7 @@ class SocketService {
   private userType: UserType;
   private userId: string | null = null;
 
-  constructor(serverUrl: string = 'http://192.168.1.134:3001', userType: UserType) {
+  constructor(serverUrl: string = API_CONFIG.SOCKET_URL, userType: UserType) {
     this.serverUrl = serverUrl;
     this.userType = userType;
   }

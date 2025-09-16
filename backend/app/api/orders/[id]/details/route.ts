@@ -17,6 +17,7 @@ interface OrderDetailsResponse {
     customer_last_name: string;
     customer_phone: string;
     distance_km?: number;
+    vehicle_type_id?: number;
     created_at: string;
   };
   error?: string;
@@ -61,6 +62,7 @@ export async function GET(
           o.estimated_price,
           o.cargo_photo_urls,
           o.distance_km,
+          o.vehicle_type_id,
           o.created_at,
           u.first_name,
           u.last_name,
@@ -104,6 +106,7 @@ export async function GET(
         customer_last_name: order.last_name,
         customer_phone: order.phone_number,
         distance_km: order.distance_km,
+        vehicle_type_id: order.vehicle_type_id,
         created_at: order.created_at
       }
     };

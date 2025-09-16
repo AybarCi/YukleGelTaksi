@@ -1,21 +1,14 @@
-// Merkezi API konfigürasyonu
-export const API_CONFIG = {
-  BASE_URL: 'http://192.168.1.134:3000',
-  FILES_URL: 'http://192.168.1.134:3000/api/files',
-  GOOGLE_PLACES_API_KEY_IOS: 'AIzaSyCrQmf3XUB_QRY4jkxQqIbRUbYAVkhyHHA',
-  GOOGLE_PLACES_API_KEY_ANDROID: 'AIzaSyBDEJcd7kMGnzjUh4fDaP5ZFCct_9w0Pqw',
-  GOOGLE_MAPS_API_KEY: 'AIzaSyCrQmf3XUB_QRY4jkxQqIbRUbYAVkhyHHA' // Directions API için
-};
+// Import shared merkezi konfigürasyon
+import { API_CONFIG as SHARED_API_CONFIG } from '../../shared/src/config/environment';
 
-// Environment'a göre URL'leri ayarla
-if (process.env.NODE_ENV === 'development') {
-  // Development için local IP
-  API_CONFIG.BASE_URL = 'http://192.168.1.134:3000';
-  API_CONFIG.FILES_URL = 'http://192.168.1.134:3000/api/files';
-} else if (process.env.NODE_ENV === 'production') {
-  // Production için domain
-  API_CONFIG.BASE_URL = 'https://api.yuklegeltaksi.com';
-  API_CONFIG.FILES_URL = 'https://api.yuklegeltaksi.com/api/files';
-}
+// Customer App API konfigürasyonu - Shared config'den alınıyor
+export const API_CONFIG = {
+  get BASE_URL() { return SHARED_API_CONFIG.BASE_URL; },
+  get FILES_URL() { return SHARED_API_CONFIG.FILES_URL; },
+  get SOCKET_URL() { return SHARED_API_CONFIG.SOCKET_URL; },
+  get GOOGLE_PLACES_API_KEY_IOS() { return SHARED_API_CONFIG.GOOGLE_PLACES_API_KEY_IOS; },
+  get GOOGLE_PLACES_API_KEY_ANDROID() { return SHARED_API_CONFIG.GOOGLE_PLACES_API_KEY_ANDROID; },
+  get GOOGLE_MAPS_API_KEY() { return SHARED_API_CONFIG.GOOGLE_MAPS_API_KEY; },
+};
 
 export default API_CONFIG;

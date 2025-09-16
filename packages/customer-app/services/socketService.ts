@@ -72,8 +72,8 @@ class SocketService {
         this.socket = null;
       }
 
-      // API config'den base URL'i al ve socket için düzenle
-      const serverUrl = API_CONFIG.BASE_URL;
+      // Socket için doğru URL'i kullan
+      const serverUrl = API_CONFIG.SOCKET_URL;
       
       this.socket = io(serverUrl, {
         auth: {

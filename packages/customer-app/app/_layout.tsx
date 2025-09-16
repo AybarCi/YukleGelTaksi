@@ -23,6 +23,7 @@ export default function RootLayout() {
               <Stack.Screen name="phone-auth" />
               <Stack.Screen name="verify-code" />
               <Stack.Screen name="home" />
+              <Stack.Screen name="order-detail" />
               <Stack.Screen name="driver-dashboard" />
             </Stack>
             <StatusBar style="auto" />

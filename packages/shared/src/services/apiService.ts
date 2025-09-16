@@ -1,10 +1,11 @@
 import { ApiResponse, User, Driver, Customer, Ride, Location } from '../types';
+import { API_CONFIG } from '../config/environment';
 
 class ApiService {
   private baseUrl: string;
   private authToken: string | null = null;
 
-  constructor(baseUrl: string = 'http://192.168.1.134:3001/api') {
+  constructor(baseUrl: string = API_CONFIG.BASE_URL) {
     this.baseUrl = baseUrl;
   }
 

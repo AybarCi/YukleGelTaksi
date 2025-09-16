@@ -207,7 +207,8 @@ export const styles = StyleSheet.create({
   ongoingOrderCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 0,
-    padding: 16,
+    paddingHorizontal: 0,
+    paddingVertical: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -216,12 +217,15 @@ export const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#E5E7EB',
+    marginHorizontal: 0,
+    width: '100%',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    paddingHorizontal: 16,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -245,6 +249,7 @@ export const styles = StyleSheet.create({
   },
   cardContent: {
     marginBottom: 16,
+    paddingHorizontal: 16,
   },
   orderInfo: {
     flexDirection: 'row',
@@ -276,6 +281,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 12,
+    paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
   },

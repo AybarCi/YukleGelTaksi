@@ -14,9 +14,10 @@ interface OrderData {
   distance: number;
   estimatedTime: number;
   notes?: string;
-  vehicleTypeId?: string;
+  vehicleTypeId?: string | number;
   laborRequired?: boolean;
   laborCount?: number;
+  weight_kg?: number;
   cargoImages: string[];
   status?: string;
   estimatedPrice?: number;
@@ -73,9 +74,10 @@ export const createOrder = createAsyncThunk(
       formData.append('distance', orderData.distance.toString());
       formData.append('estimatedTime', orderData.estimatedTime.toString());
       formData.append('notes', orderData.notes || '');
-      formData.append('vehicleTypeId', orderData.vehicleTypeId?.toString() || '');
+      formData.append('vehicle_type_id', orderData.vehicleTypeId?.toString() || '');
       formData.append('laborRequired', 'true');
       formData.append('laborCount', '1');
+      formData.append('weight_kg', orderData.weight_kg?.toString() || '0');
 
       // Cargo images'ları FormData'ya ekle
       if (orderData.cargoImages.length > 0) {

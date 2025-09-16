@@ -159,13 +159,13 @@ const Dashboard: React.FC = () => {
 
       // Fetch all data in parallel
       const [usersResponse, driversResponse, ordersResponse] = await Promise.all([
-        axios.get(`${API_BASE_URL}/api/users`, {
+        axios.get(`${API_BASE_URL}/users`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        axios.get(`${API_BASE_URL}/api/drivers`, {
+        axios.get(`${API_BASE_URL}/drivers`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        axios.get(`${API_BASE_URL}/api/orders`, {
+        axios.get(`${API_BASE_URL}/orders`, {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);

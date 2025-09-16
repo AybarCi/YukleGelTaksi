@@ -36,7 +36,7 @@ import { useAuth } from '../contexts/AuthContext';
 import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
 import { useAppDispatch, useAppSelector } from '../store';
-import { fetchActiveOrders, fetchCancellationFee, createOrder } from '../store/slices/orderSlice';
+import { fetchActiveOrders, fetchCancellationFee, createOrder, setCurrentOrder as setReduxCurrentOrder } from '../store/slices/orderSlice';
 import { loadVehicleTypes } from '../store/slices/vehicleSlice';
 import { checkDriverAvailability } from '../store/slices/driverSlice';
 import YukKonumuInput, { YukKonumuInputRef } from '../components/YukKonumuInput';
@@ -47,7 +47,8 @@ import FreeCancelModal from '../components/FreeCancelModal';
 import PendingOrderModal from '../components/PendingOrderModal';
 import ImagePickerModal from '../components/ImagePickerModal';
 import VehicleTypeModal from '../components/VehicleTypeModal';
-import OrderCard from '../components/OrderCard';
+import ActiveOrderCard from '../components/ActiveOrderCard';
+import NewOrderForm from '../components/NewOrderForm';
 import { DriverMarker, PickupMarker, DestinationMarker } from './components/MapMarkers';
 import { calculateZoomLevel, animateToRegionWithOffset, animateToShowBothPoints } from './utils/mapUtils';
 import { useImagePicker } from './utils/imageUtils';
@@ -80,6 +81,39 @@ function HomeScreen() {
   const { vehicleTypes: reduxVehicleTypes, selectedVehicleType: reduxSelectedVehicleType, loading: vehicleLoading } = useAppSelector(state => state.vehicle);
   const { availability: driverAvailability, loading: driverLoading } = useAppSelector(state => state.driver);
   
+  // Debug: reduxCurrentOrder değerini izle
+  useEffect(() => {
+    console.log('🔍 DEBUG - reduxCurrentOrder değişti:', {
+      reduxCurrentOrder,
+      status: reduxCurrentOrder?.status,
+      id: reduxCurrentOrder?.id,
+      orderLoading,
+      orderError
+    });
+    
+    // Aktif sipariş varsa ve koordinatları mevcutsa rota çiz
+    if (reduxCurrentOrder && 
+        reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude && 
+        reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude) {
+      
+      const origin = {
+        latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+        longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+      };
+      
+      const destination = {
+        latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+        longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+      };
+      
+      // Aktif sipariş için gerçek yol rotası çiz
+      getActiveOrderDirectionsRoute(origin, destination);
+    } else {
+      // Aktif sipariş yoksa rota koordinatlarını temizle
+      setActiveOrderRouteCoordinates([]);
+    }
+  }, [reduxCurrentOrder, orderLoading, orderError]);
+
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -114,6 +148,27 @@ function HomeScreen() {
   const [cargoImages, setCargoImages] = useState<string[]>([]);
   const [distance, setDistance] = useState<number | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
+  const [activeOrderRouteCoordinates, setActiveOrderRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
+  
+  // Aktif sipariş rotası çizildikten sonra haritayı rotaya odakla
+  useEffect(() => {
+    if (activeOrderRouteCoordinates.length > 0 && reduxCurrentOrder && mapRef.current) {
+      console.log('🗺️ Aktif sipariş rotası çizildi, haritayı rotaya odaklıyorum');
+      
+      const origin = {
+        latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+        longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+      };
+      
+      const destination = {
+        latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+        longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+      };
+      
+      // Haritayı rotaya odakla
+      animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
+    }
+  }, [activeOrderRouteCoordinates, reduxCurrentOrder, animateToShowBothPoints]);
   const [routeDuration, setRouteDuration] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -538,12 +593,69 @@ function HomeScreen() {
         console.log('Destination koordinatları eksik!');
       }
       
+      // Redux store'u güncelle - backend formatını Redux formatına çevir
+      console.log('Redux store güncelleniyor - setCurrentOrder dispatch ediliyor');
+      try {
+        const cargoImages = order.cargo_photo_urls ? 
+          (typeof order.cargo_photo_urls === 'string' ? JSON.parse(order.cargo_photo_urls) : order.cargo_photo_urls) 
+          : [];
+        
+        const reduxOrder = {
+          id: order.id?.toString(),
+          pickupAddress: order.pickup_address || '',
+          pickupLatitude: order.pickup_latitude || 0,
+          pickupLongitude: order.pickup_longitude || 0,
+          destinationAddress: order.destination_address || '',
+          destinationLatitude: order.destination_latitude || 0,
+          destinationLongitude: order.destination_longitude || 0,
+          distance: order.distance_km || 0,
+          estimatedTime: 0, // Backend'de yok, default değer
+          notes: order.customer_notes || '',
+          vehicleTypeId: order.vehicle_type_id?.toString(),
+          laborRequired: (order.labor_count || 0) > 0,
+          laborCount: order.labor_count || 0,
+          weight_kg: order.weight_kg || 0,
+          cargoImages: cargoImages,
+          status: order.status,
+          estimatedPrice: order.total_price || 0,
+          createdAt: order.created_at,
+          driver_id: order.driver?.id?.toString(),
+          driver_name: order.driver?.name,
+          driver_latitude: order.driver?.latitude,
+          driver_longitude: order.driver?.longitude,
+          driver_heading: order.driver?.heading,
+        };
+        
+        console.log('Redux order created:', reduxOrder);
+        dispatch(setReduxCurrentOrder(reduxOrder));
+      } catch (parseError) {
+        console.error('Redux order format dönüşüm hatası:', parseError);
+        // Hata durumunda en azından temel bilgileri set et
+        const basicOrder = {
+          id: order.id?.toString(),
+          pickupAddress: order.pickup_address || '',
+          pickupLatitude: order.pickup_latitude || 0,
+          pickupLongitude: order.pickup_longitude || 0,
+          destinationAddress: order.destination_address || '',
+          destinationLatitude: order.destination_latitude || 0,
+          destinationLongitude: order.destination_longitude || 0,
+          distance: order.distance_km || 0,
+          estimatedTime: 0,
+          notes: order.customer_notes || '',
+          cargoImages: [],
+          status: order.status,
+          estimatedPrice: order.total_price || 0,
+          createdAt: order.created_at,
+        };
+        dispatch(setReduxCurrentOrder(basicOrder));
+      }
+      
       console.log('=== fillOrderData TAMAMLANDI ===');
     } catch (error) {
       console.error('Sipariş verilerini doldurma hatası:', error);
       showModal('Hata', 'Sipariş verileri yüklenirken bir hata oluştu.', 'error');
     }
-  }, [reduxVehicleTypes, setPickupLocation, setDestinationLocation, setNotes, setPickupCoords, setDestinationCoords, setCargoImages, setSelectedVehicleType, showModal]);
+  }, [reduxVehicleTypes, setPickupLocation, setDestinationLocation, setNotes, setPickupCoords, setDestinationCoords, setCargoImages, setSelectedVehicleType, showModal, dispatch]);
 
   const checkExistingOrder = useCallback(async () => {
     try {
@@ -1098,11 +1210,7 @@ function HomeScreen() {
       showModal('Hata', data.message || 'Sipariş iptal edilirken bir hata oluştu!', 'error');
     });
 
-    // Backend'den gelen eksik eventleri ekle
-    socketService.on('order_created', (data: any) => {
-      console.log('🆕 MÜŞTERI: Sipariş oluşturuldu:', data);
-      showModal('Sipariş Oluşturuldu', 'Siparişiniz başarıyla oluşturuldu ve sürücülere gönderildi.', 'success');
-    });
+    // order_created eventi kaldırıldı - müşteri zaten kendi siparişini oluşturuyor
 
     socketService.on('order_taken', (data: any) => {
       console.log('📦 MÜŞTERI: Sipariş başka sürücü tarafından alındı:', data);
@@ -1413,6 +1521,78 @@ function HomeScreen() {
       setRouteDuration(null);
     }
   }, [calculateDistance]);
+
+  // Aktif sipariş için Google Directions API ile gerçek araç yolu rotası alma
+  const getActiveOrderDirectionsRoute = useCallback(async (origin: {latitude: number, longitude: number}, destination: {latitude: number, longitude: number}) => {
+    try {
+      const GOOGLE_MAPS_API_KEY = API_CONFIG.GOOGLE_MAPS_API_KEY;
+      
+      const originStr = `${origin.latitude},${origin.longitude}`;
+      const destinationStr = `${destination.latitude},${destination.longitude}`;
+      
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&key=${GOOGLE_MAPS_API_KEY}&mode=driving&departure_time=now&traffic_model=best_guess`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status === 'OK' && data.routes.length > 0) {
+        const route = data.routes[0];
+        
+        // Polyline decode etme fonksiyonu
+        const decodePolyline = (encoded: string) => {
+          const points = [];
+          let index = 0;
+          const len = encoded.length;
+          let lat = 0;
+          let lng = 0;
+          
+          while (index < len) {
+            let b;
+            let shift = 0;
+            let result = 0;
+            do {
+              b = encoded.charCodeAt(index++) - 63;
+              result |= (b & 0x1f) << shift;
+              shift += 5;
+            } while (b >= 0x20);
+            const dlat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+            lat += dlat;
+            
+            shift = 0;
+            result = 0;
+            do {
+              b = encoded.charCodeAt(index++) - 63;
+              result |= (b & 0x1f) << shift;
+              shift += 5;
+            } while (b >= 0x20);
+            const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+            lng += dlng;
+            
+            points.push({
+              latitude: lat / 1e5,
+              longitude: lng / 1e5,
+            });
+          }
+          return points;
+        };
+        
+        const coordinates = decodePolyline(route.overview_polyline.points);
+        setActiveOrderRouteCoordinates(coordinates);
+        
+        return coordinates;
+      } else {
+        console.error('Active Order Directions API error:', data.status);
+        // Hata durumunda kuş bakışı rotaya geri dön
+        setActiveOrderRouteCoordinates([origin, destination]);
+        return [origin, destination];
+      }
+    } catch (error) {
+      console.error('Active Order Directions API fetch error:', error);
+      // Hata durumunda kuş bakışı rotaya geri dön
+      setActiveOrderRouteCoordinates([origin, destination]);
+      return [origin, destination];
+    }
+  }, []);
 
 
 
@@ -1786,21 +1966,47 @@ function HomeScreen() {
                    <DriverMarker key={driver.id} driver={driver} />
                  ))}
                  
-                 {pickupCoords && (
+                 {/* Aktif sipariş varsa onun marker'larını göster */}
+                 {reduxCurrentOrder && reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude && (
+                   <PickupMarker coords={{
+                     latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+                     longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+                   }} />
+                 )}
+                 
+                 {reduxCurrentOrder && reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude && (
+                   <DestinationMarker coords={{
+                     latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+                     longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+                   }} />
+                 )}
+                 
+                 {/* Yeni sipariş oluştururken marker'lar */}
+                 {!reduxCurrentOrder && pickupCoords && (
                    <>
                      {console.log('Rendering pickup marker with coords:', pickupCoords)}
                      <PickupMarker coords={pickupCoords} />
                    </>
                  )}
                  
-                 {destinationCoords && (
+                 {!reduxCurrentOrder && destinationCoords && (
                    <>
                      {console.log('Rendering destination marker with coords:', destinationCoords)}
                      <DestinationMarker coords={destinationCoords} />
                    </>
                  )}
                  
-                 {routeCoordinates.length > 0 && (
+                 {/* Aktif sipariş rotası - Google Directions API ile gerçek yol rotası */}
+                 {reduxCurrentOrder && activeOrderRouteCoordinates.length > 0 && (
+                   <Polyline
+                     coordinates={activeOrderRouteCoordinates}
+                     strokeColor="#10B981"
+                     strokeWidth={6}
+                   />
+                 )}
+                 
+                 {/* Yeni sipariş rotası */}
+                 {!reduxCurrentOrder && routeCoordinates.length > 0 && (
                    <Polyline
                      coordinates={routeCoordinates}
                      strokeColor="#FFD700"
@@ -1863,274 +2069,51 @@ function HomeScreen() {
               )}
             </View>
 
-            {/* Devam eden sipariş varsa güzel kart göster - sadece ilk yüklemede */}
-            {currentOrder && !pickupCoords && !destinationCoords ? (
-              <OrderCard
-                currentOrder={currentOrder}
-                onPress={() => {
-                  if (currentOrder) {
-                    // fillOrderData fonksiyonunu kullanarak form alanlarını doldur
-                    fillOrderData(currentOrder);
-                    
-                    // Harita üzerinde rota çiz
-                    if (currentOrder.pickup_latitude && currentOrder.pickup_longitude && 
-                        currentOrder.destination_latitude && currentOrder.destination_longitude) {
-                      getDirectionsRoute(
-                        {
-                          latitude: parseFloat(currentOrder.pickup_latitude),
-                          longitude: parseFloat(currentOrder.pickup_longitude)
-                        },
-                        {
-                          latitude: parseFloat(currentOrder.destination_latitude),
-                          longitude: parseFloat(currentOrder.destination_longitude)
-                        }
-                      );
-                    }
-                  }
-                }}
-                styles={styles}
-              />
-            ) : (
-                <>
-                  <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Araç Tipi</Text>
-              <TouchableOpacity
-                style={[
-                  {
-                    borderWidth: 1,
-                    borderColor: '#D1D5DB',
-                    borderRadius: 8,
-                    padding: 12,
-                    backgroundColor: isFormEditable() ? '#FFFFFF' : '#F3F4F6',
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  },
-                  !isFormEditable() && { borderColor: '#E5E7EB' }
-                ]}
-                onPress={() => {
-                  if (isFormEditable()) {
-                    setShowVehicleTypeModal(true);
-                  }
-                }}
-                disabled={!isFormEditable()}
-              >
-                <Text style={[
-                  { fontSize: 16 },
-                  selectedVehicleType ? { color: '#1F2937' } : { color: '#9CA3AF' },
-                  !isFormEditable() && { color: '#9CA3AF' }
-                ]}>
-                  {selectedVehicleType ? selectedVehicleType.name : 'Araç tipi seçin'}
-                </Text>
-                <Ionicons 
-                  name="chevron-down" 
-                  size={20} 
-                  color={isFormEditable() ? '#6B7280' : '#9CA3AF'} 
-                />
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ marginBottom: 20 }}>
-              <YukKonumuInput
-                  ref={pickupLocationRef}
-                  onLocationSelect={handlePickupLocationSelect}
-                  onFocus={() => setActiveInputIndex(1)}
-                  onCurrentLocationPress={handlePickupCurrentLocation}
-                  editable={isFormEditable()}
-               />
-            </View>
-
-            <View style={{ marginBottom: 20 }}>
-              <VarisNoktasiInput
-                  ref={destinationLocationRef}
-                  onLocationSelect={handleDestinationLocationSelect}
-                  onFocus={() => setActiveInputIndex(2)}
-                  onCurrentLocationPress={handleDestinationCurrentLocation}
-                  editable={isFormEditable()}
-               />
-            </View>
-
-            {distance && (
-              <View style={styles.distanceInfo}>
-                <Ionicons name="location-outline" size={20} color="#FFD700" />
-                <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: '600', color: '#1F2937' }}>
-                  Mesafe: {distance.toFixed(1)} km
-                </Text>
-                <Text style={{ marginLeft: 8, fontSize: 14, color: '#6B7280' }}>
-                  {priceLoading ? (
-                    '(Ücret hesaplanıyor...)'
-                  ) : estimatedPrice ? (
-                    `(Tahmini Ücret: ₺${estimatedPrice.toFixed(2)})`
-                  ) : (
-                    '(Ücret hesaplanamadı)'
-                  )}
-                </Text>
-              </View>
-            )}
-
-            <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Yük Fotoğrafı *</Text>
-              {cargoImages.length > 0 ? (
-                <View
-                  style={{
-                    borderWidth: 2,
-                    borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
-                    borderRadius: 8,
-                    backgroundColor: isFormEditable() ? '#F9FAFB' : '#F3F4F6',
-                    opacity: isFormEditable() ? 1 : 0.6,
-                    minHeight: 130,
-                    maxHeight: 130
+            {/* Devam eden sipariş varsa güzel kart göster */}
+            {(() => {
+              console.log('🏠 Home Debug - Current Order Check:', {
+                currentOrder: currentOrder,
+                pickupCoords: pickupCoords,
+                destinationCoords: destinationCoords,
+                shouldShowOrderCard: currentOrder && currentOrder.status !== 'completed' && currentOrder.status !== 'cancelled'
+              });
+              return null;
+            })()}
+            {reduxCurrentOrder && reduxCurrentOrder.status !== 'completed' && reduxCurrentOrder.status !== 'cancelled' ? (
+              <>
+                {(() => {
+                  console.log('Home Debug - Rendering OrderCard:', {
+                    currentOrder: reduxCurrentOrder,
+                    vehicleTypeId: reduxCurrentOrder?.vehicleTypeId,
+                    reduxVehicleTypes: reduxVehicleTypes
+                  });
+                  return null;
+                })()}
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('ActiveOrderCard tıklandı - sipariş detay sayfasına yönlendiriliyor');
+                    router.push('/order-detail');
                   }}
                 >
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={true}
-                    style={{ flex: 1 }}
-                    contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 10, paddingVertical: 15 }}
-                    scrollEventThrottle={16}
-                    decelerationRate="fast"
-                    bounces={false}
-                  >
-                    {cargoImages.map((imageUri, index) => (
-                       <View key={index} style={{ marginRight: 8, position: 'relative' }}>
-                         <Image source={{ uri: imageUri }} style={{ width: 90, height: 90, borderRadius: 8 }} />
-                         {isFormEditable() && (
-                           <TouchableOpacity
-                             style={{
-                               position: 'absolute',
-                               top: -5,
-                               right: -5,
-                               backgroundColor: '#EF4444',
-                               borderRadius: 12,
-                               width: 24,
-                               height: 24,
-                               alignItems: 'center',
-                               justifyContent: 'center',
-                             }}
-                             onPress={(e) => {
-                               e.stopPropagation();
-                               setCargoImages(prev => prev.filter((_, i) => i !== index));
-                             }}
-                           >
-                             <Ionicons name="close" size={16} color="white" />
-                           </TouchableOpacity>
-                         )}
-                       </View>
-                     ))}
-                     {isFormEditable() && (
-                       <TouchableOpacity
-                         style={{
-                           width: 90,
-                           height: 90,
-                           borderWidth: 2,
-                           borderColor: '#D1D5DB',
-                           borderStyle: 'dashed',
-                           borderRadius: 8,
-                           alignItems: 'center',
-                           justifyContent: 'center',
-                           backgroundColor: '#FFFFFF',
-                           marginLeft: 8,
-                         }}
-                         onPress={handleImagePicker}
-                       >
-                         <Ionicons name="add" size={24} color="#9CA3AF" />
-                       </TouchableOpacity>
-                     )}
-                   </ScrollView>
-                </View>
-              ) : (
-                isFormEditable() && (
-                  <TouchableOpacity
-                    style={{
-                      borderWidth: 2,
-                      borderColor: '#D1D5DB',
-                      borderStyle: 'dashed',
-                      borderRadius: 8,
-                      padding: 20,
-                      alignItems: 'center',
-                      backgroundColor: '#F9FAFB',
-                      minHeight: 80,
-                    }}
-                    onPress={handleImagePicker}
-                  >
-                    <Ionicons name="camera" size={32} color="#9CA3AF" />
-                    <Text style={{ marginTop: 8, fontSize: 14, color: '#6B7280' }}>Yük fotoğrafı ekle</Text>
-                  </TouchableOpacity>
-                )
-              )}
-            </View>
-
-
-
-            <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1F2937' }}>Notlar (Opsiyonel)</Text>
-              <TextInput
-                style={{
-                  borderWidth: 1,
-                  borderColor: isFormEditable() ? '#D1D5DB' : '#E5E7EB',
-                  borderRadius: 8,
-                  padding: 12,
-                  fontSize: 16,
-                  backgroundColor: isFormEditable() ? '#FFFFFF' : '#F3F4F6',
-                  height: 80,
-                  textAlignVertical: 'top',
-                  color: isFormEditable() ? '#1F2937' : '#9CA3AF'
+                  <ActiveOrderCard
+                    order={reduxCurrentOrder}
+                    vehicleTypes={reduxVehicleTypes}
+                  />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <NewOrderForm
+                onOrderCreated={() => {
+                  // Sipariş oluşturulduktan sonra aktif siparişleri yeniden yükle
+                  dispatch(fetchActiveOrders());
                 }}
-                placeholder="Yük hakkında özel notlarınız..."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                editable={isFormEditable()}
+                userLocation={userLocation}
+                distance={distance || undefined}
+                estimatedPrice={estimatedPrice || undefined}
+                priceLoading={priceLoading}
+                token={token || undefined}
+                refreshAuthToken={refreshAuthToken}
               />
-            </View>
-
-
-
-            {/* Sipariş Oluştur Butonu - Sadece aktif sipariş yoksa göster */}
-            {!currentOrder && (
-              <TouchableOpacity
-                style={[
-                  styles.createOrderButton,
-                  (!pickupCoords || !destinationCoords || cargoImages.length === 0) && { opacity: 0.5 }
-                ]}
-                onPress={handleCreateOrder}
-                disabled={!pickupCoords || !destinationCoords || cargoImages.length === 0}
-              >
-                <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' }}>Sipariş Oluştur</Text>
-              </TouchableOpacity>
-            )}
-
-
-
-            {/* Sipariş İptal Butonu - Sadece aktif sipariş varsa göster */}
-            {currentOrder && ['pending', 'accepted', 'started', 'inspecting'].includes(currentOrder.status) && (
-              <TouchableOpacity
-                style={{
-                  backgroundColor: '#F97316',
-                  borderRadius: 12,
-                  padding: 16,
-                  alignItems: 'center',
-                  marginTop: 12,
-                  borderWidth: 1,
-                  borderColor: '#EA580C',
-                  shadowColor: '#F97316',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.2,
-                  shadowRadius: 4,
-                  elevation: 3
-                }}
-                onPress={initiateCancelOrder}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="close-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                  <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Siparişi İptal Et</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            
-            <View style={{ height: 100 }} />
-                </>
             )}
           </ScrollView>
         </KeyboardAvoidingView>

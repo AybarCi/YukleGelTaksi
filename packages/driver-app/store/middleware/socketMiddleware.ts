@@ -1,7 +1,9 @@
 import { Middleware, AnyAction } from '@reduxjs/toolkit';
-import { io, Socket } from 'socket.io-client';
 import { RootState } from '../index';
-import { showModal } from '../slices/uiSlice';
+import { setNetworkStatus, showModal } from '../slices/uiSlice';
+import { logout } from '../slices/authSlice';
+import { API_CONFIG } from '../../config/api';
+import { io, Socket } from 'socket.io-client';
 
 class SocketManager {
   private socket: Socket | null = null;
@@ -19,7 +21,7 @@ class SocketManager {
       return;
     }
 
-    this.socket = io(process.env.EXPO_PUBLIC_SOCKET_URL || 'ws://192.168.1.134:3001', {
+    this.socket = io(API_CONFIG.SOCKET_URL, {
       auth: {
         token,
         userType: 'driver'

@@ -74,7 +74,7 @@ const SystemSettingsPage: React.FC = () => {
           return;
         }
 
-        const response = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/system-settings`, {
+        const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/system-settings`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -159,7 +159,7 @@ const SystemSettingsPage: React.FC = () => {
         }
       ];
 
-      const response = await axios.put(`${API_CONFIG.BASE_URL}/api/admin/system-settings`, {
+      const response = await axios.put(`${API_CONFIG.BASE_URL}/admin/system-settings`, {
         settings: settingsToUpdate
       }, {
         headers: {

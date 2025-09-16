@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import DatabaseConnection from '../../../../config/database';
 import { authenticateToken } from '../../../../middleware/auth';
 import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import SocketServer from '../../../../socket/socketServer';
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.log('=== BACKEND REQUEST LOG ===');
     console.log('User ID:', authResult.user.id);
     console.log('FormData entries:');
-    for (const [key, value] of formData.entries()) {
+    for (const [key, value] of (formData as any).entries()) {
       if (value instanceof File) {
         console.log(`${key}: File (name: ${value.name}, size: ${value.size}, type: ${value.type})`);
       } else {
@@ -61,31 +61,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.log('==============================');
     
     // Extract form fields
-    const pickupAddress = formData.get('pickupAddress') as string;
-    const pickupLatitude = parseFloat(formData.get('pickupLatitude') as string);
-    const pickupLongitude = parseFloat(formData.get('pickupLongitude') as string);
-    const destinationAddress = formData.get('destinationAddress') as string;
-    const destinationLatitude = parseFloat(formData.get('destinationLatitude') as string);
-    const destinationLongitude = parseFloat(formData.get('destinationLongitude') as string);
-    const distance = parseFloat(formData.get('distance') as string);
-    const estimatedTime = parseInt(formData.get('estimatedTime') as string);
-    const notes = formData.get('notes') as string || '';
-    const vehicle_type_id = parseInt(formData.get('vehicle_type_id') as string);
-    const laborRequired = formData.get('laborRequired') === 'true';
-    const laborCount = parseInt(formData.get('laborCount') as string) || 0;
+    const pickupAddress = (formData as any).get('pickupAddress')?.toString() || '';
+    const pickupLatitude = parseFloat((formData as any).get('pickupLatitude')?.toString() || '0');
+    const pickupLongitude = parseFloat((formData as any).get('pickupLongitude')?.toString() || '0');
+    const destinationAddress = (formData as any).get('destinationAddress')?.toString() || '';
+    const destinationLatitude = parseFloat((formData as any).get('destinationLatitude')?.toString() || '0');
+    const destinationLongitude = parseFloat((formData as any).get('destinationLongitude')?.toString() || '0');
+    const distance = parseFloat((formData as any).get('distance')?.toString() || '0');
+    const estimatedTime = parseInt((formData as any).get('estimatedTime')?.toString() || '0');
+    const notes = (formData as any).get('notes')?.toString() || '';
+    const vehicle_type_id = parseInt((formData as any).get('vehicle_type_id')?.toString() || '0');
+    const weight_kg = parseFloat((formData as any).get('weight_kg')?.toString() || '0');
+    const laborRequired = ((formData as any).get('laborRequired') as FormDataEntryValue)?.toString() === 'true';
+    const laborCount = parseInt(((formData as any).get('laborCount') as FormDataEntryValue)?.toString() || '0');
     // Handle multiple cargo photos
     const cargoPhotos: File[] = [];
     let photoIndex = 0;
     while (true) {
-      const photo = formData.get(`cargoPhoto${photoIndex}`) as File;
-      if (!photo || photo.size === 0) break;
+      const photo = (formData as any).get(`cargoPhoto${photoIndex}`) as FormDataEntryValue;
+      if (!photo || !(photo instanceof File) || photo.size === 0) break;
       cargoPhotos.push(photo);
       photoIndex++;
     }
     
     // Fallback to single photo for backward compatibility
-    const singleCargoPhoto = formData.get('cargoPhoto') as File;
-    if (singleCargoPhoto && singleCargoPhoto.size > 0) {
+    const singleCargoPhoto = (formData as any).get('cargoPhoto') as FormDataEntryValue;
+    if (singleCargoPhoto && singleCargoPhoto instanceof File && singleCargoPhoto.size > 0) {
       cargoPhotos.push(singleCargoPhoto);
     }
 
@@ -182,6 +183,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .input('cargo_photo_urls', JSON.stringify(cargoPhotoUrls))
       .input('customer_notes', notes)
       .input('distance_km', distance)
+      .input('weight_kg', weight_kg)
       .input('vehicle_type_id', vehicle_type_id)
       .input('labor_count', laborCount)
       .input('base_price', priceCalculation.base_price)
@@ -192,7 +194,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         INSERT INTO orders (
           user_id, pickup_address, pickup_latitude, pickup_longitude,
           destination_address, destination_latitude, destination_longitude,
-          cargo_photo_urls, customer_notes, distance_km,
+          cargo_photo_urls, customer_notes, distance_km, weight_kg,
           vehicle_type_id, labor_count, base_price, distance_price,
           labor_price, total_price, status, created_at
         )
@@ -200,7 +202,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         VALUES (
           @user_id, @pickup_address, @pickup_latitude, @pickup_longitude,
           @destination_address, @destination_latitude, @destination_longitude,
-          @cargo_photo_urls, @customer_notes, @distance_km,
+          @cargo_photo_urls, @customer_notes, @distance_km, @weight_kg,
           @vehicle_type_id, @labor_count, @base_price, @distance_price,
           @labor_price, @total_price, 'pending', GETDATE()
         )

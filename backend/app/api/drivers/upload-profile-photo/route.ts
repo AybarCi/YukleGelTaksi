@@ -23,9 +23,9 @@ export async function POST(request: NextRequest) {
 
     // Parse FormData
     const formData = await request.formData();
-    const profilePhotoFile = formData.get('profile_photo') as File;
+    const profilePhotoFile = (formData as any).get('profile_photo');
 
-    if (!profilePhotoFile || profilePhotoFile.size === 0) {
+    if (!profilePhotoFile || !(profilePhotoFile instanceof File) || profilePhotoFile.size === 0) {
       return NextResponse.json(
         { error: 'Profil fotoğrafı gerekli' },
         { status: 400 }

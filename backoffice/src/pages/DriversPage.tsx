@@ -160,7 +160,7 @@ const DriversPage: React.FC = () => {
         return;
       }
 
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/api/drivers`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/drivers`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -317,7 +317,7 @@ const DriversPage: React.FC = () => {
         return;
       }
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/approve`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/approve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -386,7 +386,7 @@ const DriversPage: React.FC = () => {
           formData.append('eligibility_certificate', newDriverForm.eligibility_certificate);
         }
 
-        const uploadResponse = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/upload`, {
+        const uploadResponse = await fetch(`${API_CONFIG.BASE_URL}/drivers/upload`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -422,7 +422,7 @@ const DriversPage: React.FC = () => {
         uploaded_files: uploadedFiles,
       };
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/admin-register`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/admin-register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

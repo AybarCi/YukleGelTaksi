@@ -99,7 +99,7 @@ const VehicleTypesPage: React.FC = () => {
     
     try {
       setLoading(true);
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/vehicle-types`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/vehicle-types`, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -239,7 +239,7 @@ const VehicleTypesPage: React.FC = () => {
       formData.append('image', selectedFile);
 
       const response = await axios.post(
-        `${API_CONFIG.BASE_URL}/api/upload/vehicle-type-image`,
+        `${API_CONFIG.BASE_URL}/upload/vehicle-type-image`,
         formData,
         {
           headers: {
@@ -298,7 +298,7 @@ const VehicleTypesPage: React.FC = () => {
 
       if (dialogMode === 'create') {
         const response = await axios.post(
-          `${API_CONFIG.BASE_URL}/api/admin/vehicle-types`,
+          `${API_CONFIG.BASE_URL}/admin/vehicle-types`,
           submitData,
           { headers: { 
             Authorization: `Bearer ${token}`,
@@ -314,7 +314,7 @@ const VehicleTypesPage: React.FC = () => {
         }
       } else {
         const response = await axios.put(
-          `${API_CONFIG.BASE_URL}/api/admin/vehicle-types`,
+          `${API_CONFIG.BASE_URL}/admin/vehicle-types`,
           submitData,
           { headers: { 
             Authorization: `Bearer ${token}`,
@@ -345,7 +345,7 @@ const VehicleTypesPage: React.FC = () => {
     
     try {
       const response = await axios.put(
-        `${API_CONFIG.BASE_URL}/api/admin/vehicle-types/${vehicleType.id}/toggle-status`,
+        `${API_CONFIG.BASE_URL}/admin/vehicle-types/${vehicleType.id}/toggle-status`,
         { is_active: !vehicleType.is_active },
         { headers: { 
           Authorization: `Bearer ${token}`,

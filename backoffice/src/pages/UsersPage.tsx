@@ -74,7 +74,7 @@ const UsersPage: React.FC = () => {
       }
 
       // API call to get users
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/api/users`, {
+      const response = await axios.get(`${API_CONFIG.BASE_URL}/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

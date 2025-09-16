@@ -68,7 +68,8 @@ export const animateToShowBothPoints = (
   const currentBottomSheetHeight = (bottomSheetHeight as any)._value;
   const screenHeight = Dimensions.get('window').height;
   const offsetRatio = (currentBottomSheetHeight / 2) / screenHeight;
-  const latitudeOffset = latDelta * offsetRatio * 0.4;
+  // Offset'i artırarak rotayı daha yukarı ortalıyoruz
+  const latitudeOffset = latDelta * offsetRatio * 0.9;
   
   mapRef.current.animateToRegion({
     latitude: centerLat - latitudeOffset,

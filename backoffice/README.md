@@ -4,9 +4,13 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 
 ## Environment Variables
 
+Backoffice uygulaması için `.env` dosyası oluşturun:
+
 ```
-REACT_APP_API_URL=http://192.168.1.134:3000/api
-REACT_APP_FILES_URL=http://192.168.1.134:3000/api/files
+REACT_APP_API_HOST=localhost
+REACT_APP_API_PORT=3000
+REACT_APP_SOCKET_PORT=3001
+REACT_APP_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
 
 ## Available Scripts

@@ -50,24 +50,24 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     
     // Extract form fields
-    const tc_number = formData.get('tc_number') as string;
-    const first_name = formData.get('first_name') as string;
-    const last_name = formData.get('last_name') as string;
-    const email = formData.get('email') as string;
-    const tax_number = formData.get('tax_number') as string;
-    const tax_office = formData.get('tax_office') as string;
-    const license_number = formData.get('license_number') as string;
-    const license_expiry_date = formData.get('license_expiry_date') as string;
-    const vehicle_type = formData.get('vehicle_type') as string;
-    const vehicle_plate = formData.get('vehicle_plate') as string;
-    const vehicle_model = formData.get('vehicle_model') as string;
-    const vehicle_color = formData.get('vehicle_color') as string;
-    const vehicle_year = parseInt(formData.get('vehicle_year') as string);
-    
-    // Extract files
-    const driverPhotoFile = formData.get('driver_photo') as File;
-    const licensePhotoFile = formData.get('license_photo') as File;
-    const eligibilityCertificateFile = formData.get('eligibility_certificate') as File;
+    const tc_number = (formData as any).get('tc_number')?.toString() || '';
+    const first_name = (formData as any).get('first_name')?.toString() || '';
+    const last_name = (formData as any).get('last_name')?.toString() || '';
+    const email = (formData as any).get('email')?.toString() || '';
+    const tax_number = (formData as any).get('tax_number')?.toString() || '';
+    const tax_office = (formData as any).get('tax_office')?.toString() || '';
+    const license_number = (formData as any).get('license_number')?.toString() || '';
+    const license_expiry_date = (formData as any).get('license_expiry_date')?.toString() || '';
+    const vehicle_type = (formData as any).get('vehicle_type')?.toString() || '';
+    const vehicle_plate = (formData as any).get('vehicle_plate')?.toString() || '';
+    const vehicle_model = (formData as any).get('vehicle_model')?.toString() || '';
+    const vehicle_color = (formData as any).get('vehicle_color')?.toString() || '';
+    const vehicle_year = parseInt((formData as any).get('vehicle_year')?.toString() || '0');
+
+    // Handle file uploads
+    const driverPhotoFile = (formData as any).get('driver_photo');
+    const licensePhotoFile = (formData as any).get('license_photo');
+    const eligibilityCertificateFile = (formData as any).get('eligibility_certificate');
     
     // Handle file uploads
     let finalDriverPhoto = '';
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       // Directory already exists
     }
     
-    if (driverPhotoFile && driverPhotoFile.size > 0) {
+    if (driverPhotoFile && driverPhotoFile instanceof File && driverPhotoFile.size > 0) {
       const fileName = `${uuidv4()}.${driverPhotoFile.name.split('.').pop()}`;
       const filePath = path.join(uploadsDir, fileName);
       const buffer = Buffer.from(await driverPhotoFile.arrayBuffer());
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       finalDriverPhoto = fileName;
     }
     
-    if (licensePhotoFile && licensePhotoFile.size > 0) {
+    if (licensePhotoFile && licensePhotoFile instanceof File && licensePhotoFile.size > 0) {
       const fileName = `${uuidv4()}.${licensePhotoFile.name.split('.').pop()}`;
       const filePath = path.join(uploadsDir, fileName);
       const buffer = Buffer.from(await licensePhotoFile.arrayBuffer());
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       finalLicensePhoto = fileName;
     }
     
-    if (eligibilityCertificateFile && eligibilityCertificateFile.size > 0) {
+    if (eligibilityCertificateFile && eligibilityCertificateFile instanceof File && eligibilityCertificateFile.size > 0) {
       const fileName = `${uuidv4()}.${eligibilityCertificateFile.name.split('.').pop()}`;
       const filePath = path.join(uploadsDir, fileName);
       const buffer = Buffer.from(await eligibilityCertificateFile.arrayBuffer());

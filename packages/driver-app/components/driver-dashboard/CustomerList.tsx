@@ -168,7 +168,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
       <FlatList
         data={customers}
         renderItem={renderCustomerItem}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => item?.id?.toString() || `customer-${Date.now()}-${Math.random()}`}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmptyState}

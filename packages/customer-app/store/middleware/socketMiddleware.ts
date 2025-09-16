@@ -19,7 +19,7 @@ class SocketManager {
 
   constructor(private options: SocketMiddlewareOptions = {}) {
     this.options = {
-      url: API_CONFIG.BASE_URL,
+      url: API_CONFIG.SOCKET_URL,
       autoConnect: true,
       ...options
     };
@@ -35,7 +35,7 @@ class SocketManager {
     }
 
     // Socket server genellikle farklı port kullanır
-    const socketUrl = process.env.EXPO_PUBLIC_SOCKET_URL || 'ws://192.168.1.134:3001';
+    const socketUrl = API_CONFIG.SOCKET_URL;
     
     this.socket = io(socketUrl, {
       auth: {

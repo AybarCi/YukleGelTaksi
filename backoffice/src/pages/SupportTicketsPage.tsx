@@ -310,14 +310,14 @@ const SupportTicketsPage: React.FC = () => {
       
       if (isDriverTicket) {
         console.log('🚗 Updating driver ticket via API call...');
-        console.log('🔗 API URL will be:', `${API_CONFIG.BASE_URL}/api/admin/support-tickets/${currentTicket.id}`);
+        console.log('🔗 API URL will be:', `${API_CONFIG.BASE_URL}/admin/support-tickets/${currentTicket.id}`);
         const result = await supportService.updateTicket(currentTicket.id, updateData);
         console.log('✅ Driver ticket update result:', result);
         console.log('🔄 Fetching updated driver tickets...');
         await fetchDriverTickets();
       } else if (isCustomerTicket) {
         console.log('👤 Updating customer ticket via API call...');
-        console.log('🔗 API URL will be:', `${API_CONFIG.BASE_URL}/api/admin/customer-support-tickets/${currentTicket.id}`);
+        console.log('🔗 API URL will be:', `${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${currentTicket.id}`);
         const result = await supportService.updateCustomerTicket(currentTicket.id, updateData);
         console.log('✅ Customer ticket update result:', result);
         console.log('🔄 Fetching updated customer tickets...');

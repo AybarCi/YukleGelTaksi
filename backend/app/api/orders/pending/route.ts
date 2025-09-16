@@ -47,18 +47,36 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const driverLocation = driverResult.recordset[0];
-    
+    // Sürücünün araç tipini al
+    const driverVehicleResult = await pool.request()
+      .input('driverId', authResult.user.id)
+      .query(`
+        SELECT vehicle_type_id 
+        FROM drivers 
+        WHERE user_id = @driverId AND is_active = 1
+      `);
+
+    if (driverVehicleResult.recordset.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Sürücü bilgisi bulunamadı' },
+        { status: 404 }
+      );
+    }
+
+    const driverVehicleTypeId = driverVehicleResult.recordset[0].vehicle_type_id;
+
     // Sistem ayarlarından arama yarıçapını al
     const systemSettings = SystemSettingsService.getInstance();
     const searchRadius = await systemSettings.getSetting('driver_search_radius_km', 15);
     const maxOrders = await systemSettings.getSetting('max_orders_per_driver', 10);
 
-    // Yarıçap içindeki bekleyen siparişleri getir
+    // Yarıçap içindeki bekleyen siparişleri getir (araç tipi kontrolü ile)
     const ordersResult = await pool.request()
       .input('driverLatitude', driverLocation.current_latitude)
       .input('driverLongitude', driverLocation.current_longitude)
       .input('radius', searchRadius)
       .input('maxOrders', maxOrders)
+      .input('driverVehicleTypeId', driverVehicleTypeId)
       .query(`
         SELECT TOP (@maxOrders)
           o.id,
@@ -74,6 +92,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           o.weight_kg,
           o.labor_count,
           o.order_status,
+          o.vehicle_type_id,
           o.created_at,
           u.first_name as customer_first_name,
           u.last_name as customer_last_name,
@@ -90,6 +109,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         WHERE o.order_status IN ('pending', 'inspecting')
           AND o.pickup_latitude IS NOT NULL
           AND o.pickup_longitude IS NOT NULL
+          AND (@driverVehicleTypeId IS NULL OR o.vehicle_type_id = @driverVehicleTypeId OR o.vehicle_type_id IS NULL)
           AND (
             6371 * acos(
               cos(radians(@driverLatitude)) * cos(radians(o.pickup_latitude)) *
@@ -116,6 +136,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       weight_kg: order.weight_kg,
       laborCount: order.labor_count,
       order_status: order.order_status,
+      vehicle_type_id: order.vehicle_type_id,
       createdAt: order.created_at,
       customer: {
         firstName: order.customer_first_name,

@@ -18,6 +18,8 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { API_CONFIG } from '../config/api';
+import { useSelector, useDispatch } from 'react-redux';
+import { loadVehicleTypes } from '../store/slices/vehicleSlice';
 
 interface Shipment {
   id: number;
@@ -44,6 +46,7 @@ interface Shipment {
   completed_at?: string;
   cancelled_at?: string;
   updated_at: string;
+  vehicle_type_id?: number;
   driver?: {
     first_name: string;
     last_name: string;
@@ -59,6 +62,8 @@ const { width } = Dimensions.get('window');
 
 export default function ShipmentsScreen() {
   const { user, showModal } = useAuth();
+  const dispatch = useDispatch();
+  const vehicleTypes = useSelector((state: any) => state.vehicle.vehicleTypes);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,7 +75,9 @@ export default function ShipmentsScreen() {
 
   useEffect(() => {
     loadShipments();
-  }, []);
+    // Araç tiplerini yükle
+    dispatch(loadVehicleTypes() as any);
+  }, [dispatch]);
 
   const loadShipments = async () => {
     try {
@@ -197,6 +204,14 @@ export default function ShipmentsScreen() {
 
   const closeImageModal = () => {
     setShowImageModal(false);
+  };
+
+  const getVehicleTypeName = (vehicleTypeId?: number) => {
+    if (!vehicleTypeId || !vehicleTypes || vehicleTypes.length === 0) {
+      return 'Belirtilmemiş';
+    }
+    const vehicleType = vehicleTypes.find((type: any) => type.id === vehicleTypeId);
+    return vehicleType ? vehicleType.name : 'Belirtilmemiş';
   };
 
   const getStatusText = (status: string) => {
@@ -399,6 +414,10 @@ export default function ShipmentsScreen() {
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Toplam Tutar:</Text>
                   <Text style={styles.infoValue}>{selectedShipment.total_price} TL</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Araç Tipi:</Text>
+                  <Text style={styles.infoValue}>{getVehicleTypeName(selectedShipment.vehicle_type_id)}</Text>
                 </View>
               </View>
 
@@ -837,4 +856,4 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-});
+ });

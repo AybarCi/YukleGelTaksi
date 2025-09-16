@@ -202,7 +202,7 @@ export default function DriverDashboardScreen() {
         
         // OrderData'yı Customer formatına dönüştür
         const newCustomer: Customer = {
-          id: orderData.id,
+          id: orderData.id || Date.now(),
           name: orderData.customer_first_name && orderData.customer_last_name 
             ? `${orderData.customer_first_name} ${orderData.customer_last_name}` 
             : (orderData.customerName || 'Müşteri'),
@@ -228,6 +228,43 @@ export default function DriverDashboardScreen() {
             return [newCustomer, ...currentCustomers];
           }
         });
+      });
+      
+      // Order created event - yeni sipariş oluşturulduğunda bildirim
+      socketService.on('order_created', (orderData: any) => {
+        console.log('Order created notification received:', orderData);
+        
+        // OrderData'yı Customer formatına dönüştür
+        const newCustomer: Customer = {
+          id: orderData.orderId || orderData.id || Date.now(),
+          name: orderData.customer_first_name && orderData.customer_last_name 
+            ? `${orderData.customer_first_name} ${orderData.customer_last_name}` 
+            : (orderData.customerName || 'Müşteri'),
+          phone: orderData.customerPhone || 'Bilinmiyor',
+          pickup_location: orderData.pickupAddress,
+          destination: orderData.destinationAddress,
+          distance: orderData.distance ? `${orderData.distance.toFixed(1)} km` : 'Hesaplanıyor...',
+          estimated_fare: orderData.estimatedPrice,
+          status: 'waiting',
+          created_at: new Date().toISOString(),
+        };
+        
+        // Yeni siparişi customers listesine ekle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          // Aynı ID'li sipariş varsa güncelle, yoksa ekle
+          const existingIndex = currentCustomers.findIndex(c => c.id === newCustomer.id);
+          if (existingIndex >= 0) {
+            const updated = [...currentCustomers];
+            updated[existingIndex] = newCustomer;
+            return updated;
+          } else {
+            return [newCustomer, ...currentCustomers];
+          }
+        });
+        
+        // Bildirim göster
+        showModal('Yeni Sipariş', `${newCustomer.name} tarafından yeni bir sipariş oluşturuldu.`, 'info');
       });
       
       socketService.on('order_cancelled', (orderId: number) => {
@@ -379,6 +416,7 @@ export default function DriverDashboardScreen() {
       socketService.off('connection_error');
       socketService.off('max_reconnect_attempts_reached');
       socketService.off('new_order');
+      socketService.off('order_created');
       socketService.off('order_cancelled');
       socketService.off('request_location_update');
       socketService.off('order_status_update');
@@ -596,7 +634,7 @@ export default function DriverDashboardScreen() {
         if (data.success && data.orders && Array.isArray(data.orders)) {
           // API'den gelen siparişleri Customer formatına dönüştür
           const pendingCustomers: Customer[] = data.orders.map((order: any) => ({
-            id: order.id,
+            id: order.id || Date.now() + Math.random(),
             name: order.customer && order.customer.firstName && order.customer.lastName 
               ? `${order.customer.firstName} ${order.customer.lastName}` 
               : order.customerName || 'Müşteri',

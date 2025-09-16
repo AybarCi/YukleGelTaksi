@@ -204,6 +204,12 @@ class SocketService {
       this.emit('new_order', data);
     });
 
+    // Order created event - yeni sipariş oluşturulduğunda sürücülere bildirim
+    this.socket.on('order_created', (data) => {
+      console.log('Order created:', data);
+      this.emit('order_created', data);
+    });
+
     // Driver offline event
     this.socket.on('driver_offline', (data) => {
       console.log('Driver went offline:', data);

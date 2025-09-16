@@ -1,156 +1,138 @@
-# YukleGel Taksi Monorepo
+# YükleGel Taksi - Merkezi Konfigürasyon Sistemi
 
-YukleGel Taksi uygulaması için monorepo yapısı. Bu proje müşteri ve sürücü uygulamalarını, paylaşılan kütüphaneyi ve backend servislerini içerir.
+Bu proje artık **merkezi konfigürasyon sistemi** kullanmaktadır. Tüm IP adresleri, API URL'leri ve diğer konfigürasyon değerleri tek bir yerden yönetilir.
 
-## Proje Yapısı
+## 🎯 Merkezi Konfigürasyon Avantajları
+
+- ✅ **Tek Nokta Yönetimi**: IP adresi değişikliği sadece `.env` dosyasından yapılır
+- ✅ **Environment Desteği**: Development/Production ortamları otomatik algılanır  
+- ✅ **Tutarlılık**: Tüm uygulamalar aynı konfigürasyonu kullanır
+- ✅ **Kolay Deployment**: Production'da sadece environment variables değiştirilir
+
+## 📁 Konfigürasyon Dosyaları
+
+### Ana Konfigürasyon
+- **`.env`** - Merkezi environment variables
+- **`packages/shared/src/config/environment.ts`** - Merkezi konfigürasyon helper
+
+### Uygulama Konfigürasyonları (Shared config'i kullanır)
+- `packages/customer-app/config/api.ts`
+- `packages/driver-app/config/api.ts` 
+- `backoffice/src/config/api.ts`
+- `config/api.ts`
+
+## 🔧 Konfigürasyon Kullanımı
+
+### Environment Variables (.env)
+```bash
+# Server Configuration
+API_HOST=localhost
+API_PORT=3000
+SOCKET_PORT=3001
+
+# Environment
+NODE_ENV=development
+
+# Production URLs
+PROD_API_URL=https://api.yuklegeltaksi.com
+PROD_SOCKET_URL=https://socket.yuklegeltaksi.com
+
+# Google Maps API Keys
+GOOGLE_MAPS_API_KEY=your-api-key
+GOOGLE_PLACES_API_KEY_IOS=your-ios-key
+GOOGLE_PLACES_API_KEY_ANDROID=your-android-key
+```
+
+### Kod İçinde Kullanım
+```typescript
+import { API_CONFIG } from '../config/api';
+
+// Otomatik olarak environment'a göre URL oluşturulur
+const response = await fetch(`${API_CONFIG.BASE_URL}/api/users`);
+const socket = io(API_CONFIG.SOCKET_URL);
+```
+
+## 🚀 IP Adresi Değiştirme
+
+Artık IP adresi değiştirmek için **sadece `.env` dosyasını** düzenleyin:
+
+```bash
+# .env dosyasında
+API_HOST=192.168.1.15  # Yeni IP adresi (örnek)
+```
+
+Tüm uygulamalar otomatik olarak yeni IP adresini kullanacaktır!
+
+## 🌍 Environment Yönetimi
+
+### Development
+```bash
+NODE_ENV=development
+API_HOST=localhost
+```
+→ URLs: `http://localhost:3000`, `http://localhost:3001`
+
+### Production  
+```bash
+NODE_ENV=production
+PROD_API_URL=https://api.yuklegeltaksi.com
+PROD_SOCKET_URL=https://socket.yuklegeltaksi.com
+```
+→ URLs: Production domain'leri kullanılır
+
+## 📦 Proje Yapısı
 
 ```
 YukleGelTaksi/
+├── .env                          # 🔥 Merkezi environment variables
 ├── packages/
-│   ├── shared/                 # Paylaşılan kütüphane
-│   │   ├── src/
-│   │   │   ├── types/         # TypeScript tip tanımları
-│   │   │   ├── services/      # API servisleri
-│   │   │   ├── utils/         # Yardımcı fonksiyonlar
-│   │   │   ├── constants/     # Sabitler
-│   │   │   └── index.ts       # Ana export dosyası
-│   │   └── package.json
-│   ├── customer-app/          # Müşteri uygulaması
-│   │   ├── app/              # Expo Router sayfaları
-│   │   ├── components/       # React bileşenleri
-│   │   ├── assets/           # Görseller ve diğer varlıklar
-│   │   ├── app.json          # Expo konfigürasyonu
-│   │   └── package.json
-│   └── driver-app/           # Sürücü uygulaması
-│       ├── app/              # Expo Router sayfaları
-│       ├── components/       # React bileşenleri
-│       ├── assets/           # Görseller ve diğer varlıklar
-│       ├── app.json          # Expo konfigürasyonu
-│       └── package.json
-├── backend/                   # Backend servisleri
-└── package.json              # Root package.json
+│   ├── shared/
+│   │   └── src/config/
+│   │       └── environment.ts    # 🔥 Merkezi konfigürasyon helper
+│   ├── customer-app/
+│   │   └── config/api.ts        # Shared config'i kullanır
+│   └── driver-app/
+│       └── config/api.ts        # Shared config'i kullanır
+├── backoffice/
+│   └── src/config/api.ts        # Shared config'i kullanır
+└── config/
+    └── api.ts                   # Shared config'i kullanır
 ```
 
-## Kurulum
+## ⚡ Hızlı Başlangıç
 
-### Gereksinimler
+1. **Environment dosyasını kopyalayın:**
+   ```bash
+   cp .env.example .env  # (eğer varsa)
+   ```
 
-- Node.js >= 18.0.0
-- npm >= 8.0.0
-- Expo CLI
-- React Native development environment
+2. **IP adresini güncelleyin:**
+   ```bash
+   # .env dosyasında
+   API_HOST=your-local-ip
+   ```
 
-### Tüm Bağımlılıkları Yükleme
+3. **Uygulamaları başlatın:**
+   ```bash
+   # Backend
+   cd backend && npm start
+   
+   # Customer App  
+   cd packages/customer-app && npm start
+   
+   # Driver App
+   cd packages/driver-app && npm start
+   
+   # Backoffice
+   cd backoffice && npm start
+   ```
 
-```bash
-npm run install:all
-```
+## 🔒 Güvenlik
 
-## Geliştirme
+- `.env` dosyası git'e commit edilmez
+- Production'da environment variables server'da ayarlanır
+- API key'ler güvenli şekilde saklanır
 
-### Müşteri Uygulamasını Çalıştırma
+---
 
-```bash
-npm run dev:customer
-```
-
-### Sürücü Uygulamasını Çalıştırma
-
-```bash
-npm run dev:driver
-```
-
-### Backend Servisini Çalıştırma
-
-```bash
-npm run start:backend
-```
-
-## Build İşlemleri
-
-### Tüm Projeleri Build Etme
-
-```bash
-npm run build:all
-```
-
-### Sadece Paylaşılan Kütüphaneyi Build Etme
-
-```bash
-npm run build:shared
-```
-
-### Sadece Müşteri Uygulamasını Build Etme
-
-```bash
-npm run build:customer
-```
-
-### Sadece Sürücü Uygulamasını Build Etme
-
-```bash
-npm run build:driver
-```
-
-## Test ve Linting
-
-### Tüm Testleri Çalıştırma
-
-```bash
-npm run test:all
-```
-
-### Linting
-
-```bash
-npm run lint:all
-```
-
-## Temizlik İşlemleri
-
-### Node Modules ve Build Dosyalarını Temizleme
-
-```bash
-npm run clean
-```
-
-### Temizlik Yapıp Yeniden Kurulum
-
-```bash
-npm run reset
-```
-
-## Özellikler
-
-### Paylaşılan Kütüphane
-- TypeScript tip tanımları
-- API servisleri
-- Yardımcı fonksiyonlar
-- Sabitler
-
-### Müşteri Uygulaması
-- Kullanıcı kaydı ve girişi
-- Taksi çağırma
-- Seyahat geçmişi
-- Profil yönetimi
-- Destek sistemi
-
-### Sürücü Uygulaması
-- Sürücü kaydı ve girişi
-- Seyahat kabul etme
-- Navigasyon
-- Kazanç takibi
-- Profil yönetimi
-
-## Teknolojiler
-
-- **React Native**: Mobil uygulama geliştirme
-- **Expo**: React Native geliştirme platformu
-- **TypeScript**: Tip güvenliği
-- **Expo Router**: Navigasyon
-- **React Native Maps**: Harita entegrasyonu
-- **Socket.io**: Gerçek zamanlı iletişim
-
-## Lisans
-
-MIT
+**Artık IP adresi değiştirmek için 50 dosyayı düzenlemenize gerek yok! 🎉**

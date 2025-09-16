@@ -79,7 +79,7 @@ const PricingPage: React.FC = () => {
     const fetchData = async () => {
       try {
         // Araç tiplerini getir
-        const vehicleTypesResponse = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/vehicle-types`, {
+        const vehicleTypesResponse = await axios.get(`${API_CONFIG.BASE_URL}/admin/vehicle-types`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -88,7 +88,7 @@ const PricingPage: React.FC = () => {
         }
 
         // Fiyatlandırma verilerini getir
-        const pricingResponse = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/vehicle-type-pricing`, {
+        const pricingResponse = await axios.get(`${API_CONFIG.BASE_URL}/admin/vehicle-type-pricing`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -135,7 +135,7 @@ const PricingPage: React.FC = () => {
     setError('');
 
     try {
-      const response = await axios.put(`${API_CONFIG.BASE_URL}/api/admin/vehicle-type-pricing`, {
+      const response = await axios.put(`${API_CONFIG.BASE_URL}/admin/vehicle-type-pricing`, {
         vehicle_type_id: editingPricing.vehicle_type_id,
         base_price: editingPricing.base_price,
         price_per_km: editingPricing.price_per_km,
@@ -146,7 +146,7 @@ const PricingPage: React.FC = () => {
       
       if (response.data.success) {
         // Fiyatlandırma verilerini yeniden yükle
-        const pricingResponse = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/vehicle-type-pricing`, {
+        const pricingResponse = await axios.get(`${API_CONFIG.BASE_URL}/admin/vehicle-type-pricing`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         

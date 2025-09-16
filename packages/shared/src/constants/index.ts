@@ -1,7 +1,11 @@
-// API Configuration
+// Import merkezi konfigürasyon
+import { API_CONFIG as CENTRAL_API_CONFIG } from '../config/environment';
+
+// API Configuration - Merkezi config'den alınıyor
 export const API_CONFIG = {
-  BASE_URL: 'http://192.168.1.134:3001/api',
-  SOCKET_URL: 'http://192.168.1.134:3001',
+  get BASE_URL() { return CENTRAL_API_CONFIG.BASE_URL; },
+  get SOCKET_URL() { return CENTRAL_API_CONFIG.SOCKET_URL; },
+  get FILES_URL() { return CENTRAL_API_CONFIG.FILES_URL; },
   TIMEOUT: 10000,
 };
 

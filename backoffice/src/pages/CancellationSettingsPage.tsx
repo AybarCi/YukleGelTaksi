@@ -95,7 +95,7 @@ const CancellationSettingsPage: React.FC = () => {
           return;
         }
 
-        const response = await axios.get(`${API_CONFIG.BASE_URL}/api/admin/cancellation-fees`, {
+        const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/cancellation-fees`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -150,7 +150,7 @@ const CancellationSettingsPage: React.FC = () => {
       }
 
       const response = await axios.put(
-        `${API_CONFIG.BASE_URL}/api/admin/cancellation-fees`,
+        `${API_CONFIG.BASE_URL}/admin/cancellation-fees`,
         { cancellationFees },
         {
           headers: {

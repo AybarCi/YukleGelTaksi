@@ -91,7 +91,7 @@ class OrdersService {
       if (params.search) queryParams.append('search', params.search);
 
       const response = await axios.get(
-        `${API_CONFIG.BASE_URL}/api/orders?${queryParams.toString()}`,
+        `${API_CONFIG.BASE_URL}/orders?${queryParams.toString()}`,
         { headers: this.getAuthHeaders() }
       );
 
@@ -105,7 +105,7 @@ class OrdersService {
   async getOrderById(id: number): Promise<Order> {
     try {
       const response = await axios.get(
-        `${API_CONFIG.BASE_URL}/api/orders/${id}`,
+        `${API_CONFIG.BASE_URL}/orders/${id}`,
         { headers: this.getAuthHeaders() }
       );
 

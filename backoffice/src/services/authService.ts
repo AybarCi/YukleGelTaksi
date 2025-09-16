@@ -40,7 +40,7 @@ class AuthService {
 
   public async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/supervisor/auth/login`, credentials);
+      const response = await axios.post(`${API_BASE_URL}/supervisor/auth/login`, credentials);
       
       if (response.data.success) {
         this.token = response.data.token;
@@ -65,7 +65,7 @@ class AuthService {
     try {
       if (this.token) {
         await axios.post(
-          `${API_BASE_URL}/api/supervisor/auth/logout`,
+          `${API_BASE_URL}/supervisor/auth/logout`,
           {},
           {
             headers: {
@@ -94,7 +94,7 @@ class AuthService {
     }
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/supervisor/auth/verify`, {
+      const response = await axios.get(`${API_BASE_URL}/supervisor/auth/verify`, {
         headers: {
           Authorization: `Bearer ${this.token}`
         }

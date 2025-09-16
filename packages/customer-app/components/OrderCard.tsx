@@ -3,30 +3,52 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 interface Order {
-  id: string;
-  status: string;
+  id?: string;
+  status?: string;
   pickup_address?: string;
   pickup_latitude?: string;
   pickup_longitude?: string;
   destination_latitude?: string;
   destination_longitude?: string;
+  vehicle_type_id?: number;
 }
 
 interface OrderCardProps {
   currentOrder: Order | null;
   onPress: () => void;
   styles: any;
+  vehicleTypes?: any[];
 }
 
 const OrderCard: React.FC<OrderCardProps> = ({ 
   currentOrder, 
   onPress, 
-  styles 
+  styles,
+  vehicleTypes = []
 }) => {
   if (!currentOrder) return null;
 
+  // Araç tipi adını bul
+  const getVehicleTypeName = (vehicleTypeId?: number) => {
+    if (!vehicleTypeId || !vehicleTypes || vehicleTypes.length === 0) {
+      return null;
+    }
+    const vehicleType = vehicleTypes.find((type: any) => type.id === vehicleTypeId);
+    return vehicleType ? vehicleType.name : null;
+  };
+
+  const vehicleTypeName = getVehicleTypeName(currentOrder.vehicle_type_id);
+
+  // Debug logları ekle
+  console.log('🚗 OrderCard Debug:', {
+    currentOrder: currentOrder,
+    vehicle_type_id: currentOrder.vehicle_type_id,
+    vehicleTypes: vehicleTypes,
+    vehicleTypeName: vehicleTypeName
+  });
+
   return (
-    <View style={{ paddingVertical: 8 }}>
+    <View>
       <TouchableOpacity
         style={styles.ongoingOrderCard}
         onPress={onPress}
@@ -69,6 +91,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                   currentOrder?.status === 'completed' ? 'Teslimat tamamlandı' :
                   'Bilinmeyen durum'
                 }
+                {vehicleTypeName && ` • ${vehicleTypeName}`}
               </Text>
             </View>
           </View>

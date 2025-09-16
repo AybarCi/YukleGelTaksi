@@ -367,6 +367,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const sendSMS = async (phone: string): Promise<boolean> => {
     try {
+      // Debug: API_BASE_URL değerini logla
+      console.log('🔍 SMS API Debug - API_BASE_URL:', API_BASE_URL);
+      console.log('🔍 SMS API Debug - Full URL:', `${API_BASE_URL}/api/auth/send-sms`);
+      
       // Timeout controller ekle
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 saniye timeout

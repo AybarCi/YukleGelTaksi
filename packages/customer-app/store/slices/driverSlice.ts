@@ -61,7 +61,7 @@ export const checkDriverAvailability = createAsyncThunk(
         throw new Error('Token bulunamadı');
       }
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/availability`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/check-availability`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -92,7 +92,7 @@ export const checkDriverAvailability = createAsyncThunk(
               await AsyncStorage.setItem('auth_token', refreshData.token);
               
               // Yeni token ile tekrar dene
-              const retryResponse = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/availability`, {
+              const retryResponse = await fetch(`${API_CONFIG.BASE_URL}/api/drivers/check-availability`, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${refreshData.token}`,

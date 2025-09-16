@@ -540,6 +540,17 @@ class SocketServer {
     });
   }
 
+  // Send message to specific customer
+  sendToCustomer(customerId, event, data) {
+    const customerData = this.connectedCustomers.get(customerId);
+    if (customerData && customerData.socketId) {
+      this.io.to(customerData.socketId).emit(event, data);
+      console.log(`Message sent to customer ${customerId}: ${event}`);
+    } else {
+      console.log(`Customer ${customerId} not connected`);
+    }
+  }
+
   // İki koordinat arasındaki mesafeyi hesapla (km cinsinden)
   calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371; // Dünya'nın yarıçapı (km)
@@ -568,7 +579,20 @@ class SocketServer {
 
   // Placeholder methods - implement as needed
   async createOrder(userId, orderData) {
-    console.log('Create order called:', userId, orderData);
+    console.log('Creating order for user:', userId, 'with data:', orderData);
+    
+    try {
+      // Sipariş oluşturulduktan sonra sürücülere bildirim gönder
+      this.broadcastToAllDrivers('order_created', {
+        orderId: orderData.orderId || orderData.id,
+        customerId: userId,
+        ...orderData
+      });
+      
+      console.log(`Order created and broadcasted to drivers for user ${userId}`);
+    } catch (error) {
+      console.error('Error in createOrder:', error);
+    }
   }
 
   async cancelOrder(orderId, userId) {
@@ -1146,23 +1170,53 @@ class SocketServer {
 
   async broadcastOrderToNearbyDrivers(orderId, orderData) {
     try {
-      console.log(`📡 Broadcasting order ${orderId} to nearby drivers`);
+      console.log(`📡 Broadcasting order ${orderId} to nearby drivers with vehicle_type_id: ${orderData.vehicle_type_id}`);
       
-      // Tüm bağlı ve müsait sürücülere sipariş bilgisini gönder
-      this.connectedDrivers.forEach((driverInfo, driverId) => {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      let matchingDriversCount = 0;
+      
+      // Tüm bağlı ve müsait sürücülere sipariş bilgisini gönder (araç tipi kontrolü ile)
+      for (const [driverId, driverInfo] of this.connectedDrivers) {
         if (driverInfo.isAvailable && driverInfo.location) {
-          const driverSocket = this.io.sockets.sockets.get(driverInfo.socketId);
-          if (driverSocket) {
-            driverSocket.emit('new_order_available', {
-              orderId,
-              ...orderData
-            });
-            console.log(`✅ Order ${orderId} sent to driver ${driverId}`);
+          try {
+            // Sürücünün araç tipini kontrol et
+            const driverResult = await pool.request()
+              .input('driverId', driverId)
+              .query(`
+                SELECT vehicle_type_id 
+                FROM drivers 
+                WHERE id = @driverId AND is_active = 1
+              `);
+            
+            if (driverResult.recordset.length > 0) {
+              const driverVehicleTypeId = driverResult.recordset[0].vehicle_type_id;
+              
+              // Araç tipi eşleşiyorsa siparişi gönder
+              if (driverVehicleTypeId === orderData.vehicle_type_id) {
+                const driverSocket = this.io.sockets.sockets.get(driverInfo.socketId);
+                if (driverSocket) {
+                  driverSocket.emit('new_order_available', {
+                    orderId,
+                    ...orderData
+                  });
+                  matchingDriversCount++;
+                  console.log(`✅ Order ${orderId} sent to driver ${driverId} (vehicle_type_id: ${driverVehicleTypeId})`);
+                }
+              } else {
+                console.log(`❌ Driver ${driverId} skipped - vehicle type mismatch (driver: ${driverVehicleTypeId}, order: ${orderData.vehicle_type_id})`);
+              }
+            } else {
+              console.log(`❌ Driver ${driverId} not found or inactive`);
+            }
+          } catch (driverError) {
+            console.error(`❌ Error checking driver ${driverId} vehicle type:`, driverError);
           }
         }
-      });
+      }
       
-      console.log(`📡 Order ${orderId} broadcasted to ${this.connectedDrivers.size} drivers`);
+      console.log(`📡 Order ${orderId} broadcasted to ${matchingDriversCount} matching drivers out of ${this.connectedDrivers.size} total drivers`);
     } catch (error) {
       console.error('❌ Error broadcasting order to drivers:', error);
       throw error;
