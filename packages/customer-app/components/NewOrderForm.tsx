@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import YukKonumuInput, { YukKonumuInputRef } from './YukKonumuInput';
 import VarisNoktasiInput, { VarisNoktasiInputRef } from './VarisNoktasiInput';
 import VehicleTypeModal from './VehicleTypeModal';
 import ImagePickerModal from './ImagePickerModal';
+import { usePriceCalculation } from '../app/utils/priceUtils';
 
 interface LocationCoords {
   latitude: number;
@@ -48,6 +49,7 @@ interface NewOrderFormProps {
   refreshAuthToken?: () => Promise<boolean>;
   onPickupLocationChange?: (coords: LocationCoords | null, address: string) => void;
   onDestinationLocationChange?: (coords: LocationCoords | null, address: string) => void;
+  showModal?: (title: string, message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 const NewOrderForm: React.FC<NewOrderFormProps> = ({
@@ -60,6 +62,7 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   refreshAuthToken,
   onPickupLocationChange,
   onDestinationLocationChange,
+  showModal,
 }) => {
   const dispatch = useAppDispatch();
   const { vehicleTypes: reduxVehicleTypes, selectedVehicleType: reduxSelectedVehicleType } = useAppSelector(state => state.vehicle);
@@ -75,6 +78,14 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [activeInputIndex, setActiveInputIndex] = useState<number>(0);
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
+
+  // Local price calculation states
+  const [localEstimatedPrice, setLocalEstimatedPrice] = useState<number | null>(estimatedPrice || null);
+  const [localPriceLoading, setLocalPriceLoading] = useState<boolean>(priceLoading || false);
+  const [localDistance, setLocalDistance] = useState<number | null>(distance || null);
+
+  // Price calculation hook
+  const { calculatePrice } = usePriceCalculation(setLocalPriceLoading, setLocalEstimatedPrice);
 
   // Modal states
   const [showVehicleTypeModal, setShowVehicleTypeModal] = useState<boolean>(false);
@@ -313,6 +324,46 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
     setShowVehicleTypeModal(false);
   };
 
+  // Distance calculation function
+  const calculateDistance = useCallback((pickup: LocationCoords, destination: LocationCoords): number => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (destination.latitude - pickup.latitude) * Math.PI / 180;
+    const dLon = (destination.longitude - pickup.longitude) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(pickup.latitude * Math.PI / 180) * Math.cos(destination.latitude * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }, []);
+
+  // Effect to calculate distance and price when coordinates change
+  useEffect(() => {
+    if (pickupCoords && destinationCoords) {
+      const calculatedDistance = calculateDistance(pickupCoords, destinationCoords);
+      setLocalDistance(calculatedDistance);
+      
+      console.log('🔢 NewOrderForm - Mesafe hesaplandı:', calculatedDistance);
+      
+      // If we have a selected vehicle type, calculate price
+      if (selectedVehicleType) {
+        console.log('🔢 NewOrderForm - Araç tipi mevcut, ücret hesaplanıyor:', selectedVehicleType.name);
+        calculatePrice(calculatedDistance, selectedVehicleType);
+      }
+    } else {
+      setLocalDistance(null);
+      setLocalEstimatedPrice(null);
+    }
+  }, [pickupCoords, destinationCoords, selectedVehicleType, calculateDistance, calculatePrice]);
+
+  // Effect to calculate price when vehicle type changes
+  useEffect(() => {
+    if (localDistance && selectedVehicleType) {
+      console.log('🔢 NewOrderForm - Araç tipi değişti, ücret yeniden hesaplanıyor');
+      calculatePrice(localDistance, selectedVehicleType);
+    }
+  }, [selectedVehicleType, localDistance, calculatePrice]);
+
   // Image picker handlers
   const handleImagePicker = () => {
     setShowImagePickerModal(true);
@@ -327,10 +378,10 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         if (cameraPermission.status !== 'granted') {
           const { status } = await ImagePicker.requestCameraPermissionsAsync();
           if (status !== 'granted') {
-            Alert.alert(
+            showModal?.(
               'Kamera İzni Gerekli',
               'Fotoğraf çekebilmek için kamera izni gereklidir.',
-              [{ text: 'Tamam' }]
+              'error'
             );
             return;
           }
@@ -348,10 +399,10 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         if (mediaPermission.status !== 'granted') {
           const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
           if (status !== 'granted') {
-            Alert.alert(
+            showModal?.(
               'Galeri İzni Gerekli',
               'Fotoğraf seçebilmek için galeri izni gereklidir.',
-              [{ text: 'Tamam' }]
+              'error'
             );
             return;
           }
@@ -369,11 +420,11 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const newImages = result.assets.map(asset => asset.uri);
         setCargoImages(prev => [...prev, ...newImages]);
-        Alert.alert('Başarılı', `${newImages.length} fotoğraf başarıyla eklendi.`);
+        showModal?.('Başarılı', `${newImages.length} fotoğraf başarıyla eklendi.`, 'success');
       }
     } catch (error) {
       console.error('Image picker error:', error);
-      Alert.alert('Hata', 'Fotoğraf seçilirken bir hata oluştu.');
+      showModal?.('Hata', 'Fotoğraf seçilirken bir hata oluştu.', 'error');
     }
   };
 
@@ -394,7 +445,7 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   // Create order handler
   const handleCreateOrder = useCallback(async () => {
     if (!isFormValid()) {
-      Alert.alert('Eksik Bilgi', 'Lütfen tüm gerekli alanları doldurun.');
+      showModal?.('Eksik Bilgi', 'Lütfen tüm gerekli alanları doldurun.', 'error');
       return;
     }
 
@@ -406,7 +457,7 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         destinationAddress: destinationAddress,
         destinationLatitude: destinationCoords!.latitude,
         destinationLongitude: destinationCoords!.longitude,
-        distance: distance || 0,
+        distance: localDistance || distance || 0,
         estimatedTime: 30,
         notes: notes.trim(),
         vehicleTypeId: selectedVehicleType!.id.toString(),
@@ -434,9 +485,9 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
 
       onOrderCreated?.();
       
-      Alert.alert('Başarılı', 'Siparişiniz başarıyla oluşturuldu!');
+      showModal?.('Başarılı', 'Siparişiniz başarıyla oluşturuldu!', 'success');
     } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Sipariş oluşturulurken bir hata oluştu.');
+      showModal?.('Hata', error.message || 'Sipariş oluşturulurken bir hata oluştu.', 'error');
     }
   }, [isFormValid, pickupCoords, destinationCoords, pickupAddress, destinationAddress, selectedVehicleType, cargoImages, notes, estimatedPrice, distance, dispatch, onOrderCreated]);
 
@@ -505,17 +556,17 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         </View>
 
         {/* Distance and Price Info */}
-        {distance && (
+        {(localDistance || distance) && (
           <View style={styles.distanceInfo}>
             <Ionicons name="location-outline" size={20} color="#FFD700" />
             <Text style={styles.distanceText}>
-              Mesafe: {distance.toFixed(1)} km
+              Mesafe: {(localDistance || distance)?.toFixed(1)} km
             </Text>
             <Text style={styles.priceText}>
-              {priceLoading ? (
+              {(localPriceLoading || priceLoading) ? (
                 '(Ücret hesaplanıyor...)'
-              ) : estimatedPrice ? (
-                `(Tahmini Ücret: ₺${estimatedPrice.toFixed(2)})`
+              ) : (localEstimatedPrice || estimatedPrice) ? (
+                `(Tahmini Ücret: ₺${(localEstimatedPrice || estimatedPrice)?.toFixed(2)})`
               ) : (
                 '(Ücret hesaplanamadı)'
               )}

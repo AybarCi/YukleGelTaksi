@@ -30,16 +30,10 @@ export const useImagePicker = (
           console.log('📋 İzin sonucu:', permissionResult?.status);
           
           if (permissionResult?.status !== 'granted') {
-            Alert.alert(
+            showModal(
               'Kamera İzni Gerekli',
               'Fotoğraf çekebilmek için kamera izni gereklidir. Ayarlardan izni açabilirsiniz.',
-              [
-                { text: 'İptal', style: 'cancel' },
-                { 
-                  text: 'Ayarlara Git', 
-                  onPress: () => Linking.openSettings() 
-                }
-              ]
+              'error'
             );
             return;
           }
@@ -91,16 +85,10 @@ export const useImagePicker = (
         // İzin verilmediyse kullanıcıyı uyar
         if (mediaStatus !== 'granted') {
           console.log('❌ Galeri izni reddedildi');
-          Alert.alert(
+          showModal(
             'Galeri İzni Gerekli',
             'Fotoğraf seçebilmek için galeri izni gereklidir. Ayarlardan izni açabilirsiniz.',
-            [
-              { text: 'İptal', style: 'cancel' },
-              { 
-                text: 'Ayarlara Git', 
-                onPress: () => Linking.openSettings() 
-              }
-            ]
+            'error'
           );
           return;
         }

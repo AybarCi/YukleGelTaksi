@@ -2123,6 +2123,7 @@ function HomeScreen() {
                   setDestinationCoords(coords);
                   setDestinationLocation(address);
                 }}
+                showModal={showModal}
               />
             )}
           </ScrollView>

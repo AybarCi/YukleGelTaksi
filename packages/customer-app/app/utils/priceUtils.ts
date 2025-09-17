@@ -16,7 +16,7 @@ export const usePriceCalculation = (
   setEstimatedPrice: React.Dispatch<React.SetStateAction<number | null>>
 ) => {
   // Fiyat hesaplama fonksiyonu
-  const calculatePrice = useCallback(async (distance: number | null, selectedVehicleType: VehicleType | null) => {
+  const calculatePrice = useCallback(async (distance: number | null, selectedVehicleType: VehicleType | null, laborCount: number = 0) => {
     if (!distance || !selectedVehicleType) {
       setEstimatedPrice(null);
       return;
@@ -43,7 +43,7 @@ export const usePriceCalculation = (
         body: JSON.stringify({
           distance_km: distance,
           vehicle_type_id: selectedVehicleType.id,
-          labor_count: 1 // Varsayılan hammal sayısı
+          labor_count: laborCount // Dinamik hammal sayısı
         })
       });
 
