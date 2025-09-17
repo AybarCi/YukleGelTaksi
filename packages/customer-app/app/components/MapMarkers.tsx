@@ -46,7 +46,7 @@ export const PickupMarker = memo(({ coords }: { coords: { latitude: number; long
       tracksViewChanges={false}
     >
       <View style={styles.pickupMarker}>
-        <MaterialIcons name="location-on" size={20} color="#FFFFFF" />
+        <MaterialIcons name="inventory" size={20} color="#FFFFFF" />
       </View>
     </Marker>
   );
