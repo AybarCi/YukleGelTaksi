@@ -334,7 +334,7 @@ function HomeScreen() {
     setCurrentOrderId(orderId);
     setConfirmCode(code);
     setCancelOrderModalVisible(true);
-  }, [mapRef, bottomSheetHeight]);
+  }, []);
 
   // Doğrulama kodunu kontrol et
   const handleConfirmCode = useCallback(() => {
@@ -357,7 +357,7 @@ function HomeScreen() {
     setCancelConfirmCode(code);
     setCancellationFee(fee);
     setCancelOrderModalVisible(true);
-  }, [mapRef, bottomSheetHeight]);
+  }, []);
 
 
 
@@ -1579,43 +1579,20 @@ function HomeScreen() {
         const coordinates = decodePolyline(route.overview_polyline.points);
         setActiveOrderRouteCoordinates(coordinates);
         
-        // Aktif sipariş rotasını haritada ortala
-        if (mapRef.current && coordinates.length > 0) {
-          setTimeout(() => {
-            animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
-          }, 100);
-        }
-        
         return coordinates;
       } else {
         console.error('Active Order Directions API error:', data.status);
         // Hata durumunda kuş bakışı rotaya geri dön
         setActiveOrderRouteCoordinates([origin, destination]);
-        
-        // Hata durumunda da haritayı ortala
-        if (mapRef.current) {
-          setTimeout(() => {
-            animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
-          }, 100);
-        }
-        
         return [origin, destination];
       }
     } catch (error) {
       console.error('Active Order Directions API fetch error:', error);
       // Hata durumunda kuş bakışı rotaya geri dön
       setActiveOrderRouteCoordinates([origin, destination]);
-      
-      // Hata durumunda da haritayı ortala
-      if (mapRef.current) {
-        setTimeout(() => {
-          animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
-        }, 100);
-      }
-      
       return [origin, destination];
     }
-  }, [mapRef, bottomSheetHeight]);
+  }, []);
 
 
 
@@ -1624,7 +1601,9 @@ function HomeScreen() {
 
   
   useEffect(() => {
-    if (pickupCoords && destinationCoords) {
+    if (pickupCoords && destinationCoords && 
+        pickupCoords.latitude && pickupCoords.longitude && 
+        destinationCoords.latitude && destinationCoords.longitude) {
       const currentTime = Date.now();
       setLastRouteUpdate(currentTime);
       
@@ -2080,7 +2059,7 @@ function HomeScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.formTitleContainer}>
+            {/* <View style={styles.formTitleContainer}>
               <Text style={styles.formTitle}>Yük Taşıma Siparişi</Text>
               {keyboardVisible && (
                 <TouchableOpacity
@@ -2090,7 +2069,7 @@ function HomeScreen() {
                   <Text style={styles.keyboardDismissText}>Klavyeyi Kapat</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </View> */}
 
             {/* Devam eden sipariş varsa güzel kart göster */}
             {(() => {
@@ -2136,6 +2115,14 @@ function HomeScreen() {
                 priceLoading={priceLoading}
                 token={token || undefined}
                 refreshAuthToken={refreshAuthToken}
+                onPickupLocationChange={(coords, address) => {
+                  setPickupCoords(coords);
+                  setPickupLocation(address);
+                }}
+                onDestinationLocationChange={(coords, address) => {
+                  setDestinationCoords(coords);
+                  setDestinationLocation(address);
+                }}
               />
             )}
           </ScrollView>

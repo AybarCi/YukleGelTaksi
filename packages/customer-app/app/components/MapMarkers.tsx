@@ -37,6 +37,15 @@ export const DriverMarker = memo(({ driver }: { driver: Driver }) => {
 });
 
 export const PickupMarker = memo(({ coords }: { coords: { latitude: number; longitude: number } }) => {
+  console.log('Rendering pickup marker with coords:', coords);
+  
+  // Koordinatların geçerli olup olmadığını kontrol et
+  if (!coords || typeof coords.latitude !== 'number' || typeof coords.longitude !== 'number' ||
+      isNaN(coords.latitude) || isNaN(coords.longitude)) {
+    console.log('Invalid pickup coordinates, not rendering marker');
+    return null;
+  }
+  
   return (
     <Marker
       key={`pickup-${coords.latitude}-${coords.longitude}`}
@@ -53,6 +62,15 @@ export const PickupMarker = memo(({ coords }: { coords: { latitude: number; long
 });
 
 export const DestinationMarker = memo(({ coords }: { coords: { latitude: number; longitude: number } }) => {
+  console.log('Rendering destination marker with coords:', coords);
+  
+  // Koordinatların geçerli olup olmadığını kontrol et
+  if (!coords || typeof coords.latitude !== 'number' || typeof coords.longitude !== 'number' ||
+      isNaN(coords.latitude) || isNaN(coords.longitude)) {
+    console.log('Invalid destination coordinates, not rendering marker');
+    return null;
+  }
+  
   return (
     <Marker
       key={`destination-${coords.latitude}-${coords.longitude}`}

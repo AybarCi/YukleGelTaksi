@@ -55,7 +55,9 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
     }));
 
     const handleLocationSelect = (location: any) => {
+      console.log('YukKonumuInput - handleLocationSelect called with:', location);
       setInputText(location.address);
+      setSearchText(location.address); // Arama metnini de güncelle
       setModalVisible(false);
       onLocationSelect(location);
     };
@@ -171,7 +173,7 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
                   };
                   
                   handleLocationSelect(location);
-                  setSearchText('');
+                  // setSearchText(''); // Bu satırı kaldırıyoruz ki seçilen adres görünür kalsın
                 }}
                 query={{
                   key: Platform.OS === 'ios' ? API_CONFIG.GOOGLE_PLACES_API_KEY_IOS : API_CONFIG.GOOGLE_PLACES_API_KEY_ANDROID,

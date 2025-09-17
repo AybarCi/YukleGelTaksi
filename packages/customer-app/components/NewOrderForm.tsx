@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useAppDispatch, useAppSelector } from '../store';
 import { createOrder } from '../store/slices/orderSlice';
 import { checkDriverAvailability } from '../store/slices/driverSlice';
@@ -45,6 +46,8 @@ interface NewOrderFormProps {
   priceLoading?: boolean;
   token?: string;
   refreshAuthToken?: () => Promise<boolean>;
+  onPickupLocationChange?: (coords: LocationCoords | null, address: string) => void;
+  onDestinationLocationChange?: (coords: LocationCoords | null, address: string) => void;
 }
 
 const NewOrderForm: React.FC<NewOrderFormProps> = ({
@@ -54,7 +57,9 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   estimatedPrice,
   priceLoading,
   token,
-  refreshAuthToken
+  refreshAuthToken,
+  onPickupLocationChange,
+  onDestinationLocationChange,
 }) => {
   const dispatch = useAppDispatch();
   const { vehicleTypes: reduxVehicleTypes, selectedVehicleType: reduxSelectedVehicleType } = useAppSelector(state => state.vehicle);
@@ -97,40 +102,210 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
 
   // Location handlers
   const handlePickupLocationSelect = useCallback((location: any) => {
-    setPickupCoords({
-      latitude: location.latitude,
-      longitude: location.longitude,
-    });
+    console.log('🔥 YÜKÜN KONUMU SEÇİLDİ - handlePickupLocationSelect çağrıldı:', location);
+    console.log('🔥 YÜKÜN KONUMU - Gelen location objesi:', JSON.stringify(location, null, 2));
+    
+    const coords = {
+      latitude: location.coordinates.latitude,
+      longitude: location.coordinates.longitude,
+    };
+    
+    console.log('🔥 YÜKÜN KONUMU - Oluşturulan koordinatlar:', coords);
+    
+    setPickupCoords(coords);
     setPickupAddress(location.address);
-  }, []);
+    
+    console.log('🔥 YÜKÜN KONUMU - State güncellendi, adres:', location.address);
+    
+    // Input'u güncelle
+    if (pickupLocationRef.current) {
+      console.log('🔥 YÜKÜN KONUMU - Input ref mevcut, setAddressText çağrılıyor');
+      pickupLocationRef.current.setAddressText(location.address);
+    } else {
+      console.log('🔥 YÜKÜN KONUMU - HATA: pickupLocationRef.current null!');
+    }
+    
+    // Harita koordinatlarını güncelle
+    if (onPickupLocationChange) {
+      console.log('🔥 YÜKÜN KONUMU - onPickupLocationChange callback çağrılıyor');
+      onPickupLocationChange(coords, location.address);
+    } else {
+      console.log('🔥 YÜKÜN KONUMU - HATA: onPickupLocationChange callback yok!');
+    }
+  }, [onPickupLocationChange]);
 
   const handleDestinationLocationSelect = useCallback((location: any) => {
-    setDestinationCoords({
-      latitude: location.latitude,
-      longitude: location.longitude,
-    });
+    console.log('🟢 VARIŞ NOKTASI SEÇİLDİ - handleDestinationLocationSelect çağrıldı:', location);
+    console.log('🟢 VARIŞ NOKTASI - Gelen location objesi:', JSON.stringify(location, null, 2));
+    
+    const coords = {
+      latitude: location.coordinates.latitude,
+      longitude: location.coordinates.longitude,
+    };
+    
+    console.log('🟢 VARIŞ NOKTASI - Oluşturulan koordinatlar:', coords);
+    
+    setDestinationCoords(coords);
     setDestinationAddress(location.address);
-  }, []);
+    
+    console.log('🟢 VARIŞ NOKTASI - State güncellendi, adres:', location.address);
+    
+    // Input'u güncelle
+    if (destinationLocationRef.current) {
+      console.log('🟢 VARIŞ NOKTASI - Input ref mevcut, setAddressText çağrılıyor');
+      destinationLocationRef.current.setAddressText(location.address);
+    } else {
+      console.log('🟢 VARIŞ NOKTASI - HATA: destinationLocationRef.current null!');
+    }
+    
+    // Harita koordinatlarını güncelle
+    if (onDestinationLocationChange) {
+      console.log('🟢 VARIŞ NOKTASI - onDestinationLocationChange callback çağrılıyor');
+      onDestinationLocationChange(coords, location.address);
+    } else {
+      console.log('🟢 VARIŞ NOKTASI - HATA: onDestinationLocationChange callback yok!');
+    }
+  }, [onDestinationLocationChange]);
 
-  const handlePickupCurrentLocation = useCallback(() => {
-    if (userLocation?.coords) {
-      setPickupCoords({
+  const handlePickupCurrentLocation = useCallback(async () => {
+    console.log('🔥 YÜKÜN KONUMU - MEVCUT KONUM SEÇİLDİ - handlePickupCurrentLocation çağrıldı');
+    console.log('🔥 YÜKÜN KONUMU - userLocation:', userLocation);
+    
+    if (userLocation && userLocation.coords) {
+      const coords = {
         latitude: userLocation.coords.latitude,
         longitude: userLocation.coords.longitude,
-      });
-      setPickupAddress('Mevcut konumunuz');
+      };
+      
+      console.log('🔥 YÜKÜN KONUMU - Mevcut konum koordinatları:', coords);
+      
+      setPickupCoords(coords);
+      
+      // Reverse geocoding ile gerçek adresi al
+      try {
+        const reverseGeocode = await Location.reverseGeocodeAsync(coords);
+        if (reverseGeocode && reverseGeocode.length > 0) {
+          const address = reverseGeocode[0];
+          const fullAddress = [
+            address.name,
+            address.street,
+            address.district,
+            address.city
+          ].filter(Boolean).join(', ');
+          
+          const finalAddress = fullAddress || 'Mevcut Konumum';
+          setPickupAddress(finalAddress);
+          
+          console.log('🔥 YÜKÜN KONUMU - Reverse geocoding başarılı, adres:', finalAddress);
+          
+          // Input'u güncelle
+          if (pickupLocationRef.current) {
+            console.log('🔥 YÜKÜN KONUMU - Input ref mevcut, setAddressText çağrılıyor');
+            pickupLocationRef.current.setAddressText(finalAddress);
+          } else {
+            console.log('🔥 YÜKÜN KONUMU - HATA: pickupLocationRef.current null!');
+          }
+          
+          // Harita koordinatlarını güncelle
+          if (onPickupLocationChange) {
+            console.log('🔥 YÜKÜN KONUMU - onPickupLocationChange callback çağrılıyor');
+            onPickupLocationChange(coords, finalAddress);
+          } else {
+            console.log('🔥 YÜKÜN KONUMU - HATA: onPickupLocationChange callback yok!');
+          }
+        } else {
+          setPickupAddress('Mevcut Konumum');
+          if (pickupLocationRef.current) {
+            pickupLocationRef.current.setAddressText('Mevcut Konumum');
+          }
+          if (onPickupLocationChange) {
+            onPickupLocationChange(coords, 'Mevcut Konumum');
+          }
+        }
+      } catch (error) {
+        console.error('🔥 YÜKÜN KONUMU - Reverse geocoding hatası:', error);
+        setPickupAddress('Mevcut Konumum');
+        if (pickupLocationRef.current) {
+          pickupLocationRef.current.setAddressText('Mevcut Konumum');
+        }
+        if (onPickupLocationChange) {
+          onPickupLocationChange(coords, 'Mevcut Konumum');
+        }
+      }
+    } else {
+      console.log('🔥 YÜKÜN KONUMU - HATA: userLocation veya userLocation.coords null/undefined!');
     }
-  }, [userLocation]);
+  }, [userLocation, onPickupLocationChange]);
 
-  const handleDestinationCurrentLocation = useCallback(() => {
-    if (userLocation?.coords) {
-      setDestinationCoords({
+  const handleDestinationCurrentLocation = useCallback(async () => {
+    console.log('🟢 VARIŞ NOKTASI - MEVCUT KONUM SEÇİLDİ - handleDestinationCurrentLocation çağrıldı');
+    console.log('🟢 VARIŞ NOKTASI - userLocation:', userLocation);
+    
+    if (userLocation && userLocation.coords) {
+      const coords = {
         latitude: userLocation.coords.latitude,
         longitude: userLocation.coords.longitude,
-      });
-      setDestinationAddress('Mevcut konumunuz');
+      };
+      
+      console.log('🟢 VARIŞ NOKTASI - Mevcut konum koordinatları:', coords);
+      
+      setDestinationCoords(coords);
+      
+      // Reverse geocoding ile gerçek adresi al
+      try {
+        const reverseGeocode = await Location.reverseGeocodeAsync(coords);
+        if (reverseGeocode && reverseGeocode.length > 0) {
+          const address = reverseGeocode[0];
+          const fullAddress = [
+            address.name,
+            address.street,
+            address.district,
+            address.city
+          ].filter(Boolean).join(', ');
+          
+          const finalAddress = fullAddress || 'Mevcut Konumum';
+          setDestinationAddress(finalAddress);
+          
+          console.log('🟢 VARIŞ NOKTASI - Reverse geocoding başarılı, adres:', finalAddress);
+          
+          // Input'u güncelle
+          if (destinationLocationRef.current) {
+            console.log('🟢 VARIŞ NOKTASI - Input ref mevcut, setAddressText çağrılıyor');
+            destinationLocationRef.current.setAddressText(finalAddress);
+          } else {
+            console.log('🟢 VARIŞ NOKTASI - HATA: destinationLocationRef.current null!');
+          }
+          
+          // Harita koordinatlarını güncelle
+          if (onDestinationLocationChange) {
+            console.log('🟢 VARIŞ NOKTASI - onDestinationLocationChange callback çağrılıyor');
+            onDestinationLocationChange(coords, finalAddress);
+          } else {
+            console.log('🟢 VARIŞ NOKTASI - HATA: onDestinationLocationChange callback yok!');
+          }
+        } else {
+          setDestinationAddress('Mevcut Konumum');
+          if (destinationLocationRef.current) {
+            destinationLocationRef.current.setAddressText('Mevcut Konumum');
+          }
+          if (onDestinationLocationChange) {
+            onDestinationLocationChange(coords, 'Mevcut Konumum');
+          }
+        }
+      } catch (error) {
+        console.error('🟢 VARIŞ NOKTASI - Reverse geocoding hatası:', error);
+        setDestinationAddress('Mevcut Konumum');
+        if (destinationLocationRef.current) {
+          destinationLocationRef.current.setAddressText('Mevcut Konumum');
+        }
+        if (onDestinationLocationChange) {
+          onDestinationLocationChange(coords, 'Mevcut Konumum');
+        }
+      }
+    } else {
+      console.log('🟢 VARIŞ NOKTASI - HATA: userLocation veya userLocation.coords null/undefined!');
     }
-  }, [userLocation]);
+  }, [userLocation, onDestinationLocationChange]);
 
   // Vehicle type handler
   const handleVehicleTypeSelect = (vehicleType: VehicleType) => {
@@ -143,9 +318,63 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
     setShowImagePickerModal(true);
   };
 
-  const handleImageSelected = (imageUri: string) => {
-    setCargoImages(prev => [...prev, imageUri]);
-    setShowImagePickerModal(false);
+  const handleImageSelected = async (source: 'camera' | 'gallery') => {
+    try {
+      let result;
+      if (source === 'camera') {
+        // Kamera izni kontrolü
+        const cameraPermission = await ImagePicker.getCameraPermissionsAsync();
+        if (cameraPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert(
+              'Kamera İzni Gerekli',
+              'Fotoğraf çekebilmek için kamera izni gereklidir.',
+              [{ text: 'Tamam' }]
+            );
+            return;
+          }
+        }
+        
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+      } else {
+        // Galeri izni kontrolü
+        const mediaPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+        if (mediaPermission.status !== 'granted') {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert(
+              'Galeri İzni Gerekli',
+              'Fotoğraf seçebilmek için galeri izni gereklidir.',
+              [{ text: 'Tamam' }]
+            );
+            return;
+          }
+        }
+        
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+          allowsMultipleSelection: true,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const newImages = result.assets.map(asset => asset.uri);
+        setCargoImages(prev => [...prev, ...newImages]);
+        Alert.alert('Başarılı', `${newImages.length} fotoğraf başarıyla eklendi.`);
+      }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      Alert.alert('Hata', 'Fotoğraf seçilirken bir hata oluştu.');
+    }
   };
 
   const removeImage = (index: number) => {
@@ -388,17 +617,19 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     paddingBottom: 20,
+    width: '100%',
   },
   titleContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
-    marginTop: 16,
+    marginTop: 0,
   },
   title: {
     fontSize: 20,
