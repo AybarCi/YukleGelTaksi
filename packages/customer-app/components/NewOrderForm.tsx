@@ -450,6 +450,18 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
     }
 
     try {
+      // Check driver availability before creating order
+      const availabilityResult = await dispatch(checkDriverAvailability({
+        pickupLatitude: pickupCoords!.latitude,
+        pickupLongitude: pickupCoords!.longitude,
+        vehicleTypeId: selectedVehicleType!.id,
+      })).unwrap();
+
+      if (!availabilityResult.available) {
+        showModal?.('Sürücü Bulunamadı', 'Konumunuz ve seçtiğiniz araç tipine uygun sürücü bulunamamıştır. Lütfen daha sonra tekrar deneyin.', 'error');
+        return;
+      }
+
       const orderData = {
         pickupAddress: pickupAddress,
         pickupLatitude: pickupCoords!.latitude,
