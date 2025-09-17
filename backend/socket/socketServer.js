@@ -1,5 +1,6 @@
 const { Server: SocketIOServer } = require('socket.io');
 const { Server: HTTPServer } = require('http');
+const { EventEmitter } = require('events');
 const jwt = require('jsonwebtoken');
 const sql = require('mssql');
 const DatabaseConnection = require('../config/database.js');
@@ -8,9 +9,12 @@ const socketRateLimiter = require('../middleware/rateLimiter.js');
 const SocketEventWrapper = require('../utils/socketEventWrapper.js');
 const MemoryManager = require('../utils/memoryManager.js');
 const EventMonitor = require('../utils/eventMonitor.js');
+const SocketMonitoringEmitter = require('../utils/socketMonitoringEmitter.js');
 
-class SocketServer {
+class SocketServer extends EventEmitter {
   constructor(server) {
+    super(); // EventEmitter constructor'ını çağır
+    
     this.io = new SocketIOServer(server, {
       cors: {
         origin: "*",
@@ -33,6 +37,9 @@ class SocketServer {
     
     // Event monitoring
     this.eventMonitor = new EventMonitor();
+    
+    // Monitoring emitter
+    this.monitoringEmitter = new SocketMonitoringEmitter(this);
 
     this.setupSocketHandlers();
     
@@ -41,6 +48,9 @@ class SocketServer {
     
     // Event monitoring başlat
     this.eventMonitor.startMonitoring();
+    
+    // Real-time monitoring data emission başlat
+    this.startMonitoringEmission();
     
     console.log('🚀 Socket.IO server initialized with memory management and event monitoring');
   }
@@ -164,6 +174,9 @@ class SocketServer {
           await this.handleDriverConnection(socket);
         } else if (socket.userType === 'customer') {
           this.handleCustomerConnection(socket);
+        } else if (socket.userType === 'supervisor') {
+          // Supervisor bağlantısı için özel handling - sadece monitoring için
+          console.log(`👨‍💼 Supervisor ${socket.userId} connected for monitoring`);
         }
         
         // Connection performance tracking
@@ -205,8 +218,15 @@ class SocketServer {
       try {
         // İlk olarak mevcut token'ı doğrula
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-        socket.userId = decoded.userId;
-        socket.userType = decoded.userType || 'customer';
+        
+        // Supervisor token için özel handling
+        if (decoded.supervisorId) {
+          socket.userId = decoded.supervisorId;
+          socket.userType = 'supervisor';
+        } else {
+          socket.userId = decoded.userId;
+          socket.userType = decoded.userType || 'customer';
+        }
 
         // Eğer sürücü ise, driver ID'sini al
         if (socket.userType === 'driver') {
@@ -232,8 +252,15 @@ class SocketServer {
             if (newToken) {
               // Yeni token ile tekrar doğrula
               const decoded = jwt.verify(newToken, process.env.JWT_SECRET || 'your-secret-key');
-              socket.userId = decoded.userId;
-              socket.userType = decoded.userType || 'customer';
+              
+              // Supervisor token için özel handling
+              if (decoded.supervisorId) {
+                socket.userId = decoded.supervisorId;
+                socket.userType = 'supervisor';
+              } else {
+                socket.userId = decoded.userId;
+                socket.userType = decoded.userType || 'customer';
+              }
 
               // Eğer sürücü ise, driver ID'sini al
               if (socket.userType === 'driver') {
@@ -764,7 +791,61 @@ class SocketServer {
   }
 
   getConnectedCustomersCount() {
-    return this.connectedCustomers.size;
+    // Sadece gerçek müşterileri say, supervisor'ları hariç tut
+    let customerCount = 0;
+    this.connectedCustomers.forEach((customerData, customerId) => {
+      if (customerData.userType === 'customer') {
+        customerCount++;
+      }
+    });
+    return customerCount;
+  }
+
+  getConnectionDetails() {
+    const details = {
+      customers: [],
+      drivers: [],
+      supervisors: []
+    };
+
+    // Müşteri detayları
+    this.connectedCustomers.forEach((customerData, customerId) => {
+      details.customers.push({
+        id: customerId,
+        userType: customerData.userType,
+        socketId: customerData.socketId,
+        hasLocation: !!customerData.location,
+        connectedAt: customerData.connectedAt || new Date().toISOString()
+      });
+    });
+
+    // Sürücü detayları
+    this.connectedDrivers.forEach((driverData, driverId) => {
+      details.drivers.push({
+        id: driverId,
+        userType: 'driver',
+        socketId: driverData.socketId,
+        hasLocation: !!driverData.location,
+        isAvailable: driverData.isAvailable,
+        connectedAt: driverData.connectedAt || new Date().toISOString()
+      });
+    });
+
+    // Supervisor'ları bul (io.sockets üzerinden)
+    if (this.io && this.io.sockets) {
+      this.io.sockets.sockets.forEach((socket) => {
+        if (socket.userType === 'supervisor') {
+          details.supervisors.push({
+            id: socket.userId,
+            userType: 'supervisor',
+            socketId: socket.id,
+            connectedAt: new Date().toISOString()
+          });
+        }
+      });
+    }
+
+    return details;
   }
 
   // Placeholder methods - implement as needed
@@ -1631,6 +1712,52 @@ class SocketServer {
       console.error('Error getting order details:', error);
       return null;
     }
+  }
+
+  // Real-time monitoring data emission
+  startMonitoringEmission() {
+    // Her 5 saniyede bir monitoring verilerini emit et
+    setInterval(() => {
+      try {
+        const monitoringData = {
+          summary: {
+            totalEvents: this.eventMonitor.getTotalEvents(),
+            totalErrors: this.eventMonitor.getTotalErrors(),
+            connectedDrivers: this.getConnectedDriversCount(),
+            connectedCustomers: this.getConnectedCustomersCount(),
+            uptime: Math.floor((Date.now() - this.eventMonitor.startTime) / 1000),
+            errorRate: this.eventMonitor.getErrorRate(),
+            avgResponseTime: this.eventMonitor.getAverageResponseTime()
+          },
+          recentEvents: this.eventMonitor.getRecentEvents(10),
+          recentErrors: this.eventMonitor.getRecentErrors(10),
+          recentPerformance: this.eventMonitor.getRecentPerformance(10)
+        };
+
+        this.monitoringEmitter.emitMonitoringUpdate(monitoringData);
+      } catch (error) {
+        console.error('Error emitting monitoring data:', error);
+      }
+    }, 5000);
+
+    // Connection değişikliklerini izle
+    this.on('driver_connected', (driverId) => {
+      this.monitoringEmitter.emitConnectionUpdate('drivers', this.getConnectedDriversCount(), 1);
+    });
+
+    this.on('driver_disconnected', (driverId) => {
+      this.monitoringEmitter.emitConnectionUpdate('drivers', this.getConnectedDriversCount(), -1);
+    });
+
+    this.on('customer_connected', (customerId) => {
+      this.monitoringEmitter.emitConnectionUpdate('customers', this.getConnectedCustomersCount(), 1);
+    });
+
+    this.on('customer_disconnected', (customerId) => {
+      this.monitoringEmitter.emitConnectionUpdate('customers', this.getConnectedCustomersCount(), -1);
+    });
+
+    console.log('📊 Real-time monitoring emission started');
   }
 }
 

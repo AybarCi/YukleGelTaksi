@@ -97,7 +97,8 @@ export function generateSupervisorToken(data: { supervisorId: number; username: 
     {
       supervisorId: data.supervisorId,
       username: data.username,
-      role: data.role
+      role: data.role,
+      userType: 'supervisor'
     },
     process.env.JWT_SECRET || 'your-secret-key',
     { expiresIn: '10h' }

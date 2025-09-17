@@ -57,7 +57,7 @@ export async function GET(
         break;
     }
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(fileBuffer as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': contentType,

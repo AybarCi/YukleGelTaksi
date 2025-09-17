@@ -13,6 +13,7 @@ import SystemSettingsPage from './pages/SystemSettingsPage';
 import CancellationSettingsPage from './pages/CancellationSettingsPage';
 import SupportTicketsPage from './pages/SupportTicketsPage';
 import VehicleTypesPage from './pages/VehicleTypesPage';
+import MonitoringPage from './pages/MonitoringPage';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -124,6 +125,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <SupportTicketsPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/monitoring" element={
+              <ProtectedRoute>
+                <Layout>
+                  <MonitoringPage />
                 </Layout>
               </ProtectedRoute>
             } />

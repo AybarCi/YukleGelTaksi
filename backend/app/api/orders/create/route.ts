@@ -6,11 +6,6 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import SocketServer from '../../../../socket/socketServer';
 
-// Global socketServer tip tanımı
-declare global {
-  var socketServer: SocketServer | undefined;
-}
-
 interface CreateOrderRequest {
   pickupAddress: string;
   pickupLatitude: number;

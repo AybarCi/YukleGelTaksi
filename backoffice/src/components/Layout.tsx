@@ -29,6 +29,7 @@ import {
   MonetizationOn as MonetizationOnIcon,
   AccountCircle,
   Logout,
+  BarChart as MonitoringIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -101,6 +102,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       text: 'Destek Talepleri',
       icon: <SupportIcon />,
       path: '/support-tickets'
+    },
+    {
+      text: 'Sistem İzleme',
+      icon: <MonitoringIcon />,
+      path: '/monitoring'
     },
     {
       text: 'Taşıma Hesaplama',

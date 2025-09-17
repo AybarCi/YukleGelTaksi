@@ -3,11 +3,6 @@ import DatabaseConnection from '../../../../config/database';
 import { authenticateToken } from '../../../../middleware/auth';
 import SocketServer from '../../../../socket/socketServer';
 
-// Global socketServer tip tanımı
-declare global {
-  var socketServer: SocketServer | undefined;
-}
-
 interface UpdateLaborRequest {
   orderId: number;
   laborCount: number;

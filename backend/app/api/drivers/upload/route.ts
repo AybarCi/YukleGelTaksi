@@ -28,8 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Process each file
-    const entries = Array.from(formData.entries());
-    for (const [key, value] of entries) {
+    for (const [key, value] of (formData as any).entries()) {
       if (value instanceof File && value.size > 0) {
         // Validate file type
         const allowedTypes = [
