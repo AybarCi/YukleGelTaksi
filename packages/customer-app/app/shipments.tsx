@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   RefreshControl,
   ActivityIndicator,
   Modal,
@@ -15,6 +14,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { API_CONFIG } from '../config/api';
@@ -64,6 +64,7 @@ export default function ShipmentsScreen() {
   const { user, showModal } = useAuth();
   const dispatch = useDispatch();
   const vehicleTypes = useSelector((state: any) => state.vehicle.vehicleTypes);
+  const insets = useSafeAreaInsets();
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -294,18 +295,18 @@ export default function ShipmentsScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar style="dark" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFD700" />
           <Text style={styles.loadingText}>Taşımalar yükleniyor...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       
       {/* Header */}
@@ -389,7 +390,7 @@ export default function ShipmentsScreen() {
         presentationStyle="pageSheet"
         onRequestClose={closeDetailModal}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={closeDetailModal} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#000" />
@@ -488,7 +489,7 @@ export default function ShipmentsScreen() {
               )}
             </ScrollView>
           )}
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* Image Modal */}
@@ -530,7 +531,7 @@ export default function ShipmentsScreen() {
           </TouchableOpacity>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -1,17 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
   StyleSheet,
+  TouchableOpacity,
+  ScrollView,
   Alert,
+  ActivityIndicator,
   Linking,
   Image,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import ReviewOrderPhotos from '../components/ReviewOrderPhotos';
@@ -53,6 +55,7 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [order, setOrder] = useState<Order | null>(null);
+  const insets = useSafeAreaInsets();
   
   const { currentOrder } = useSelector((state: RootState) => state.order);
   const { vehicleTypes } = useSelector((state: RootState) => state.vehicle);
@@ -196,7 +199,7 @@ export default function OrderDetailScreen() {
 
   if (!order) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#000" />
@@ -208,12 +211,12 @@ export default function OrderDetailScreen() {
           <MaterialIcons name="error-outline" size={64} color="#D1D5DB" />
           <Text style={styles.emptyText}>Sipariş bilgisi bulunamadı</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#000" />
@@ -375,7 +378,7 @@ export default function OrderDetailScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Modal, Dimensions, SafeAreaView } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Modal, Dimensions } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_CONFIG } from '../config/api';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -25,6 +26,7 @@ const ReviewOrderPhotos: React.FC<ReviewOrderPhotosProps> = ({
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const insets = useSafeAreaInsets();
 
   // URL'leri tam URL'ye dönüştür
   const getFullImageUrl = (imageUri: string) => {
@@ -154,7 +156,7 @@ const ReviewOrderPhotos: React.FC<ReviewOrderPhotosProps> = ({
         animationType="fade"
         onRequestClose={closeImageModal}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
           <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
@@ -228,7 +230,7 @@ const ReviewOrderPhotos: React.FC<ReviewOrderPhotosProps> = ({
               </View>
             )}
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
     </View>
   );

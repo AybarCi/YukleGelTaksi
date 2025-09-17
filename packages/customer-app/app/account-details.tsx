@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   Image,
   Alert,
   ActivityIndicator,
@@ -16,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { API_CONFIG } from '../config/api';
 
@@ -23,6 +23,7 @@ export default function AccountDetailsScreen() {
   const { user, logout, showModal } = useAuth();
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Belirtilmemiş';
@@ -219,7 +220,7 @@ export default function AccountDetailsScreen() {
 
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
       
       {/* Header */}
@@ -409,7 +410,7 @@ export default function AccountDetailsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -1,5 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity, Modal, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { Ionicons } from '@expo/vector-icons';
 import { API_CONFIG } from '../config/api';
@@ -36,6 +37,7 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
     onCurrentLocationPress,
     editable = true
   }, ref) => {
+    const insets = useSafeAreaInsets();
     const [inputText, setInputText] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
@@ -124,7 +126,7 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
           animationType="slide"
           presentationStyle="pageSheet"
         >
-          <SafeAreaView style={styles.modalContainer}>
+          <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
             <View style={styles.modalHeader}>
               <TouchableOpacity 
                 onPress={() => setModalVisible(false)}
@@ -234,7 +236,7 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
                 </TouchableOpacity>
               )}
             </View>
-          </SafeAreaView>
+          </View>
         </Modal>
       </View>
     );
