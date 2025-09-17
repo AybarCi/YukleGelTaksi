@@ -3,6 +3,11 @@ const { Server: HTTPServer } = require('http');
 const jwt = require('jsonwebtoken');
 const sql = require('mssql');
 const DatabaseConnection = require('../config/database.js');
+const roomUtils = require('../utils/roomUtils.js');
+const socketRateLimiter = require('../middleware/rateLimiter.js');
+const SocketEventWrapper = require('../utils/socketEventWrapper.js');
+const MemoryManager = require('../utils/memoryManager.js');
+const EventMonitor = require('../utils/eventMonitor.js');
 
 class SocketServer {
   constructor(server) {
@@ -21,10 +26,23 @@ class SocketServer {
     this.connectedDrivers = new Map(); // driverId -> { socketId, location, isAvailable }
     this.connectedCustomers = new Map(); // userId -> { socketId, location }
     this.activeOrders = new Map(); // orderId -> orderData
-    this.inspectingOrders = new Map(); // orderId -> driverId (inceleme kilidi)
+    this.inspectingOrders = new Map(); // orderId -> { driverId, startTime }
+
+    // Memory management
+    this.memoryManager = new MemoryManager();
+    
+    // Event monitoring
+    this.eventMonitor = new EventMonitor();
 
     this.setupSocketHandlers();
-    console.log('Socket.IO server initialized');
+    
+    // Memory cleanup başlat
+    this.memoryManager.startMemoryCleanup(this, 300000); // 5 dakika
+    
+    // Event monitoring başlat
+    this.eventMonitor.startMonitoring();
+    
+    console.log('🚀 Socket.IO server initialized with memory management and event monitoring');
   }
 
   async addDriverToCustomerRooms(driverSocket) {
@@ -74,7 +92,7 @@ class SocketServer {
           
           // Yarıçap içindeyse room'a ekle
           if (distance <= searchRadiusKm) {
-            const customerRoom = `customer_${customerId}`;
+            const customerRoom = roomUtils.getCustomerRoomId(customerId);
             driverSocket.join(customerRoom);
             joinedRooms++;
             console.log(`✅ Driver ${driverSocket.driverId} joined customer room: ${customerRoom} (${distance.toFixed(2)}km)`);
@@ -101,7 +119,7 @@ class SocketServer {
       console.log(`🔄 Fallback: Adding driver ${driverSocket.driverId} to all ${connectedCustomerIds.length} customer rooms`);
       
       connectedCustomerIds.forEach(customerId => {
-        const customerRoom = `customer_${customerId}`;
+        const customerRoom = roomUtils.getCustomerRoomId(customerId);
         driverSocket.join(customerRoom);
         console.log(`✅ Driver ${driverSocket.driverId} joined customer room: ${customerRoom} (fallback)`);
       });
@@ -109,7 +127,7 @@ class SocketServer {
   }
 
   addAllDriversToCustomerRoom(customerId) {
-    const customerRoom = `customer_${customerId}`;
+    const customerRoom = roomUtils.getCustomerRoomId(customerId);
     const connectedDriverIds = Array.from(this.connectedDrivers.keys());
     console.log(`👥 Adding ${connectedDriverIds.length} drivers to customer ${customerId} room`);
     
@@ -129,21 +147,47 @@ class SocketServer {
     this.io.use(this.authenticateSocket.bind(this));
 
     this.io.on('connection', async (socket) => {
+      const startTime = Date.now();
+      
       console.log(`Socket connected: ${socket.id}`);
       console.log(`User type: ${socket.userType}, User ID: ${socket.userId}`);
+      
+      // Connection event tracking
+      this.eventMonitor.trackEvent('socket_connection', {
+        socketId: socket.id,
+        userType: socket.userType,
+        userId: socket.userId
+      });
 
-      if (socket.userType === 'driver') {
-        await this.handleDriverConnection(socket);
-      } else if (socket.userType === 'customer') {
-        this.handleCustomerConnection(socket);
+      try {
+        if (socket.userType === 'driver') {
+          await this.handleDriverConnection(socket);
+        } else if (socket.userType === 'customer') {
+          this.handleCustomerConnection(socket);
+        }
+        
+        // Connection performance tracking
+        this.eventMonitor.trackPerformance('socket_connection_setup', startTime);
+      } catch (error) {
+        this.eventMonitor.trackError('socket_connection_setup', error, {
+          socketId: socket.id,
+          userType: socket.userType,
+          userId: socket.userId
+        });
       }
 
       socket.on('disconnect', () => {
+        this.eventMonitor.trackEvent('socket_disconnect', {
+          socketId: socket.id,
+          userType: socket.userType,
+          userId: socket.userId
+        });
         this.handleDisconnection(socket);
       });
 
       // Ping-pong for connection health
       socket.on('ping', () => {
+        this.eventMonitor.trackEvent('socket_ping', { socketId: socket.id });
         socket.emit('pong');
       });
     });
@@ -258,16 +302,49 @@ class SocketServer {
       });
       console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: ${isAvailable}`);
       
-      // Sürücü event listener'larını ekle
-      socket.on('location_update', (locationData) => {
-        console.log(`📍 Received location update from driver ${driverId}:`, locationData);
-        this.updateDriverLocation(driverId, locationData);
-      });
+      // Sürücü event listener'larını rate limiting ile ekle
+      const driverEvents = {
+        'location_update': (socket, locationData) => {
+          console.log(`📍 Received location update from driver ${driverId}:`, locationData);
+          
+          // Spam detection
+          if (SocketEventWrapper.detectSpam(driverId, 'location_update', locationData)) {
+            socket.emit('spam_warning', { 
+              message: 'Çok hızlı konum güncellemesi gönderiyorsunuz.' 
+            });
+            return;
+          }
+          
+          // Data validation
+          const validation = SocketEventWrapper.validateEventData('location_update', locationData);
+          if (!validation.valid) {
+            socket.emit('validation_error', { 
+              eventType: 'location_update',
+              message: validation.error 
+            });
+            return;
+          }
+          
+          this.updateDriverLocation(driverId, locationData);
+        },
+        
+        'availability_update': (socket, availabilityData) => {
+          console.log(`🔄 Received availability update from driver ${driverId}:`, availabilityData);
+          
+          // Data validation
+          if (!availabilityData || typeof availabilityData.isAvailable !== 'boolean') {
+            socket.emit('validation_error', { 
+              eventType: 'availability_update',
+              message: 'Valid availability status is required' 
+            });
+            return;
+          }
+          
+          this.updateDriverAvailability(driverId, availabilityData.isAvailable);
+        }
+      };
       
-      socket.on('availability_update', (availabilityData) => {
-        console.log(`🔄 Received availability update from driver ${driverId}:`, availabilityData);
-        this.updateDriverAvailability(driverId, availabilityData.isAvailable);
-      });
+      SocketEventWrapper.addRateLimitedListeners(socket, driverEvents, this);
       
       // Sürücüyü tüm müşteri room'larına ekle (yarıçap bazlı)
       await this.addDriverToCustomerRooms(socket);
@@ -413,7 +490,7 @@ class SocketServer {
     });
     
     // Müşteriyi kendi özel odasına ekle
-    const customerRoom = `customer_${customerId}`;
+    const customerRoom = roomUtils.getCustomerRoomId(customerId);
     socket.join(customerRoom);
     console.log(`🏠 Customer ${customerId} joined private room: ${customerRoom} (Socket: ${socket.id})`);
     
@@ -427,50 +504,100 @@ class SocketServer {
       this.sendNearbyDriversToCustomer(socket);
     }, 1000);
 
-    // Customer-specific event handlers
-    socket.on('create_order', (orderData) => {
-      this.createOrder(customerId, orderData);
-    });
-
-    socket.on('cancel_order', (orderId) => {
-      this.cancelOrder(orderId, customerId);
-    });
-
-    socket.on('cancel_order_with_code', (data) => {
-      this.cancelOrderWithCode(data.orderId, data.confirmCode, customerId);
-    });
-
-    socket.on('customer_location_update', (location) => {
-      // Müşteri konumunu güncelle
-      const customerInfo = this.connectedCustomers.get(customerId);
-      const previousLocation = customerInfo ? customerInfo.location : null;
+    // Customer-specific event handlers with rate limiting
+    const customerEvents = {
+      'create_order': (socket, orderData) => {
+        // Data validation
+        const validation = SocketEventWrapper.validateEventData('order_create', orderData);
+        if (!validation.valid) {
+          socket.emit('validation_error', { 
+            eventType: 'create_order',
+            message: validation.error 
+          });
+          return;
+        }
+        
+        this.createOrder(customerId, orderData);
+      },
       
-      if (customerInfo) {
-        customerInfo.location = location;
-        console.log(`📍 Customer ${customerId} location updated:`, location);
+      'cancel_order': (socket, orderId) => {
+        // Data validation
+        if (!orderId) {
+          socket.emit('validation_error', { 
+            eventType: 'cancel_order',
+            message: 'Order ID is required' 
+          });
+          return;
+        }
+        
+        this.cancelOrder(orderId, customerId);
+      },
+      
+      'cancel_order_with_code': (socket, data) => {
+        // Data validation
+        if (!data || !data.orderId || !data.confirmCode) {
+          socket.emit('validation_error', { 
+            eventType: 'cancel_order_with_code',
+            message: 'Order ID and confirmation code are required' 
+          });
+          return;
+        }
+        
+        this.cancelOrderWithCode(data.orderId, data.confirmCode, customerId);
+      },
+      
+      'customer_location_update': (socket, location) => {
+        // Spam detection
+        if (SocketEventWrapper.detectSpam(customerId, 'customer_location_update', location)) {
+          socket.emit('spam_warning', { 
+            message: 'Çok hızlı konum güncellemesi gönderiyorsunuz.' 
+          });
+          return;
+        }
+        
+        // Data validation
+        const validation = SocketEventWrapper.validateEventData('location_update', location);
+        if (!validation.valid) {
+          socket.emit('validation_error', { 
+            eventType: 'customer_location_update',
+            message: validation.error 
+          });
+          return;
+        }
+        
+        // Müşteri konumunu güncelle
+        const customerInfo = this.connectedCustomers.get(customerId);
+        const previousLocation = customerInfo ? customerInfo.location : null;
+        
+        if (customerInfo) {
+          customerInfo.location = location;
+          console.log(`📍 Customer ${customerId} location updated:`, location);
+        }
+        this.updateCustomerLocation(customerId, location);
+        
+        // Sadece önemli konum değişikliklerinde sürücü listesini yeniden gönder
+        // Eğer önceki konum yoksa veya 100 metreden fazla değişiklik varsa güncelle
+        let shouldUpdateDrivers = !previousLocation;
+        
+        if (previousLocation && !shouldUpdateDrivers) {
+          const distance = this.calculateDistance(
+            previousLocation.latitude, previousLocation.longitude,
+            location.latitude, location.longitude
+          );
+          // 100 metreden fazla değişiklik varsa güncelle
+          shouldUpdateDrivers = distance > 0.1; // 0.1 km = 100 metre
+        }
+        
+        if (shouldUpdateDrivers) {
+          console.log(`🔄 Significant location change detected, updating nearby drivers for customer ${customerId}`);
+          this.sendNearbyDriversToCustomer(socket);
+        } else {
+          console.log(`📍 Minor location change, skipping driver list update for customer ${customerId}`);
+        }
       }
-      this.updateCustomerLocation(customerId, location);
-      
-      // Sadece önemli konum değişikliklerinde sürücü listesini yeniden gönder
-      // Eğer önceki konum yoksa veya 100 metreden fazla değişiklik varsa güncelle
-      let shouldUpdateDrivers = !previousLocation;
-      
-      if (previousLocation && !shouldUpdateDrivers) {
-        const distance = this.calculateDistance(
-          previousLocation.latitude, previousLocation.longitude,
-          location.latitude, location.longitude
-        );
-        // 100 metreden fazla değişiklik varsa güncelle
-        shouldUpdateDrivers = distance > 0.1; // 0.1 km = 100 metre
-      }
-      
-      if (shouldUpdateDrivers) {
-        console.log(`🔄 Significant location change detected, updating nearby drivers for customer ${customerId}`);
-        this.sendNearbyDriversToCustomer(socket);
-      } else {
-        console.log(`📍 Minor location change, skipping driver list update for customer ${customerId}`);
-      }
-    });
+    };
+    
+    SocketEventWrapper.addRateLimitedListeners(socket, customerEvents, this);
   }
 
   handleDisconnection(socket) {
@@ -514,8 +641,11 @@ class SocketServer {
         this.connectedCustomers.delete(customerId);
         
         // Müşteri room'undan ayrıl ve room'u temizle
-        const customerRoom = `customer_${customerId}`;
-        socket.leave(customerRoom);
+        const customerRoom = roomUtils.getUserRoomId('customer', customerId);
+        if (customerRoom) {
+          socket.leave(customerRoom);
+          roomUtils.clearUserRoom('customer', customerId);
+        }
         
         // Room'daki diğer üyeleri kontrol et ve boşsa room'u temizle
         const roomSockets = this.io.sockets.adapter.rooms.get(customerRoom);
@@ -639,9 +769,15 @@ class SocketServer {
 
   // Placeholder methods - implement as needed
   async createOrder(userId, orderData) {
+    const startTime = Date.now();
     console.log('Creating order for user:', userId, 'with data:', orderData);
     
     try {
+      this.eventMonitor.trackEvent('order_create', {
+        userId,
+        orderId: orderData.orderId || orderData.id
+      });
+      
       // Sipariş oluşturulduktan sonra sürücülere bildirim gönder
       this.broadcastToAllDrivers('order_created', {
         orderId: orderData.orderId || orderData.id,
@@ -649,8 +785,10 @@ class SocketServer {
         ...orderData
       });
       
+      this.eventMonitor.trackPerformance('order_create', startTime);
       console.log(`Order created and broadcasted to drivers for user ${userId}`);
     } catch (error) {
+      this.eventMonitor.trackError('order_create', error, { userId, orderData });
       console.error('Error in createOrder:', error);
     }
   }
@@ -888,7 +1026,7 @@ class SocketServer {
   broadcastNearbyDriversToAllCustomers() {
     // Tüm bağlı müşterilere güncellenmiş sürücü listesini gönder
     this.connectedCustomers.forEach((customerInfo, customerId) => {
-      const customerRoom = `customer_${customerId}`;
+      const customerRoom = roomUtils.getCustomerRoomId(customerId);
       const customerSocket = this.io.sockets.sockets.get(customerInfo.socketId);
       if (customerSocket) {
         this.sendNearbyDriversToCustomer(customerSocket);
@@ -933,8 +1071,8 @@ class SocketServer {
       
       console.log(`🎯 Search radius: ${searchRadiusKm} km`);
       
-      // Sadece gerçekten bağlı olan sürücüleri göster (bellekten)
-      const connectedDriversWithLocation = [];
+      // Önce mesafe kontrolü yap ve yakın sürücüleri belirle
+      const nearbyDriversWithDistance = [];
       
       for (const [driverId, driverData] of this.connectedDrivers) {
         console.log(`🔍 Checking driver ${driverId}:`, {
@@ -957,50 +1095,77 @@ class SocketServer {
           
           // Yarıçap kontrolü
           if (distance <= searchRadiusKm) {
-            // Veritabanından sürücü detaylarını getir
-            const result = await pool.request()
-              .input('driverId', driverId)
-              .query(`
-                SELECT 
-                  d.id,
-                  d.first_name,
-                  d.last_name,
-                  d.vehicle_plate,
-                  d.vehicle_model,
-                  d.vehicle_color,
-                  d.is_active,
-                  d.is_available
-                FROM drivers d
-                WHERE d.id = @driverId AND d.is_active = 1
-              `);
-            
-            if (result.recordset && result.recordset.length > 0) {
-              const driver = result.recordset[0];
-              console.log(`✅ Adding driver ${driverId} to nearby list (${distance.toFixed(2)}km):`, {
-                name: driver.first_name,
-                isActive: driver.is_active,
-                isAvailable: driver.is_available,
-                location: driverData.location
-              });
-              
-              connectedDriversWithLocation.push({
-                id: driver.id.toString(),
-                latitude: driverData.location.latitude,
-                longitude: driverData.location.longitude,
-                heading: driverData.location.heading || 0,
-                name: driver.first_name,
-                vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
-                plate: driver.vehicle_plate,
-                distance: distance
-              });
-            } else {
-              console.log(`❌ Driver ${driverId} not found in database or not active`);
-            }
+            nearbyDriversWithDistance.push({
+              driverId: driverId,
+              driverData: driverData,
+              distance: distance
+            });
           } else {
             console.log(`❌ Driver ${driverId} skipped - outside radius (${distance.toFixed(2)}km > ${searchRadiusKm}km)`);
           }
         } else {
           console.log(`❌ Driver ${driverId} skipped - no location or not available`);
+        }
+      }
+
+      // Eğer yakın sürücü yoksa boş liste döndür
+      if (nearbyDriversWithDistance.length === 0) {
+        console.log(`📍 No nearby drivers found within ${searchRadiusKm}km radius`);
+        socket.emit('nearbyDriversUpdate', { drivers: [] });
+        return;
+      }
+
+      // Batch query ile tüm yakın sürücülerin bilgilerini tek seferde al
+      const driverIds = nearbyDriversWithDistance.map(item => item.driverId);
+      const driverIdsString = driverIds.map(id => `'${id}'`).join(',');
+      
+      const driversResult = await pool.request()
+        .query(`
+          SELECT 
+            d.id,
+            d.first_name,
+            d.last_name,
+            d.vehicle_plate,
+            d.vehicle_model,
+            d.vehicle_color,
+            d.is_active,
+            d.is_available
+          FROM drivers d
+          WHERE d.id IN (${driverIdsString}) AND d.is_active = 1
+        `);
+
+      // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için)
+      const driversMap = new Map();
+      driversResult.recordset.forEach(driver => {
+        driversMap.set(driver.id.toString(), driver);
+      });
+
+      // Final liste oluştur
+      const connectedDriversWithLocation = [];
+      
+      for (const item of nearbyDriversWithDistance) {
+        const driver = driversMap.get(item.driverId);
+        
+        if (driver) {
+          console.log(`✅ Adding driver ${item.driverId} to nearby list (${item.distance.toFixed(2)}km):`, {
+            name: driver.first_name,
+            isActive: driver.is_active,
+            isAvailable: driver.is_available,
+            location: item.driverData.location
+          });
+          
+          connectedDriversWithLocation.push({
+            id: driver.id.toString(),
+            latitude: item.driverData.location.latitude,
+            longitude: item.driverData.location.longitude,
+            heading: item.driverData.location.heading || 0,
+            name: driver.first_name,
+            vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
+            plate: driver.vehicle_plate,
+            distance: item.distance
+          });
+        } else {
+          console.log(`❌ Driver ${item.driverId} not found in database or not active`);
         }
       }
       
@@ -1022,7 +1187,7 @@ class SocketServer {
       }
 
       // Müşterinin room'una emit et
-      const customerRoom = `customer_${socket.userId}`;
+      const customerRoom = roomUtils.getCustomerRoomId(socket.userId);
       this.io.to(customerRoom).emit('nearbyDriversUpdate', { drivers });
       
       console.log(`✅ Sent ${drivers.length} nearby drivers to customer ${socket.userId} in room ${customerRoom}`);
@@ -1194,8 +1359,8 @@ class SocketServer {
 
       // Başka bir sürücü inceliyor mu kontrol et
       if (this.inspectingOrders.has(actualOrderId)) {
-        const inspectingDriverId = this.inspectingOrders.get(actualOrderId);
-        if (inspectingDriverId !== driverId) {
+        const inspectingData = this.inspectingOrders.get(actualOrderId);
+        if (inspectingData.driverId !== driverId) {
           const driverData = this.connectedDrivers.get(driverId);
           if (driverData) {
             this.io.to(driverData.socketId).emit('order_being_inspected', { 
@@ -1208,7 +1373,10 @@ class SocketServer {
       }
 
       // Siparişi inceleme listesine ekle
-      this.inspectingOrders.set(actualOrderId, driverId);
+      this.inspectingOrders.set(actualOrderId, { 
+        driverId, 
+        startTime: Date.now() 
+      });
 
       // Siparişi "inspecting" durumuna getir (driver_id set etme)
       await pool.request()
@@ -1236,7 +1404,7 @@ class SocketServer {
       
       if (orderResult.recordset.length > 0) {
         const customerId = orderResult.recordset[0].user_id;
-        const customerRoom = `customer_${customerId}`;
+        const customerRoom = roomUtils.getCustomerRoomId(customerId);
         
         // Customer room'una sipariş inceleme durumu gönder
         this.io.to(customerRoom).emit('order_inspection_started', {
@@ -1291,60 +1459,85 @@ class SocketServer {
       
       console.log(`🔍 Using search radius: ${searchRadiusKm}km for order ${orderId}`);
       
+      // Önce mesafe kontrolü yap ve uygun sürücüleri belirle
+      const eligibleDrivers = [];
+      
+      for (const [driverId, driverInfo] of this.connectedDrivers) {
+        if (driverInfo.isAvailable && driverInfo.location) {
+          // Mesafe hesapla
+          const distance = this.calculateDistance(
+            orderData.pickupLatitude,
+            orderData.pickupLongitude,
+            driverInfo.location.latitude,
+            driverInfo.location.longitude
+          );
+          
+          // Yarıçap içinde mi kontrol et
+          if (distance <= searchRadiusKm) {
+            eligibleDrivers.push({
+              driverId: driverId,
+              driverInfo: driverInfo,
+              distance: distance
+            });
+          } else {
+            console.log(`❌ Driver ${driverId} skipped - outside radius (distance: ${distance.toFixed(2)}km > ${searchRadiusKm}km)`);
+          }
+        }
+      }
+
+      // Eğer uygun sürücü yoksa işlemi sonlandır
+      if (eligibleDrivers.length === 0) {
+        console.log(`📍 No eligible drivers found within ${searchRadiusKm}km radius for order ${orderId}`);
+        return;
+      }
+
+      // Batch query ile tüm uygun sürücülerin araç tiplerini al
+      const driverIds = eligibleDrivers.map(item => item.driverId);
+      const driverIdsString = driverIds.map(id => `'${id}'`).join(',');
+      
+      const driversResult = await pool.request()
+        .query(`
+          SELECT id, vehicle_type_id 
+          FROM drivers 
+          WHERE id IN (${driverIdsString}) AND is_active = 1
+        `);
+
+      // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için)
+      const driversVehicleMap = new Map();
+      driversResult.recordset.forEach(driver => {
+        driversVehicleMap.set(driver.id.toString(), driver.vehicle_type_id);
+      });
+
       let matchingDriversCount = 0;
       let driversWithDistance = [];
       
-      // Tüm bağlı ve müsait sürücülere sipariş bilgisini gönder (araç tipi ve yarıçap kontrolü ile)
-      for (const [driverId, driverInfo] of this.connectedDrivers) {
-        if (driverInfo.isAvailable && driverInfo.location) {
-          try {
-            // Sürücünün araç tipini kontrol et
-            const driverResult = await pool.request()
-              .input('driverId', driverId)
-              .query(`
-                SELECT vehicle_type_id 
-                FROM drivers 
-                WHERE id = @driverId AND is_active = 1
-              `);
-            
-            if (driverResult.recordset.length > 0) {
-              const driverVehicleTypeId = driverResult.recordset[0].vehicle_type_id;
-              
-              // Araç tipi eşleşiyorsa mesafe kontrolü yap
-              if (driverVehicleTypeId === orderData.vehicle_type_id) {
-                // Mesafe hesapla
-                const distance = this.calculateDistance(
-                  orderData.pickupLatitude,
-                  orderData.pickupLongitude,
-                  driverInfo.location.latitude,
-                  driverInfo.location.longitude
-                );
-                
-                // Yarıçap içinde mi kontrol et
-                if (distance <= searchRadiusKm) {
-                  const driverSocket = this.io.sockets.sockets.get(driverInfo.socketId);
-                  if (driverSocket) {
-                    driverSocket.emit('new_order_available', {
-                      orderId,
-                      distance: distance,
-                      ...orderData
-                    });
-                    matchingDriversCount++;
-                    driversWithDistance.push({ driverId, distance, vehicleType: driverVehicleTypeId });
-                    console.log(`✅ Order ${orderId} sent to driver ${driverId} (vehicle_type: ${driverVehicleTypeId}, distance: ${distance.toFixed(2)}km)`);
-                  }
-                } else {
-                  console.log(`❌ Driver ${driverId} skipped - outside radius (distance: ${distance.toFixed(2)}km > ${searchRadiusKm}km)`);
-                }
-              } else {
-                console.log(`❌ Driver ${driverId} skipped - vehicle type mismatch (driver: ${driverVehicleTypeId}, order: ${orderData.vehicle_type_id})`);
-              }
-            } else {
-              console.log(`❌ Driver ${driverId} not found or inactive`);
+      // Final kontrol ve sipariş gönderimi
+      for (const item of eligibleDrivers) {
+        const driverVehicleTypeId = driversVehicleMap.get(item.driverId);
+        
+        if (driverVehicleTypeId) {
+          // Araç tipi eşleşiyorsa sipariş gönder
+          if (driverVehicleTypeId === orderData.vehicle_type_id) {
+            const driverSocket = this.io.sockets.sockets.get(item.driverInfo.socketId);
+            if (driverSocket) {
+              driverSocket.emit('new_order_available', {
+                orderId,
+                distance: item.distance,
+                ...orderData
+              });
+              matchingDriversCount++;
+              driversWithDistance.push({ 
+                driverId: item.driverId, 
+                distance: item.distance, 
+                vehicleType: driverVehicleTypeId 
+              });
+              console.log(`✅ Order ${orderId} sent to driver ${item.driverId} (vehicle_type: ${driverVehicleTypeId}, distance: ${item.distance.toFixed(2)}km)`);
             }
-          } catch (driverError) {
-            console.error(`❌ Error checking driver ${driverId}:`, driverError);
+          } else {
+            console.log(`❌ Driver ${item.driverId} skipped - vehicle type mismatch (driver: ${driverVehicleTypeId}, order: ${orderData.vehicle_type_id})`);
           }
+        } else {
+          console.log(`❌ Driver ${item.driverId} not found or inactive`);
         }
       }
       
@@ -1398,7 +1591,7 @@ class SocketServer {
       
       if (orderResult.recordset.length > 0) {
         const customerId = orderResult.recordset[0].user_id;
-        const customerRoom = `customer_${customerId}`;
+        const customerRoom = roomUtils.getCustomerRoomId(customerId);
         
         this.io.to(customerRoom).emit('order_inspection_stopped', {
           orderId: actualOrderId,
