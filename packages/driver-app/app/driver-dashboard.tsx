@@ -41,7 +41,7 @@ interface Customer {
   destination: string;
   distance: string;
   estimated_fare: number;
-  status: 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
+  status: 'pending' | 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
   created_at: string;
 }
 
@@ -187,18 +187,31 @@ export default function DriverDashboardScreen() {
       
       // Socket bağlantı durumu event'lerini dinle
       socketService.on('connection_error', (data: any) => {
-        console.error('Socket bağlantı hatası:', data.error);
-        showModal('Bağlantı Hatası', 'Sunucuya bağlanırken bir hata oluştu. Lütfen internet bağlantınızı kontrol edin.', 'error');
+        console.log('🔔 CONNECTION ERROR BİLDİRİMİ ALINDI:');
+        console.log('❌ Socket bağlantı hatası:', JSON.stringify(data, null, 2));
+        console.log('🔌 Bağlantı durumu:', socketService.isSocketConnected());
+        showModal('Bağlantı Hatası', 'Sunucu ile bağlantı kurulamadı. Lütfen internet bağlantınızı kontrol edin.', 'error');
       });
 
       socketService.on('max_reconnect_attempts_reached', () => {
-        console.log('Maksimum yeniden bağlanma denemesi aşıldı');
-        showModal('Bağlantı Sorunu', 'Sunucuya bağlanılamıyor. Lütfen uygulamayı yeniden başlatın.', 'warning');
+        console.log('🔔 MAX RECONNECT ATTEMPTS BİLDİRİMİ ALINDI:');
+        console.log('❌ Maksimum yeniden bağlanma denemesi aşıldı');
+        console.log('🔌 Socket durumu:', socketService.isSocketConnected());
+        console.log('🆔 Socket ID:', socketService.getSocketId());
+        showModal('Bağlantı Sorunu', 'Sunucu ile bağlantı kurulamıyor. Lütfen uygulamayı yeniden başlatın.', 'error');
       });
       
       // Socket event listener'ları
       socketService.on('new_order', (orderData: OrderData) => {
-        console.log('New order received:', orderData);
+        console.log('🔔 NEW ORDER BİLDİRİMİ ALINDI:');
+        console.log('📋 Sipariş Detayları:', JSON.stringify(orderData, null, 2));
+        console.log('👤 Müşteri:', orderData.customer_first_name, orderData.customer_last_name);
+        console.log('📍 Alış Adresi:', orderData.pickupAddress);
+        console.log('🎯 Varış Adresi:', orderData.destinationAddress);
+        console.log('💰 Tahmini Ücret:', orderData.estimatedPrice);
+        console.log('📏 Mesafe:', orderData.distance);
+        console.log('⚖️ Ağırlık:', orderData.weight);
+        console.log('👷 İşçi Sayısı:', orderData.laborCount);
         
         // OrderData'yı Customer formatına dönüştür
         const newCustomer: Customer = {
@@ -211,9 +224,11 @@ export default function DriverDashboardScreen() {
           destination: orderData.destinationAddress,
           distance: orderData.distance ? `${orderData.distance.toFixed(1)} km` : 'Hesaplanıyor...',
           estimated_fare: orderData.estimatedPrice,
-          status: 'waiting',
+          status: 'pending',
           created_at: new Date().toISOString(),
         };
+        
+        console.log('✅ Dönüştürülen Müşteri Verisi:', JSON.stringify(newCustomer, null, 2));
         
         // Yeni siparişi customers listesine ekle
         setCustomers(prev => {
@@ -223,8 +238,10 @@ export default function DriverDashboardScreen() {
           if (existingIndex >= 0) {
             const updated = [...currentCustomers];
             updated[existingIndex] = newCustomer;
+            console.log('🔄 Mevcut sipariş güncellendi:', newCustomer.id);
             return updated;
           } else {
+            console.log('➕ Yeni sipariş eklendi:', newCustomer.id);
             return [newCustomer, ...currentCustomers];
           }
         });
@@ -232,7 +249,14 @@ export default function DriverDashboardScreen() {
       
       // Order created event - yeni sipariş oluşturulduğunda bildirim
       socketService.on('order_created', (orderData: any) => {
-        console.log('Order created notification received:', orderData);
+        console.log('🔔 ORDER CREATED BİLDİRİMİ ALINDI:');
+        console.log('📋 Sipariş Verisi:', JSON.stringify(orderData, null, 2));
+        console.log('🆔 Sipariş ID:', orderData.orderId || orderData.id);
+        console.log('👤 Müşteri Adı:', orderData.customer_first_name, orderData.customer_last_name);
+        console.log('📞 Müşteri Telefon:', orderData.customerPhone);
+        console.log('📍 Alış Konumu:', orderData.pickupAddress);
+        console.log('🎯 Varış Konumu:', orderData.destinationAddress);
+        console.log('💰 Tahmini Fiyat:', orderData.estimatedPrice);
         
         // OrderData'yı Customer formatına dönüştür
         const newCustomer: Customer = {
@@ -245,9 +269,11 @@ export default function DriverDashboardScreen() {
           destination: orderData.destinationAddress,
           distance: orderData.distance ? `${orderData.distance.toFixed(1)} km` : 'Hesaplanıyor...',
           estimated_fare: orderData.estimatedPrice,
-          status: 'waiting',
+          status: 'pending',
           created_at: new Date().toISOString(),
         };
+        
+        console.log('✅ Dönüştürülen Müşteri Verisi:', JSON.stringify(newCustomer, null, 2));
         
         // Yeni siparişi customers listesine ekle
         setCustomers(prev => {
@@ -257,20 +283,30 @@ export default function DriverDashboardScreen() {
           if (existingIndex >= 0) {
             const updated = [...currentCustomers];
             updated[existingIndex] = newCustomer;
+            console.log('🔄 Mevcut sipariş güncellendi (order_created):', newCustomer.id);
             return updated;
           } else {
+            console.log('➕ Yeni sipariş eklendi (order_created):', newCustomer.id);
             return [newCustomer, ...currentCustomers];
           }
         });
         
         // Bildirim göster
         showModal('Yeni Sipariş', `${newCustomer.name} tarafından yeni bir sipariş oluşturuldu.`, 'info');
+        console.log('📱 Modal bildirim gösterildi:', newCustomer.name);
       });
       
       socketService.on('order_cancelled', (orderId: number) => {
-        console.log('Order cancelled:', orderId);
+        console.log('🔔 ORDER CANCELLED BİLDİRİMİ ALINDI:');
+        console.log('🆔 İptal Edilen Sipariş ID:', orderId);
+        
         // İptal edilen siparişi listeden kaldır
-        setCustomers(prev => (prev || []).filter(customer => customer.id !== orderId));
+        setCustomers(prev => {
+          const filtered = (prev || []).filter(customer => customer.id !== orderId);
+          console.log('❌ Sipariş listeden kaldırıldı:', orderId);
+          console.log('📊 Kalan sipariş sayısı:', filtered.length);
+          return filtered;
+        });
         
         // Eğer iptal edilen sipariş aktif sipariş ise, sürücüyü ana ekrana getir
         if (activeOrder && activeOrder.id === orderId) {
@@ -278,38 +314,57 @@ export default function DriverDashboardScreen() {
           setCurrentPhase('pickup');
           setRouteCoordinates([]);
           setRouteDuration(null);
-          console.log('Aktif sipariş iptal edildi, sürücü ana ekrana getirildi');
+          console.log('🏠 Aktif sipariş iptal edildi, sürücü ana ekrana getirildi');
         }
       });
       
       // Müşteri siparişi onayladığında
       socketService.on('order_confirmed_by_customer', (data: { orderId: number, customerInfo: any }) => {
-        console.log('Müşteri siparişi onayladı:', data);
+        console.log('🔔 ORDER CONFIRMED BİLDİRİMİ ALINDI:');
+        console.log('📋 Onay Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Onaylanan Sipariş ID:', data.orderId);
+        console.log('👤 Müşteri Bilgisi:', data.customerInfo);
+        
         // Siparişi listeden kaldır ve başarı mesajı göster
-        setCustomers(prev => (prev || []).filter(customer => customer.id !== data.orderId));
+        setCustomers(prev => {
+          const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
+          console.log('✅ Onaylanan sipariş listeden kaldırıldı:', data.orderId);
+          return filtered;
+        });
         // TODO: Başarı mesajı modal'ı göster
       });
       
       // Müşteri siparişi reddetti
       socketService.on('order_rejected_by_customer', (data: { orderId: number, reason?: string }) => {
-        console.log('Müşteri siparişi reddetti:', data);
+        console.log('🔔 ORDER REJECTED BİLDİRİMİ ALINDI:');
+        console.log('📋 Red Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Reddedilen Sipariş ID:', data.orderId);
+        console.log('❌ Red Sebebi:', data.reason || 'Belirtilmemiş');
+        
         // Siparişi listeden kaldır
-        setCustomers(prev => (prev || []).filter(customer => customer.id !== data.orderId));
+        setCustomers(prev => {
+          const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
+          console.log('❌ Reddedilen sipariş listeden kaldırıldı:', data.orderId);
+          return filtered;
+        });
         // TODO: Bilgilendirme mesajı göster
       });
       
       // Server konum güncellemesi istediğinde mevcut konumu gönder
       socketService.on('request_location_update', async () => {
-        console.log('Server konum güncellemesi istiyor, mevcut konum gönderiliyor...');
+        console.log('🔔 LOCATION UPDATE REQUEST BİLDİRİMİ ALINDI:');
+        console.log('📍 Server konum güncellemesi istiyor, mevcut konum gönderiliyor...');
+        console.log('🗺️ Mevcut Konum:', currentLocation);
+        
         if (currentLocation) {
           socketService.updateLocation({
             latitude: currentLocation.latitude,
             longitude: currentLocation.longitude,
             heading: 0
           });
-          console.log('Mevcut konum sunucuya gönderildi:', currentLocation);
+          console.log('✅ Mevcut konum sunucuya gönderildi:', currentLocation);
         } else {
-          console.log('Konum bilgisi yok, konum alınmaya çalışılıyor...');
+          console.log('❌ Konum bilgisi yok, konum alınmaya çalışılıyor...');
           // Konum bilgisi yoksa yeniden al
           try {
             const location = await Location.getCurrentPositionAsync({
@@ -327,86 +382,171 @@ export default function DriverDashboardScreen() {
               longitude: location.coords.longitude,
               heading: location.coords.heading || 0,
             });
-            console.log('Yeni konum alındı ve sunucuya gönderildi:', newLocation);
+            console.log('✅ Yeni konum alındı ve sunucuya gönderildi:', newLocation);
           } catch (error) {
-            console.error('Konum alınırken hata:', error);
+            console.error('❌ Konum alınırken hata:', error);
           }
         }
       });
       
       // Sipariş durumu güncellemelerini dinle
       socketService.on('order_status_update', (data: { orderId: number, status: string }) => {
-        console.log('Sipariş durumu güncellendi:', data);
+        console.log('🔔 ORDER STATUS UPDATE BİLDİRİMİ ALINDI:');
+        console.log('📋 Durum Güncelleme Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Sipariş ID:', data.orderId);
+        console.log('📊 Yeni Durum:', data.status);
         
         // İlgili siparişi customers listesinde güncelle
         setCustomers(prev => {
           const currentCustomers = Array.isArray(prev) ? prev : [];
-          return currentCustomers.map(customer => {
+          const updated = currentCustomers.map(customer => {
             if (customer.id === data.orderId) {
+              console.log('🔄 Sipariş durumu güncellendi:', customer.id, 'Eski:', customer.status, 'Yeni:', data.status);
               return { ...customer, status: data.status as Customer['status'] };
             }
             return customer;
           });
+          return updated;
         });
         
         // Sipariş tamamlandıysa listeden kaldır
         if (data.status === 'completed' || data.status === 'cancelled') {
-          setCustomers(prev => (prev || []).filter(customer => customer.id !== data.orderId));
+          setCustomers(prev => {
+            const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
+            console.log('✅ Tamamlanan/İptal edilen sipariş listeden kaldırıldı:', data.orderId);
+            return filtered;
+          });
         }
       });
       
       // Sipariş faz güncellemelerini dinle
       socketService.on('order_phase_update', (data: { orderId: number, currentPhase: 'pickup' | 'delivery', status: string }) => {
-        console.log('Sipariş faz güncellendi:', data);
+        console.log('🔔 ORDER PHASE UPDATE BİLDİRİMİ ALINDI:');
+        console.log('📋 Faz Güncelleme Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Sipariş ID:', data.orderId);
+        console.log('🔄 Yeni Faz:', data.currentPhase);
+        console.log('📊 Durum:', data.status);
         
         // Aktif sipariş varsa ve ID eşleşiyorsa faz bilgisini güncelle
         if (activeOrder && activeOrder.id === data.orderId) {
           setCurrentPhase(data.currentPhase);
-          console.log('Aktif sipariş fazı güncellendi:', data.currentPhase);
+          console.log('✅ Aktif sipariş fazı güncellendi:', data.currentPhase);
+        } else {
+          console.log('ℹ️ Faz güncellemesi aktif sipariş için değil veya aktif sipariş yok');
         }
       });
       
       // İnceleme başlatıldığında sipariş detaylarını al
       socketService.on('order_inspection_started', (data: { orderId: number, orderDetails: any }) => {
-        console.log('Sipariş incelemesi başlatıldı:', data);
-        
-        // İlgili siparişi customers listesinde 'inspecting' durumuna güncelle
-        setCustomers(prev => {
-          const currentCustomers = Array.isArray(prev) ? prev : [];
-          return currentCustomers.map(customer => {
-            if (customer.id === data.orderId) {
-              return { ...customer, status: 'inspecting' as Customer['status'] };
-            }
-            return customer;
-          });
-        });
+        console.log('🔔 ORDER INSPECTION STARTED BİLDİRİMİ ALINDI:');
+        console.log('📋 İnceleme Başlatma Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Sipariş ID:', data.orderId);
+        console.log('📄 Sipariş Detayları:', data.orderDetails);
         
         // Sipariş detaylarını set et
         if (data.orderDetails) {
           setOrderDetails(data.orderDetails);
-          
-          // İlgili siparişi selectedOrder olarak set et
-          const order = customers?.find(c => c.id === data.orderId);
-          if (order) {
-            setSelectedOrder({...order, status: 'inspecting'});
-            setShowInspectionModal(true);
-          }
+          console.log('📄 Sipariş detayları set edildi');
         }
+        
+        // İnceleme başladığında inspectingOrders state'ini temizle
+        // Çünkü artık sipariş durumu 'inspecting' olacak
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          console.log('🗑️ İnceleme başladı, inspectingOrders listesinden çıkarıldı:', data.orderId);
+          return newSet;
+        });
+        
+        // İlgili siparişi customers listesinde 'inspecting' durumuna güncelle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          
+          // Önce mevcut siparişi bul
+          const existingOrder = currentCustomers.find(customer => customer.id === data.orderId);
+          
+          if (existingOrder) {
+            console.log('✅ Sipariş customers listesinde bulundu:', data.orderId);
+            
+            // Siparişi güncelle
+            const updated = currentCustomers.map(customer => {
+              if (customer.id === data.orderId) {
+                console.log('🔍 Sipariş inceleme durumuna geçirildi:', customer.id);
+                const updatedOrder = { ...customer, status: 'inspecting' as Customer['status'] };
+                
+                // Modal için selectedOrder'ı set et
+                setSelectedOrder(updatedOrder);
+                setShowInspectionModal(true);
+                console.log('📱 İnceleme modalı açıldı');
+                
+                return updatedOrder;
+              }
+              return customer;
+            });
+            
+            return updated;
+          } else {
+            console.log('❌ İlgili sipariş customers listesinde bulunamadı:', data.orderId);
+            return currentCustomers;
+          }
+        });
       });
       
       // İnceleme durdurulduğunda sipariş durumunu güncelle
       socketService.on('order_inspection_stopped', (data: { orderId: number, status: string }) => {
-        console.log('Sipariş incelemesi durduruldu:', data);
+        console.log('🔔 ORDER INSPECTION STOPPED BİLDİRİMİ ALINDI:');
+        console.log('📋 İnceleme Durdurma Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Sipariş ID:', data.orderId);
+        console.log('📊 Yeni Durum:', data.status);
+        
+        // İncelenen siparişler listesinden çıkar
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          console.log('🗑️ Sipariş inspectingOrders listesinden çıkarıldı:', data.orderId);
+          return newSet;
+        });
+        
+        // Eğer şu anda incelenen sipariş bu sipariş ise modalı kapat
+        if (selectedOrder && selectedOrder.id === data.orderId) {
+          console.log('🚪 İnceleme modalı kapatılıyor - sipariş başka sürücü tarafından alındı:', data.orderId);
+          setShowInspectionModal(false);
+          setSelectedOrder(null);
+          setOrderDetails(null);
+        }
+        
+        // İlgili siparişi customers listesinde backend'ten gelen status'e güncelle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('🔄 İnceleme durduruldu, durum güncellendi:', customer.id, 'Yeni durum:', data.status);
+              // Backend'den gelen status değerini direkt kullan
+              return { ...customer, status: data.status as Customer['status'] };
+            }
+            return customer;
+          });
+          return updated;
+        });
+      });
+
+      // 🔧 FIX: Sipariş tekrar müsait olduğunda event listener'ı
+      socketService.on('order_available_again', (data: { orderId: number }) => {
+        console.log('🔔 ORDER AVAILABLE AGAIN BİLDİRİMİ ALINDI:');
+        console.log('📋 Tekrar Müsait Olma Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Sipariş ID:', data.orderId);
         
         // İlgili siparişi customers listesinde 'waiting' durumuna güncelle
         setCustomers(prev => {
           const currentCustomers = Array.isArray(prev) ? prev : [];
-          return currentCustomers.map(customer => {
+          const updated = currentCustomers.map(customer => {
             if (customer.id === data.orderId) {
+              console.log('⏳ Sipariş tekrar bekleme durumuna geçirildi:', customer.id);
               return { ...customer, status: 'waiting' as Customer['status'] };
             }
             return customer;
           });
+          return updated;
         });
       });
     }
@@ -423,6 +563,7 @@ export default function DriverDashboardScreen() {
       socketService.off('order_phase_update');
       socketService.off('order_inspection_started');
       socketService.off('order_inspection_stopped');
+      socketService.off('order_available_again'); // 🔧 FIX: Cleanup eklendi
       // Cleanup location watch
       if (locationWatchRef.current) {
         locationWatchRef.current.remove();
@@ -645,7 +786,7 @@ export default function DriverDashboardScreen() {
             destination: order.destinationAddress,
             distance: order.distance ? `${order.distance.toFixed(1)} km` : 'Hesaplanıyor...',
             estimated_fare: order.estimatedPrice,
-            status: order.order_status === 'pending' ? 'waiting' : order.order_status === 'inspecting' ? 'inspecting' : 'waiting',
+            status: order.order_status,
             created_at: order.created_at || new Date().toISOString(),
           }));
           
@@ -814,6 +955,19 @@ export default function DriverDashboardScreen() {
       const newSet = new Set(prev);
       newSet.delete(orderId);
       return newSet;
+    });
+    
+    // Siparişin durumunu pending'e güncelle
+    setCustomers(prev => {
+      const currentCustomers = Array.isArray(prev) ? prev : [];
+      const updated = currentCustomers.map(customer => {
+        if (customer.id === orderId) {
+          console.log('🔄 İnceleme durduruldu, durum pending\'e güncellendi:', customer.id);
+          return { ...customer, status: 'pending' as Customer['status'] };
+        }
+        return customer;
+      });
+      return updated;
     });
     
     setShowInspectionModal(false);
@@ -1106,7 +1260,7 @@ export default function DriverDashboardScreen() {
   const renderCustomerItem = ({ item }: { item: Customer }) => {
     const getStatusColor = (status: string) => {
       switch (status) {
-        case 'waiting': return '#FFD700';
+        case 'pending': return '#FFD700';
         case 'accepted': return '#FFD700';
         case 'confirmed': return '#10B981';
         case 'in_progress': return '#3B82F6';
@@ -1118,7 +1272,7 @@ export default function DriverDashboardScreen() {
 
     const getStatusText = (status: string) => {
       switch (status) {
-        case 'waiting': return 'Bekliyor';
+        case 'pending': return 'Bekliyor';
         case 'accepted': return 'Kabul Edildi';
         case 'confirmed': return 'Onaylandı';
         case 'in_progress': return 'Devam Ediyor';
@@ -1156,7 +1310,7 @@ export default function DriverDashboardScreen() {
           <Text style={styles.fareText}>₺{item.estimated_fare}</Text>
         </View>
         
-        {item.status === 'waiting' && (
+        {item.status === 'pending' && (
           <TouchableOpacity
             style={[styles.actionButton, styles.inspectButton, { marginHorizontal: 0 }]}
             onPress={() => inspectOrder(item)}

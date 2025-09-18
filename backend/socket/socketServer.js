@@ -751,6 +751,37 @@ class SocketServer extends EventEmitter {
     });
   }
 
+  // 🔒 Güvenli broadcast: Sadece müşteri odasındaki sürücülere gönder
+  broadcastToCustomerRoomDrivers(customerId, event, data) {
+    const customerRoom = roomUtils.getCustomerRoomId(customerId);
+    this.io.to(customerRoom).emit(event, data);
+    console.log(`🎯 Broadcast to customer ${customerId} room (${customerRoom}): ${event}`);
+  }
+
+  // 🔒 Güvenli broadcast: Sipariş ile ilgili sürücülere gönder (yakındaki + müşteri odası)
+  async broadcastToOrderRelatedDrivers(orderId, event, data) {
+    try {
+      // Siparişin müşteri ID'sini al
+      const orderDetails = await this.getOrderDetails(orderId);
+      if (!orderDetails) {
+        console.error(`❌ Order ${orderId} not found for broadcast`);
+        return;
+      }
+
+      const customerId = orderDetails.user_id;
+      const customerRoom = roomUtils.getCustomerRoomId(customerId);
+      
+      // Müşteri odasındaki sürücülere gönder
+      this.io.to(customerRoom).emit(event, data);
+      console.log(`🎯 Broadcast to order ${orderId} related drivers in room ${customerRoom}: ${event}`);
+      
+    } catch (error) {
+      console.error(`❌ Error broadcasting to order related drivers:`, error);
+      // Fallback: Tüm sürücülere gönder (eski davranış)
+      this.broadcastToAllDrivers(event, data);
+    }
+  }
+
   broadcastToAllCustomers(event, data) {
     this.connectedCustomers.forEach((socketId) => {
       this.io.to(socketId).emit(event, data);
@@ -1475,8 +1506,8 @@ class SocketServer extends EventEmitter {
         }
       });
       
-      // Tüm sürücülere order_status_update gönder
-      this.broadcastToAllDrivers('order_status_update', { orderId: actualOrderId, status: 'inspecting' });
+      // Tüm sürücülere order_status_update gönder -> GÜVENLİ: Sadece ilgili sürücülere gönder
+      await this.broadcastToOrderRelatedDrivers(actualOrderId, 'order_status_update', { orderId: actualOrderId, status: 'inspecting' });
 
       // Müşteriye siparişin incelendiğini bildir
       const orderResult = await pool.request()
@@ -1658,12 +1689,21 @@ class SocketServer extends EventEmitter {
         .query(`
           UPDATE orders 
           SET order_status = 'pending', driver_id = NULL
-          WHERE id = @orderId AND order_status = 'inspecting'
+          WHERE id = @orderId
         `);
       
-      // Tüm sürücülere siparişin tekrar müsait olduğunu bildir
-      this.broadcastToAllDrivers('order_available_again', { orderId: actualOrderId });
-      this.broadcastToAllDrivers('order_status_update', { orderId: actualOrderId, status: 'pending' });
+      console.log(`Order ${actualOrderId} status updated to pending. Rows affected: ${updateResult.rowsAffected[0]}`);
+      
+      // Tüm sürücülere siparişin tekrar müsait olduğunu bildir -> GÜVENLİ: Sadece ilgili sürücülere gönder
+      await this.broadcastToOrderRelatedDrivers(actualOrderId, 'order_available_again', { orderId: actualOrderId });
+      await this.broadcastToOrderRelatedDrivers(actualOrderId, 'order_status_update', { orderId: actualOrderId, status: 'pending' });
+
+      // 🔧 FIX: Sürücülere de inceleme bittiğini bildir
+      await this.broadcastToOrderRelatedDrivers(actualOrderId, 'order_inspection_stopped', {
+        orderId: actualOrderId,
+        status: 'pending',
+        message: 'Sipariş incelemesi tamamlandı, tekrar beklemede'
+      });
 
       // Müşteriye incelemenin bittiğini bildir
       const orderResult = await pool.request()

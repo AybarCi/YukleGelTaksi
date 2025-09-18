@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ interface Customer {
   destination: string;
   distance: string;
   estimated_fare: number;
-  status: 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
+  status: 'pending' | 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
   created_at: string;
 }
 
@@ -78,58 +78,45 @@ const OrderInspectionModal: React.FC<OrderInspectionModalProps> = ({
       .catch((err) => console.error('Telefon araması başlatılamadı:', err));
   };
 
-  const renderCargoPhotos = () => {
+  const processedPhotoUrls = useMemo(() => {
     if (!orderDetails?.cargo_photo_urls) return null;
 
     try {
-      console.log('OrderInspectionModal - Raw cargo_photo_urls:', orderDetails.cargo_photo_urls);
       const photoUrls = typeof orderDetails.cargo_photo_urls === 'string' 
         ? JSON.parse(orderDetails.cargo_photo_urls) 
         : orderDetails.cargo_photo_urls;
-      console.log('OrderInspectionModal - Parsed photoUrls:', photoUrls);
       
       if (Array.isArray(photoUrls)) {
-        const processedUrls = photoUrls.map(url => {
+        return photoUrls.map(url => {
           const trimmedUrl = url.trim();
-          const finalUrl = trimmedUrl.startsWith('http') ? trimmedUrl : `${API_CONFIG.BASE_URL}${trimmedUrl}`;
-          console.log('OrderInspectionModal - Final URL:', finalUrl);
-          return finalUrl;
+          return trimmedUrl.startsWith('http') ? trimmedUrl : `${API_CONFIG.BASE_URL}${trimmedUrl}`;
         });
-        
-        return processedUrls.map((url: string, index: number) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.photoThumbnail}
-            onPress={() => onOpenPhotoModal(processedUrls, index)}
-          >
-            <Image
-              source={{ uri: url }}
-              style={styles.thumbnailImage}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        ));
       } else if (typeof photoUrls === 'string') {
-        const finalUrl = photoUrls.startsWith('http') ? photoUrls : `${API_CONFIG.BASE_URL}${photoUrls}`;
-        console.log('OrderInspectionModal - Single URL:', finalUrl);
-        return (
-          <TouchableOpacity 
-            style={styles.photoThumbnail}
-            onPress={() => onOpenPhotoModal([finalUrl], 0)}
-          >
-            <Image
-              source={{ uri: finalUrl }}
-              style={styles.thumbnailImage}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        );
+        return [photoUrls.startsWith('http') ? photoUrls : `${API_CONFIG.BASE_URL}${photoUrls}`];
       }
       return null;
     } catch (error) {
       console.error('OrderInspectionModal - Fotoğraf URL parse hatası:', error);
       return null;
     }
+  }, [orderDetails?.cargo_photo_urls]);
+
+  const renderCargoPhotos = () => {
+    if (!processedPhotoUrls) return null;
+
+    return processedPhotoUrls.map((url: string, index: number) => (
+      <TouchableOpacity
+        key={index}
+        style={styles.photoThumbnail}
+        onPress={() => onOpenPhotoModal(processedPhotoUrls, index)}
+      >
+        <Image
+          source={{ uri: url }}
+          style={styles.thumbnailImage}
+          resizeMode="cover"
+        />
+      </TouchableOpacity>
+    ));
   };
 
   const handleAccept = () => {
@@ -200,10 +187,6 @@ const OrderInspectionModal: React.FC<OrderInspectionModalProps> = ({
                 {orderDetails && (
                   <View style={styles.orderInfoSection}>
                     <Text style={styles.sectionTitle}>Yük Bilgileri</Text>
-                    <View style={styles.infoRow}>
-                      <Ionicons name="cube" size={16} color="#6B7280" />
-                      <Text style={styles.infoText}>Ağırlık: {orderDetails.weight_kg} kg</Text>
-                    </View>
                     <View style={styles.infoRow}>
                       <Ionicons name="people" size={16} color="#6B7280" />
                       <Text style={styles.infoText}>Hammal Sayısı:</Text>

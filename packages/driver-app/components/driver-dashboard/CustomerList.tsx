@@ -19,7 +19,7 @@ interface Customer {
   destination: string;
   distance: string;
   estimated_fare: number;
-  status: 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
+  status: 'pending' | 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
   created_at: string;
 }
 
@@ -44,6 +44,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
 }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'pending': return '#FFD700';
       case 'waiting': return '#FFD700';
       case 'accepted': return '#FFD700';
       case 'confirmed': return '#10B981';
@@ -56,6 +57,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
 
   const getStatusText = (status: string) => {
     switch (status) {
+      case 'pending': return 'Bekliyor';
       case 'waiting': return 'Bekliyor';
       case 'accepted': return 'Kabul Edildi';
       case 'confirmed': return 'Onaylandı';
@@ -94,7 +96,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
         <Text style={styles.fareText}>₺{item.estimated_fare}</Text>
       </View>
       
-      {item.status === 'waiting' && (
+      {(item.status === 'pending') && (
         <TouchableOpacity
           style={[styles.actionButton, styles.inspectButton, { marginHorizontal: 0 }]}
           onPress={() => onInspectOrder(item)}

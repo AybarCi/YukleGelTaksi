@@ -165,8 +165,18 @@ function HomeScreen() {
         longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
       };
       
-      // Haritayı rotaya odakla
-      animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
+      // Koordinatların geçerli olduğunu kontrol et
+      if (origin.latitude && origin.longitude && destination.latitude && destination.longitude) {
+        // Kısa bir gecikme ile haritayı rotaya odakla (diğer animasyonların tamamlanması için)
+        setTimeout(() => {
+          if (mapRef.current && reduxCurrentOrder) {
+            console.log('🎯 Harita aktif sipariş rotasına odaklanıyor:', { origin, destination });
+            animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
+          }
+        }, 500);
+      } else {
+        console.warn('⚠️ Aktif sipariş koordinatları geçersiz:', { origin, destination });
+      }
     }
   }, [activeOrderRouteCoordinates, reduxCurrentOrder, animateToShowBothPoints]);
   const [routeDuration, setRouteDuration] = useState<string | null>(null);
@@ -812,8 +822,8 @@ function HomeScreen() {
           setPickupLocation('Mevcut Konumum');
         }
         
-        // Haritayı mevcut konuma animasyon ile götür
-        if (mapRef.current) {
+        // Haritayı mevcut konuma animasyon ile götür (sadece aktif sipariş yoksa)
+        if (mapRef.current && !reduxCurrentOrder) {
           const screenHeight = Dimensions.get('window').height;
           const bottomSheetHeight = screenHeight * 0.6;
           const offsetRatio = (bottomSheetHeight / 2) / screenHeight;
