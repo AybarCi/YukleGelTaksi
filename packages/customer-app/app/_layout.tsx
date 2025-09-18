@@ -25,6 +25,7 @@ export default function RootLayout() {
               <Stack.Screen name="home" />
               <Stack.Screen name="order-detail" />
               <Stack.Screen name="driver-dashboard" />
+              <Stack.Screen name="payment" />
             </Stack>
             <StatusBar style="auto" />
           </GestureHandlerRootView>

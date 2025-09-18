@@ -14,9 +14,11 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
 import ReviewOrderPhotos from '../components/ReviewOrderPhotos';
+import { cancelOrder } from '../store/slices/orderSlice';
+import socketService from '../services/socketService';
 
 interface Order {
   id?: string;
@@ -53,20 +55,21 @@ interface Order {
 
 export default function OrderDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const [order, setOrder] = useState<Order | null>(null);
   const insets = useSafeAreaInsets();
-  
+  const dispatch = useDispatch();
+  const { orderId } = useLocalSearchParams();
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const vehicleTypes = useSelector((state: RootState) => state.vehicle.vehicleTypes);
   const { currentOrder } = useSelector((state: RootState) => state.order);
-  const { vehicleTypes } = useSelector((state: RootState) => state.vehicle);
 
   useEffect(() => {
     console.log('OrderDetail Debug - currentOrder:', currentOrder);
-    console.log('OrderDetail Debug - params:', params);
+    console.log('OrderDetail Debug - orderId:', orderId);
     console.log('OrderDetail Debug - vehicleTypes:', vehicleTypes);
     console.log('OrderDetail Debug - vehicleTypes length:', vehicleTypes?.length);
     
-    // Eğer params'dan order ID geliyorsa, o siparişi bul
+    // Eğer orderId'dan order ID geliyorsa, o siparişi bul
     // Şimdilik currentOrder'ı kullanıyoruz
     if (currentOrder) {
       console.log('OrderDetail - currentOrder bulundu, order state e set ediliyor');
@@ -86,7 +89,66 @@ export default function OrderDetailScreen() {
       console.log('OrderDetail - currentOrder bulunamadı');
       setOrder(null);
     }
-  }, [currentOrder, params, vehicleTypes]);
+    setLoading(false);
+  }, [currentOrder, orderId, vehicleTypes]);
+
+  // Socket event listener for order status updates
+  useEffect(() => {
+    const handleOrderStatusUpdate = (data: any) => {
+      console.log('📊 ORDER DETAIL: Sipariş durumu güncellendi:', data);
+      
+      // Eğer güncellenen sipariş bu sayfadaki siparişse, durumu güncelle
+      if (order && data.orderId && data.orderId.toString() === order.id?.toString()) {
+        console.log('📊 ORDER DETAIL: Sipariş durumu güncelleniyor:', data.status);
+        setOrder(prevOrder => ({
+          ...prevOrder!,
+          status: data.status
+        }));
+      }
+    };
+
+    // Socket event listener'ını ekle
+    socketService.on('order_status_update', handleOrderStatusUpdate);
+
+    // Cleanup function
+    return () => {
+      socketService.off('order_status_update', handleOrderStatusUpdate);
+    };
+  }, [order]);
+
+  const handleCancelOrder = () => {
+    if (!order?.id) {
+      Alert.alert('Hata', 'Sipariş bilgisi bulunamadı.');
+      return;
+    }
+
+    Alert.alert(
+      'Siparişi İptal Et',
+      'Bu siparişi iptal etmek istediğinizden emin misiniz?',
+      [
+        {
+          text: 'Vazgeç',
+          style: 'cancel',
+        },
+        {
+          text: 'İptal Et',
+          style: 'destructive',
+          onPress: () => {
+            dispatch(cancelOrder({ 
+              orderId: parseInt(order.id!), 
+              reason: 'Müşteri tarafından iptal edildi' 
+            }) as any);
+          },
+        },
+      ]
+    );
+  };
+
+  const canCancelOrder = (status?: string) => {
+    if (!status) return false;
+    // Sadece belirli durumlarda iptal edilebilir
+    return ['pending', 'inspecting', 'accepted', 'confirmed'].includes(status);
+  };
 
   const getStatusText = (status: string) => {
     switch (status) {
@@ -141,7 +203,10 @@ export default function OrderDetailScreen() {
     }
   };
 
-  const renderCargoImages = () => {
+  // Fotoğraf verilerini birleştiren yardımcı fonksiyon
+  const getCargoImages = () => {
+    let images: string[] = [];
+    
     // Önce cargo_photo_urls'i kontrol et
     if (order?.cargo_photo_urls) {
       try {
@@ -150,51 +215,19 @@ export default function OrderDetailScreen() {
           : order.cargo_photo_urls;
         
         const urlArray = Array.isArray(photoUrls) ? photoUrls : photoUrls.split(',');
-        
-        if (urlArray.length > 0) {
-          return (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Yük Fotoğrafları</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageContainer}>
-                {urlArray.map((url: string, index: number) => (
-                  <TouchableOpacity key={index} style={styles.imageWrapper}>
-                    <Image
-                      source={{ uri: url.trim() }}
-                      style={styles.cargoImage}
-                      resizeMode="cover"
-                    />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          );
-        }
+        images = [...images, ...urlArray.map((url: string) => url.trim())];
       } catch (error) {
         console.log('Fotoğraf parse hatası:', error);
       }
     }
     
-    // Alternatif olarak cargoImages'i kontrol et
+    // cargoImages'i de ekle (eğer varsa)
     if (order?.cargoImages && order.cargoImages.length > 0) {
-      return (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Yük Fotoğrafları</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageContainer}>
-            {order.cargoImages.map((url: string, index: number) => (
-              <TouchableOpacity key={index} style={styles.imageWrapper}>
-                <Image
-                  source={{ uri: url.trim() }}
-                  style={styles.cargoImage}
-                  resizeMode="cover"
-                />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      );
+      images = [...images, ...order.cargoImages];
     }
-
-    return null;
+    
+    // Tekrar eden URL'leri kaldır
+    return [...new Set(images)];
   };
 
   if (!order) {
@@ -318,6 +351,12 @@ export default function OrderDetailScreen() {
                 <Text style={styles.infoValue}>{order.total_price} TL</Text>
               </View>
             )}
+            {order.estimatedPrice && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Tahmini Tutar:</Text>
+                <Text style={styles.infoValue}>{order.estimatedPrice} TL</Text>
+              </View>
+            )}
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Araç Tipi:</Text>
               <Text style={styles.infoValue}>{getVehicleTypeName(order.vehicle_type_id || (typeof order.vehicleTypeId === 'string' ? parseInt(order.vehicleTypeId) : order.vehicleTypeId))}</Text>
@@ -342,12 +381,51 @@ export default function OrderDetailScreen() {
         {/* Yük Fotoğrafları */}
         <View style={styles.section}>
           <ReviewOrderPhotos
-            cargoImages={order.cargoImages || []}
+            cargoImages={getCargoImages()}
             isEditable={false}
             title="Yük Fotoğrafları"
             required={false}
           />
         </View>
+
+        {/* Sürücü İnceleme Durumu */}
+        {order.status === 'inspecting' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Sürücü İncelemesi</Text>
+            <View style={styles.inspectionCard}>
+              <View style={styles.inspectionHeader}>
+                <Ionicons name="eye" size={24} color="#3B82F6" />
+                <Text style={styles.inspectionTitle}>Sipariş İnceleniyor</Text>
+              </View>
+              <Text style={styles.inspectionText}>
+                Bir sürücü siparişinizi inceliyor. Lütfen bekleyiniz.
+              </Text>
+              <View style={styles.inspectionStatus}>
+                <View style={styles.statusIndicator}>
+                  <View style={styles.pulsingDot} />
+                </View>
+                <Text style={styles.statusText}>Aktif İnceleme</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Sürücü İnceleme Geçmişi */}
+        {(order.status === 'pending' || order.status === 'accepted' || order.status === 'confirmed') && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>İnceleme Durumu</Text>
+            <View style={styles.inspectionHistoryCard}>
+              <View style={styles.inspectionHistoryItem}>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                <Text style={styles.inspectionHistoryText}>Sipariş sürücüler tarafından görülebilir</Text>
+              </View>
+              <View style={styles.inspectionHistoryItem}>
+                <Ionicons name="time" size={20} color="#F59E0B" />
+                <Text style={styles.inspectionHistoryText}>Sürücü incelemesi bekleniyor</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Açıklama */}
         {(order.notes || order.customer_notes) && (
@@ -366,6 +444,19 @@ export default function OrderDetailScreen() {
             <View style={styles.noteCard}>
               <Text style={styles.noteText}>{order.customer_notes}</Text>
             </View>
+          </View>
+        )}
+
+        {/* Sipariş İptal Butonu */}
+        {canCancelOrder(order.status) && (
+          <View style={styles.section}>
+            <TouchableOpacity 
+              style={styles.cancelButton}
+              onPress={handleCancelOrder}
+            >
+              <Ionicons name="close-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.cancelButtonText}>Siparişi İptal Et</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -591,14 +682,6 @@ const styles = StyleSheet.create({
   imageContainer: {
     marginTop: 8,
   },
-  imageWrapper: {
-    marginRight: 12,
-  },
-  cargoImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-  },
   noteCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -625,5 +708,87 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  cancelButton: {
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8    
+  },
+  inspectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3B82F6',
+  },
+  inspectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  inspectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#3B82F6',
+    marginLeft: 8,
+  },
+  inspectionText: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  inspectionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusIndicator: {
+    marginRight: 8,
+  },
+  pulsingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3B82F6',
+  },
+  inspectionHistoryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  inspectionHistoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  inspectionHistoryText: {
+    fontSize: 14,
+    color: '#374151',
+    marginLeft: 8,
+    flex: 1,
   },
 });

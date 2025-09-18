@@ -72,7 +72,7 @@ class SocketServer extends EventEmitter {
       const pool = await db.connect();
       
       const settingsResult = await pool.request()
-        .query(`SELECT setting_value FROM system_settings WHERE setting_key = 'driver_search_radius_km' AND is_active = 1`);
+        .query(`SELECT setting_value FROM system_settings WHERE setting_key = 'driver_search_radius_km' AND is_active = 'true'`);
       
       const searchRadiusKm = settingsResult.recordset.length > 0 
         ? parseFloat(settingsResult.recordset[0].setting_value) 
@@ -234,7 +234,7 @@ class SocketServer extends EventEmitter {
           const pool = await db.connect();
           const driverResult = await pool.request()
             .input('userId', socket.userId)
-            .query('SELECT id FROM drivers WHERE user_id = @userId AND is_active = 1');
+            .query('SELECT id FROM drivers WHERE user_id = @userId AND is_active = \'true\'');
           
           if (driverResult.recordset.length > 0) {
             socket.driverId = driverResult.recordset[0].id;
@@ -268,7 +268,7 @@ class SocketServer extends EventEmitter {
                 const pool = await db.connect();
                 const driverResult = await pool.request()
                   .input('userId', socket.userId)
-                  .query('SELECT id FROM drivers WHERE user_id = @userId AND is_active = 1');
+                  .query('SELECT id FROM drivers WHERE user_id = @userId AND is_active = \'true\'');
                 
                 if (driverResult.recordset.length > 0) {
                   socket.driverId = driverResult.recordset[0].id;
@@ -299,6 +299,8 @@ class SocketServer extends EventEmitter {
   async handleDriverConnection(socket) {
     const driverId = socket.driverId;
     
+    console.log(`🚗 Driver ${driverId} attempting to connect...`);
+    
     try {
       // Eğer bu sürücü zaten bağlıysa, eski bağlantıyı kapat
       const existingDriver = this.connectedDrivers.get(driverId);
@@ -328,6 +330,7 @@ class SocketServer extends EventEmitter {
         userId: driverId
       });
       console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: ${isAvailable}`);
+      console.log(`🚗 Total connected drivers: ${this.connectedDrivers.size}`);
       
       // Sürücü event listener'larını rate limiting ile ekle
       const driverEvents = {
@@ -574,6 +577,8 @@ class SocketServer extends EventEmitter {
       },
       
       'customer_location_update': (socket, location) => {
+        console.log(`📍 Customer ${customerId} location update received:`, location);
+        
         // Spam detection
         if (SocketEventWrapper.detectSpam(customerId, 'customer_location_update', location)) {
           socket.emit('spam_warning', { 
@@ -596,9 +601,14 @@ class SocketServer extends EventEmitter {
         const customerInfo = this.connectedCustomers.get(customerId);
         const previousLocation = customerInfo ? customerInfo.location : null;
         
+        console.log(`📍 Previous customer location:`, previousLocation);
+        console.log(`📍 New customer location:`, location);
+        
         if (customerInfo) {
           customerInfo.location = location;
-          console.log(`📍 Customer ${customerId} location updated:`, location);
+          console.log(`📍 Customer ${customerId} location updated in memory:`, location);
+        } else {
+          console.log(`❌ Customer ${customerId} not found in connectedCustomers`);
         }
         this.updateCustomerLocation(customerId, location);
         
@@ -613,6 +623,7 @@ class SocketServer extends EventEmitter {
           );
           // 100 metreden fazla değişiklik varsa güncelle
           shouldUpdateDrivers = distance > 0.1; // 0.1 km = 100 metre
+          console.log(`📏 Distance from previous location: ${distance.toFixed(3)}km, shouldUpdate: ${shouldUpdateDrivers}`);
         }
         
         if (shouldUpdateDrivers) {
@@ -942,7 +953,7 @@ class SocketServer extends EventEmitter {
         .query(`
           SELECT fee_percentage 
           FROM cancellation_fees 
-          WHERE order_status = @orderStatus AND is_active = 1
+          WHERE order_status = @orderStatus AND is_active = 'true'
         `);
 
       if (feeResult.recordset.length > 0) {
@@ -1158,11 +1169,14 @@ class SocketServer extends EventEmitter {
   async sendNearbyDriversToCustomer(socket) {
     try {
       console.log(`🔍 Fetching nearby drivers for customer ${socket.userId}`);
+      console.log(`🔍 Total connected customers: ${this.connectedCustomers.size}`);
+      console.log(`🔍 Total connected drivers: ${this.connectedDrivers.size}`);
       
       // Müşterinin konumunu al
       const customerData = this.connectedCustomers.get(socket.userId);
       if (!customerData || !customerData.location) {
         console.log(`❌ Customer ${socket.userId} location not available`);
+        console.log(`❌ Customer data:`, customerData);
         socket.emit('nearbyDriversUpdate', { drivers: [] });
         return;
       }
@@ -1243,7 +1257,7 @@ class SocketServer extends EventEmitter {
             d.is_active,
             d.is_available
           FROM drivers d
-          WHERE d.id IN (${driverIdsString}) AND d.is_active = 1
+          WHERE d.id IN (${driverIdsString}) AND d.is_active = 'true'
         `);
 
       // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için)
@@ -1256,16 +1270,10 @@ class SocketServer extends EventEmitter {
       const connectedDriversWithLocation = [];
       
       for (const item of nearbyDriversWithDistance) {
-        const driver = driversMap.get(item.driverId);
+        const driverIdString = item.driverId.toString();
+        const driver = driversMap.get(driverIdString);
         
         if (driver) {
-          console.log(`✅ Adding driver ${item.driverId} to nearby list (${item.distance.toFixed(2)}km):`, {
-            name: driver.first_name,
-            isActive: driver.is_active,
-            isAvailable: driver.is_available,
-            location: item.driverData.location
-          });
-          
           connectedDriversWithLocation.push({
             id: driver.id.toString(),
             latitude: item.driverData.location.latitude,
@@ -1414,7 +1422,7 @@ class SocketServer extends EventEmitter {
       
       const userResult = await pool.request()
         .input('userId', refreshDecoded.userId)
-        .query('SELECT * FROM users WHERE id = @userId AND is_active = 1');
+        .query('SELECT * FROM users WHERE id = @userId AND is_active = \'true\'');
 
       const user = userResult.recordset[0];
       if (!user) {
@@ -1611,7 +1619,7 @@ class SocketServer extends EventEmitter {
         .query(`
           SELECT id, vehicle_type_id 
           FROM drivers 
-          WHERE id IN (${driverIdsString}) AND is_active = 1
+          WHERE id IN (${driverIdsString}) AND is_active = 'true'
         `);
 
       // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için)

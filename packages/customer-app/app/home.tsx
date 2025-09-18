@@ -47,6 +47,7 @@ import FreeCancelModal from '../components/FreeCancelModal';
 import PendingOrderModal from '../components/PendingOrderModal';
 import ImagePickerModal from '../components/ImagePickerModal';
 import VehicleTypeModal from '../components/VehicleTypeModal';
+import PaymentModal from '../components/PaymentModal';
 import ActiveOrderCard from '../components/ActiveOrderCard';
 import NewOrderForm from '../components/NewOrderForm';
 import { DriverMarker, PickupMarker, DestinationMarker } from './components/MapMarkers';
@@ -128,6 +129,9 @@ function HomeScreen() {
   const [driverRoute, setDriverRoute] = useState<{latitude: number, longitude: number}[]>([]);
   const [estimatedArrival, setEstimatedArrival] = useState<string | null>(null);
   
+  // Tekrarlayan fillOrderData çağrılarını engellemek için ref
+  const lastProcessedOrderId = useRef<number | null>(null);
+  
   // Drivers state'inin güvenli olduğundan emin olmak için
   const safeDrivers = useMemo(() => Array.isArray(drivers) ? drivers : [], [drivers]);
 
@@ -149,6 +153,12 @@ function HomeScreen() {
   const [distance, setDistance] = useState<number | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
   const [activeOrderRouteCoordinates, setActiveOrderRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
+  const [routeDuration, setRouteDuration] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
+  const [isLocationLoading, setIsLocationLoading] = useState(true);
   
   // Aktif sipariş rotası çizildikten sonra haritayı rotaya odakla
   useEffect(() => {
@@ -179,12 +189,38 @@ function HomeScreen() {
       }
     }
   }, [activeOrderRouteCoordinates, reduxCurrentOrder, animateToShowBothPoints]);
-  const [routeDuration, setRouteDuration] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
-  const [isLocationLoading, setIsLocationLoading] = useState(true);
+
+  // Uygulama açıldığında mevcut aktif sipariş varsa haritayı rotaya odakla
+  useEffect(() => {
+    if (reduxCurrentOrder && 
+        reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude && 
+        reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude && 
+        mapRef.current && !isLocationLoading) {
+      
+      console.log('🗺️ Uygulama açıldı, mevcut aktif sipariş için haritayı rotaya odaklıyorum');
+      
+      const origin = {
+        latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+        longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+      };
+      
+      const destination = {
+        latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+        longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+      };
+      
+      // Koordinatların geçerli olduğunu kontrol et
+      if (origin.latitude && origin.longitude && destination.latitude && destination.longitude) {
+        // Harita yüklendikten sonra rotaya odakla
+        setTimeout(() => {
+          if (mapRef.current && reduxCurrentOrder) {
+            console.log('🎯 Harita mevcut aktif sipariş rotasına odaklanıyor:', { origin, destination });
+            animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
+          }
+        }, 1000); // Harita tamamen yüklenmesi için biraz daha uzun bekleme
+      }
+    }
+  }, [reduxCurrentOrder, isLocationLoading, animateToShowBothPoints]);
   
   // Seçilen konum bilgilerini göstermek için modal state'i
   const [locationModalVisible, setLocationModalVisible] = useState(false);
@@ -294,6 +330,7 @@ function HomeScreen() {
 
   // Cancel order modal için state
   const [cancelOrderModalVisible, setCancelOrderModalVisible] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
 
   // Modal state değişikliklerini takip et
   useEffect(() => {
@@ -409,35 +446,14 @@ function HomeScreen() {
           if (feeResult.success && feeResult.data) {
             cancellationFee = feeResult.data.cancellationFee || 0;
           }
+          
+          // State'leri güncelle
+          setCancellationFee(cancellationFee);
+          setCancelOrderId(activeOrder.id);
             
           if (cancellationFee > 0) {
-            // Cezai şart varsa ödeme modalı göster
-            showModal(
-              '⚠️ Cezai Şart Var', 
-              `Sipariş durumunuz nedeniyle ${cancellationFee} TL cezai şart uygulanacaktır.\n\nİptal etmek istediğinizden emin misiniz?`,
-              'warning',
-              [
-                {
-                  text: 'Vazgeç',
-                  style: 'cancel'
-                },
-                {
-                   text: 'Evet, İptal Et',
-                   onPress: () => {
-                     // Kullanıcı cezai şartı kabul etti, confirm code üret
-                     console.log('🔴 Kullanıcı cezai şartı kabul etti, confirm code üretimi için cancelOrder çağrılıyor...');
-                     console.log('🔗 Socket bağlantı durumu:', socketService.getConnectionStatus());
-                     console.log('📋 Current Order ID:', activeOrder.id);
-                     const success = socketService.cancelOrder(activeOrder.id);
-                     console.log('✅ cancelOrder çağrısı sonucu:', success);
-                     if (!success) {
-                       showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
-                     }
-                     // Backend'den cancel_order_confirmation_required eventi geldiğinde confirm code modalı açılacak
-                   }
-                 }
-              ]
-            );
+            // Cezai şart varsa PaymentModal göster
+            setPaymentModalVisible(true);
           } else {
             // Cezai şart yoksa da modal göster
             showModal(
@@ -498,7 +514,14 @@ function HomeScreen() {
   // Sipariş verilerini form alanlarına dolduran fonksiyon
    const fillOrderData = useCallback(async (order: any) => {
     try {
+      // Aynı sipariş için tekrar çalışmasını engelle
+      if (lastProcessedOrderId.current === order.id) {
+        console.log('⚠️ fillOrderData: Same order already processed, skipping');
+        return;
+      }
+      
       console.log('=== fillOrderData BAŞLADI ===');
+      lastProcessedOrderId.current = order.id;
       console.log('Gelen order parametresi:', JSON.stringify(order, null, 2));
       
       console.log('pickup_address set ediliyor:', order.pickup_address);
@@ -785,7 +808,7 @@ function HomeScreen() {
         socketService.updateCustomerLocation({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude
-        });
+        }, user?.id);
       }
       
       if (useCurrentLocation) {
@@ -975,6 +998,9 @@ function HomeScreen() {
     
     socketService.on('nearbyDriversUpdate', (data: any) => {
       console.log('📍 nearbyDriversUpdate event received:', data);
+      console.log('📍 Socket connected:', socketService.isSocketConnected());
+      console.log('📍 Current drivers state before update:', drivers);
+      
       try {
         if (!data) {
           console.log('📍 No data received, setting empty drivers');
@@ -983,20 +1009,34 @@ function HomeScreen() {
         }
         
         if (!data.drivers || !Array.isArray(data.drivers)) {
+          console.log('📍 Invalid drivers data structure:', data);
           setDrivers([]);
           return;
         }
         
         const validDrivers = data.drivers.filter((driver: any) => {
-          return driver && 
+          const isValid = driver && 
                  typeof driver === 'object' && 
                  driver.id && 
                  typeof driver.latitude === 'number' && 
                  typeof driver.longitude === 'number';
+          
+          if (!isValid) {
+            console.log('📍 Invalid driver filtered out:', driver);
+          }
+          
+          return isValid;
         });
         
+        console.log('📍 Valid drivers found:', validDrivers.length);
         console.log('📍 Setting drivers:', validDrivers);
         setDrivers(validDrivers);
+        
+        // State güncellemesinin gerçekleştiğini doğrulamak için
+        setTimeout(() => {
+          console.log('📍 Drivers state after update (async check):', drivers);
+        }, 100);
+        
       } catch (error) {
         console.error('nearbyDriversUpdate işleme hatası:', error);
         setDrivers([]);
@@ -1253,11 +1293,37 @@ function HomeScreen() {
 
     socketService.on('order_inspection_started', (data: any) => {
       console.log('🔍 MÜŞTERI: Sipariş incelemesi başladı:', data);
+      
+      // Mevcut siparişi güncelle
+      if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+        console.log(`🔍 MÜŞTERI: Sipariş durumu ${currentOrderRef.current.status} -> inspecting`);
+        const updatedOrder = { ...currentOrderRef.current, status: 'inspecting' };
+        setCurrentOrder(updatedOrder);
+        currentOrderRef.current = updatedOrder;
+        AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
+        
+        // Redux store'u da güncelle
+        dispatch(setReduxCurrentOrder(updatedOrder));
+      }
+      
       showModal('İnceleme Başladı', 'Sürücü siparişinizi inceliyor.', 'info');
     });
 
     socketService.on('order_inspection_stopped', (data: any) => {
       console.log('🔍 MÜŞTERI: Sipariş incelemesi durdu:', data);
+      
+      // Mevcut siparişi güncelle
+      if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+        console.log(`🔍 MÜŞTERI: Sipariş durumu ${currentOrderRef.current.status} -> ${data.status || 'pending'}`);
+        const updatedOrder = { ...currentOrderRef.current, status: data.status || 'pending' };
+        setCurrentOrder(updatedOrder);
+        currentOrderRef.current = updatedOrder;
+        AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
+        
+        // Redux store'u da güncelle
+        dispatch(setReduxCurrentOrder(updatedOrder));
+      }
+      
       showModal('İnceleme Tamamlandı', 'Sipariş incelemesi tamamlandı, tekrar beklemede.', 'info');
     });
     
@@ -1993,15 +2059,15 @@ function HomeScreen() {
                    }} />
                  )}
                  
-                 {/* Yeni sipariş oluştururken marker'lar */}
-                 {!reduxCurrentOrder && pickupCoords && (
+                 {/* Yeni sipariş oluştururken marker'lar - inspecting durumunda da göster */}
+                 {(!reduxCurrentOrder || (reduxCurrentOrder && reduxCurrentOrder.status && ['pending', 'inspecting'].includes(reduxCurrentOrder.status))) && pickupCoords && (
                    <>
                      {console.log('Rendering pickup marker with coords:', pickupCoords)}
                      <PickupMarker coords={pickupCoords} />
                    </>
                  )}
                  
-                 {!reduxCurrentOrder && destinationCoords && (
+                 {(!reduxCurrentOrder || (reduxCurrentOrder && reduxCurrentOrder.status && ['pending', 'inspecting'].includes(reduxCurrentOrder.status))) && destinationCoords && (
                    <>
                      {console.log('Rendering destination marker with coords:', destinationCoords)}
                      <DestinationMarker coords={destinationCoords} />
@@ -2017,8 +2083,8 @@ function HomeScreen() {
                    />
                  )}
                  
-                 {/* Yeni sipariş rotası */}
-                 {!reduxCurrentOrder && routeCoordinates.length > 0 && (
+                 {/* Yeni sipariş rotası - inspecting durumunda da göster */}
+                 {(!reduxCurrentOrder || (reduxCurrentOrder && reduxCurrentOrder.status && ['pending', 'inspecting'].includes(reduxCurrentOrder.status))) && routeCoordinates.length > 0 && (
                    <Polyline
                      coordinates={routeCoordinates}
                      strokeColor="#FFD700"
@@ -2459,6 +2525,30 @@ function HomeScreen() {
         vehicleTypes={reduxVehicleTypes}
         selectedVehicleType={selectedVehicleType}
         onSelectVehicleType={setSelectedVehicleType}
+      />
+
+      <PaymentModal
+        visible={paymentModalVisible}
+        onClose={() => setPaymentModalVisible(false)}
+        cancellationFee={cancellationFee}
+        estimatedAmount={estimatedPrice || 100} // Fallback değer
+        orderId={cancelOrderId || 0}
+        onPayment={() => {
+          setPaymentModalVisible(false);
+          // Ödeme başarılı, doğrulama kodu modalını göster
+          const success = socketService.cancelOrder(cancelOrderId || 0);
+          if (!success) {
+            showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+          }
+        }}
+        onDirectCancel={() => {
+          setPaymentModalVisible(false);
+          // Direkt iptal, doğrulama kodu modalını göster
+          const success = socketService.cancelOrder(cancelOrderId || 0);
+          if (!success) {
+            showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+          }
+        }}
       />
 
       {/* Loading Splash Screen */}

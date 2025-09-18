@@ -381,13 +381,14 @@ class SocketService {
   }
 
   // Public method for customers
-  public updateCustomerLocation(location: LocationUpdate) {
+  public updateCustomerLocation(location: LocationUpdate, customerId?: number) {
     if (!this.isConnected || !this.socket) {
       console.error('Socket not connected');
       return false;
     }
 
-    this.socket.emit('customer_location_update', location);
+    const locationData = customerId ? { ...location, customerId } : location;
+    this.socket.emit('customer_location_update', locationData);
     return true;
   }
 
