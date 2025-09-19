@@ -5,17 +5,17 @@ const getEnvVar = (key: string, defaultValue: string = ''): string => {
 
 export const API_CONFIG = {
   get BASE_URL() { 
-    const host = getEnvVar('API_HOST', '192.168.1.12');
+    const host = getEnvVar('API_HOST', '192.168.1.134');
     const port = getEnvVar('API_PORT', '3000');
     return `http://${host}:${port}/api`;
   },
   get FILES_URL() { 
-    const host = getEnvVar('API_HOST', '192.168.1.12');
+    const host = getEnvVar('API_HOST', '192.168.1.134');
     const port = getEnvVar('API_PORT', '3000');
     return `http://${host}:${port}/api/files`;
   },
   get SOCKET_URL() { 
-    const host = getEnvVar('API_HOST', '192.168.1.12');
+    const host = getEnvVar('API_HOST', '192.168.1.134');
     const port = getEnvVar('SOCKET_PORT', '3001');
     return `ws://${host}:${port}`;
   },

@@ -52,6 +52,9 @@ class SocketServer extends EventEmitter {
     // Real-time monitoring data emission başlat
     this.startMonitoringEmission();
     
+    // 🚀 OPTIMIZASYON: Periyodik oda temizliği başlat (her 5 dakikada bir)
+    this.startPeriodicRoomValidation();
+    
     console.log('🚀 Socket.IO server initialized with memory management and event monitoring');
   }
 
@@ -124,15 +127,18 @@ class SocketServer extends EventEmitter {
       
     } catch (error) {
       console.error(`❌ Error adding driver ${driverSocket.driverId} to customer rooms:`, error);
-      // Hata durumunda eski mantığa geri dön (tüm room'lara ekle)
-      const connectedCustomerIds = Array.from(this.connectedCustomers.keys());
-      console.log(`🔄 Fallback: Adding driver ${driverSocket.driverId} to all ${connectedCustomerIds.length} customer rooms`);
       
-      connectedCustomerIds.forEach(customerId => {
-        const customerRoom = roomUtils.getCustomerRoomId(customerId);
-        driverSocket.join(customerRoom);
-        console.log(`✅ Driver ${driverSocket.driverId} joined customer room: ${customerRoom} (fallback)`);
-      });
+      // 🚀 OPTIMIZASYON: Güvenlik açığını kapatmak için fallback mekanizmasını kaldır
+      // Hata durumunda sürücüyü hiçbir odaya ekleme, sadece hata logla
+      console.log(`🔒 Security: Driver ${driverSocket.driverId} not added to any rooms due to error (preventing security vulnerability)`);
+      
+      // Event monitoring için hata kaydet
+      if (this.eventMonitor) {
+        this.eventMonitor.recordError('addDriverToCustomerRooms', error.message);
+      }
+      
+      // Hata durumunda periyodik validasyon mekanizması devreye girecek
+      console.log(`⏰ Periodic room validation will handle this driver in the next cycle`);
     }
   }
 
@@ -391,17 +397,24 @@ class SocketServer extends EventEmitter {
       
     } catch (error) {
       console.error('❌ Error fetching driver availability:', error);
-      // Fallback olarak true kullan
+      
+      // 🚀 OPTIMIZASYON: Güvenlik açığını kapatmak için fallback mekanizmasını iyileştir
+      // Varsayılan olarak false kullan ve sürücüyü odalara ekleme
       this.connectedDrivers.set(driverId, {
         socketId: socket.id,
         location: null,
-        isAvailable: true,
+        isAvailable: false, // Güvenlik için false
         userType: 'driver',
         userId: driverId
       });
-      console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: true (fallback)`);
+      console.log(`🚗 Driver ${driverId} connected (Socket: ${socket.id}) - Available: false (secure fallback)`);
       
-      // Event listener'ları fallback durumunda da ekle
+      // Event monitoring için hata kaydet
+      if (this.eventMonitor) {
+        this.eventMonitor.recordError('handleDriverConnection', error.message);
+      }
+      
+      // Event listener'ları ekle ama odalara ekleme
       socket.on('location_update', (locationData) => {
         console.log(`📍 Received location update from driver ${driverId}:`, locationData);
         this.updateDriverLocation(driverId, locationData);
@@ -412,16 +425,11 @@ class SocketServer extends EventEmitter {
         this.updateDriverAvailability(driverId, availabilityData.isAvailable);
       });
       
-      await this.addDriverToCustomerRooms(socket);
+      // Hata durumunda odalara ekleme - periyodik validasyon devreye girecek
+      console.log(`🔒 Security: Driver ${driverId} not added to rooms due to connection error`);
       
       // Sürücüden konum güncellemesi iste
       socket.emit('request_location_update');
-      
-      // Konum alındıktan sonra müşterilere gönder - 2 saniye bekle
-      setTimeout(() => {
-        console.log(`⏰ Broadcasting nearby drivers after driver ${driverId} connection (fallback)`);
-        this.broadcastNearbyDriversToAllCustomers();
-      }, 2000);
     }
 
     // Driver-specific event handlers are already added above
@@ -718,6 +726,18 @@ class SocketServer extends EventEmitter {
         { driverId: driverId }
       );
 
+      // 🚀 OPTIMIZASYON: Konum güncellemesi sonrası oda üyeliklerini yeniden düzenle
+      const driverSocket = this.getDriverSocket(driverId);
+      if (driverSocket && driverInfo && driverInfo.isAvailable) {
+        console.log(`🔄 Re-arranging room memberships for driver ${driverId} after location update`);
+        
+        // Önce tüm müşteri odalarından çıkar
+        this.removeDriverFromAllCustomerRooms(driverId);
+        
+        // Sonra yeni konuma göre uygun odalara ekle
+        await this.addDriverToCustomerRooms(driverSocket);
+      }
+
       // Broadcast location to all customers
       this.broadcastDriverLocationToCustomers(driverId, location);
       
@@ -747,6 +767,20 @@ class SocketServer extends EventEmitter {
       );
       
       console.log(`✅ Driver ${driverId} availability updated in both memory and database: ${isAvailable}`);
+      
+      // 🚀 OPTIMIZASYON: Availability değişikliğinde oda kontrolü
+      const driverSocket = this.getDriverSocket(driverId);
+      if (driverSocket && driverInfo && driverInfo.location) {
+        if (isAvailable) {
+          // Çevrimiçi olduğunda yarıçap kontrolü ile odalara ekle
+          console.log(`🔄 Driver ${driverId} going online - adding to appropriate customer rooms`);
+          await this.addDriverToCustomerRooms(driverSocket);
+        } else {
+          // Çevrimdışı olduğunda tüm odalardan çıkar
+          console.log(`🔄 Driver ${driverId} going offline - removing from all customer rooms`);
+          this.removeDriverFromAllCustomerRooms(driverId);
+        }
+      }
       
       // Tüm müşterilere güncellenmiş sürücü listesini gönder
       this.broadcastNearbyDriversToAllCustomers();
@@ -788,8 +822,15 @@ class SocketServer extends EventEmitter {
       
     } catch (error) {
       console.error(`❌ Error broadcasting to order related drivers:`, error);
-      // Fallback: Tüm sürücülere gönder (eski davranış)
-      this.broadcastToAllDrivers(event, data);
+      
+      // 🚀 OPTIMIZASYON: Güvenlik açığını kapatmak için fallback mekanizmasını iyileştir
+      // Tüm sürücülere göndermek yerine sadece hata logla ve işlemi atla
+      console.log(`🔒 Security: Broadcast to order ${orderId} failed, skipping to prevent unnecessary data exposure`);
+      
+      // Event monitoring için hata kaydet
+      if (this.eventMonitor) {
+        this.eventMonitor.recordError('broadcastToOrderRelatedDrivers', error.message);
+      }
     }
   }
 
@@ -830,6 +871,15 @@ class SocketServer extends EventEmitter {
 
   getConnectedDriversCount() {
     return this.connectedDrivers.size;
+  }
+
+  // 🚀 OPTIMIZASYON: Sürücü socket'ini bul
+  getDriverSocket(driverId) {
+    const driverData = this.connectedDrivers.get(driverId);
+    if (driverData && driverData.socketId) {
+      return this.io.sockets.sockets.get(driverData.socketId);
+    }
+    return null;
   }
 
   getConnectedCustomersCount() {
@@ -1806,6 +1856,81 @@ class SocketServer extends EventEmitter {
     });
 
     console.log('📊 Real-time monitoring emission started');
+  }
+
+  // 🚀 OPTIMIZASYON: Periyodik oda üyeliklerini doğrulama
+  startPeriodicRoomValidation() {
+    setInterval(() => {
+      this.validateRoomMemberships();
+    }, 5 * 60 * 1000); // Her 5 dakikada bir
+    
+    console.log('🔄 Periodic room validation started (every 5 minutes)');
+  }
+
+  // 🚀 OPTIMIZASYON: Oda üyeliklerini doğrulama ve temizleme
+  async validateRoomMemberships() {
+    try {
+      console.log('🔍 Starting room membership validation...');
+      
+      let validatedCount = 0;
+      let removedCount = 0;
+      
+      // Tüm bağlı sürücüleri kontrol et
+      for (const [driverId, driverData] of this.connectedDrivers) {
+        const driverSocket = this.getDriverSocket(driverId);
+        
+        if (!driverSocket || !driverData.location || !driverData.isAvailable) {
+          // Sürücü çevrimdışı veya konumu yok ise tüm odalardan çıkar
+          this.removeDriverFromAllCustomerRooms(driverId);
+          removedCount++;
+          continue;
+        }
+        
+        // Sürücünün mevcut oda üyeliklerini kontrol et
+        const currentRooms = Array.from(driverSocket.rooms).filter(room => 
+          room.startsWith('customer_') && room !== driverSocket.id
+        );
+        
+        // Sürücünün olması gereken odaları hesapla
+        const shouldBeInRooms = [];
+        for (const [customerId, customerData] of this.connectedCustomers) {
+          if (customerData.location) {
+            const distance = this.calculateDistance(
+              driverData.location.latitude,
+              driverData.location.longitude,
+              customerData.location.latitude,
+              customerData.location.longitude
+            );
+            
+            if (distance <= 10) { // 10 km yarıçap
+              shouldBeInRooms.push(`customer_${customerId}`);
+            }
+          }
+        }
+        
+        // Yanlış odalarda olan sürücüyü çıkar
+        for (const room of currentRooms) {
+          if (!shouldBeInRooms.includes(room)) {
+            driverSocket.leave(room);
+            removedCount++;
+          }
+        }
+        
+        // Eksik odalara sürücüyü ekle
+        for (const room of shouldBeInRooms) {
+          if (!currentRooms.includes(room)) {
+            driverSocket.join(room);
+          }
+        }
+        
+        validatedCount++;
+      }
+      
+      console.log(`✅ Room validation completed: ${validatedCount} drivers validated, ${removedCount} invalid memberships removed`);
+      
+    } catch (error) {
+      console.error('❌ Error during room membership validation:', error);
+    }
   }
 }
 

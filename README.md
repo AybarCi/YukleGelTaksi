@@ -58,7 +58,7 @@ Artık IP adresi değiştirmek için **sadece `.env` dosyasını** düzenleyin:
 
 ```bash
 # .env dosyasında
-API_HOST=192.168.1.12  # Yeni IP adresi (örnek)
+API_HOST=192.168.1.134  # Yeni IP adresi (örnek)
 ```
 
 Tüm uygulamalar otomatik olarak yeni IP adresini kullanacaktır!
