@@ -147,7 +147,7 @@ export default function OrderDetailScreen() {
   const canCancelOrder = (status?: string) => {
     if (!status) return false;
     // Sadece belirli durumlarda iptal edilebilir
-    return ['pending', 'inspecting', 'accepted', 'confirmed'].includes(status);
+    return ['pending', 'inspecting', 'accepted', 'confirmed', 'started'].includes(status);
   };
 
   const getStatusText = (status: string) => {
@@ -258,7 +258,11 @@ export default function OrderDetailScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Sipariş Durumu */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
@@ -502,6 +506,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  scrollContent: {
+    paddingBottom: 80,
   },
   emptyContainer: {
     flex: 1,

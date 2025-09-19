@@ -2044,32 +2044,44 @@ function HomeScreen() {
                    <DriverMarker key={driver.id} driver={driver} />
                  ))}
                  
-                 {/* Aktif sipariş varsa onun marker'larını göster */}
-                 {reduxCurrentOrder && reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude && (
-                   <PickupMarker coords={{
-                     latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
-                     longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
-                   }} />
-                 )}
-                 
-                 {reduxCurrentOrder && reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude && (
-                   <DestinationMarker coords={{
-                     latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
-                     longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
-                   }} />
-                 )}
-                 
-                 {/* Yeni sipariş oluştururken marker'lar - inspecting durumunda da göster */}
-                 {(!reduxCurrentOrder || (reduxCurrentOrder && reduxCurrentOrder.status && ['pending', 'inspecting'].includes(reduxCurrentOrder.status))) && pickupCoords && (
+                 {/* Aktif sipariş marker'ları - inspecting durumunda da göster */}
+                 {reduxCurrentOrder && (
                    <>
-                     {console.log('Rendering pickup marker with coords:', pickupCoords)}
+                     {/* Pickup marker - reduxCurrentOrder veya pickupCoords'dan al */}
+                     {((reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude) || 
+                       (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && pickupCoords)) && (
+                       <PickupMarker coords={
+                         reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude ? {
+                           latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+                           longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+                         } : pickupCoords!
+                       } />
+                     )}
+                     
+                     {/* Destination marker - reduxCurrentOrder veya destinationCoords'dan al */}
+                     {((reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude) || 
+                       (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && destinationCoords)) && (
+                       <DestinationMarker coords={
+                         reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude ? {
+                           latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+                           longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+                         } : destinationCoords!
+                       } />
+                     )}
+                   </>
+                 )}
+                 
+                 {/* Yeni sipariş oluştururken marker'lar - sadece aktif sipariş yoksa göster */}
+                 {!reduxCurrentOrder && pickupCoords && (
+                   <>
+                     {console.log('Rendering new order pickup marker with coords:', pickupCoords)}
                      <PickupMarker coords={pickupCoords} />
                    </>
                  )}
                  
-                 {(!reduxCurrentOrder || (reduxCurrentOrder && reduxCurrentOrder.status && ['pending', 'inspecting'].includes(reduxCurrentOrder.status))) && destinationCoords && (
+                 {!reduxCurrentOrder && destinationCoords && (
                    <>
-                     {console.log('Rendering destination marker with coords:', destinationCoords)}
+                     {console.log('Rendering new order destination marker with coords:', destinationCoords)}
                      <DestinationMarker coords={destinationCoords} />
                    </>
                  )}
@@ -2083,8 +2095,9 @@ function HomeScreen() {
                    />
                  )}
                  
-                 {/* Yeni sipariş rotası - inspecting durumunda da göster */}
-                 {(!reduxCurrentOrder || (reduxCurrentOrder && reduxCurrentOrder.status && ['pending', 'inspecting'].includes(reduxCurrentOrder.status))) && routeCoordinates.length > 0 && (
+                 {/* Yeni sipariş rotası veya inspecting durumunda rota */}
+                 {((reduxCurrentOrder && ['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && routeCoordinates.length > 0) || 
+                   (!reduxCurrentOrder && routeCoordinates.length > 0)) && (
                    <Polyline
                      coordinates={routeCoordinates}
                      strokeColor="#FFD700"
