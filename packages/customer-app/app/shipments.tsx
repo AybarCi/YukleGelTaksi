@@ -35,7 +35,7 @@ interface Shipment {
   labor_price: number;
   total_price: number;
   payment_method?: string;
-  status: 'pending' | 'driver_accepted_awaiting_customer' | 'confirmed' | 'driver_going_to_pickup' | 'pickup_completed' | 'in_transit' | 'delivered' | 'payment_completed' | 'cancelled';
+  status: 'pending' | 'inspecting' | 'driver_accepted_awaiting_customer' | 'confirmed' | 'driver_going_to_pickup' | 'pickup_completed' | 'in_transit' | 'delivered' | 'payment_completed' | 'cancelled';
   customer_notes?: string;
   driver_notes?: string;
   cancel_reason?: string;
@@ -68,7 +68,7 @@ export default function ShipmentsScreen() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -90,17 +90,8 @@ export default function ShipmentsScreen() {
         return;
       }
 
-      // Filter'a göre status parametresi belirle
-      let statusParam = '';
-      if (filter === 'active') {
-        statusParam = 'pending,driver_accepted_awaiting_customer,confirmed,driver_going_to_pickup,pickup_completed,in_transit';
-      } else if (filter === 'completed') {
-        statusParam = 'delivered,payment_completed,cancelled';
-      }
-
-      const url = `${API_CONFIG.BASE_URL}/api/users/orders${
-        statusParam ? `?status=${statusParam}` : ''
-      }`;
+      // Tüm siparişleri çek (filter parametresi olmadan)
+      const url = `${API_CONFIG.BASE_URL}/api/users/orders`;
 
       const response = await fetch(url, {
         method: 'GET',
@@ -112,12 +103,24 @@ export default function ShipmentsScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.success && data.orders) {
-          setShipments(data.orders);
+        console.log('API Response:', data);
+        if (data.success && data.data && data.data.orders) {
+          console.log('Orders received:', data.data.orders);
+          console.log('Orders count:', data.data.orders.length);
+          data.data.orders.forEach((order: any, index: number) => {
+            console.log(`Order ${index + 1}:`, {
+              id: order.id,
+              status: order.status,
+              pickup_address: order.pickup_address
+            });
+          });
+          setShipments(data.data.orders);
         } else {
+          console.log('No orders in response or success=false');
           setShipments([]);
         }
       } else {
+        console.log('API response not ok:', response.status);
         setShipments([]);
       }
     } catch (error) {
@@ -182,11 +185,15 @@ export default function ShipmentsScreen() {
   };
 
   const filteredShipments = shipments && Array.isArray(shipments) ? shipments.filter(shipment => {
+    console.log('Filtering shipment:', { id: shipment.id, status: shipment.status, filter });
     if (filter === 'all') return true;
-    if (filter === 'active') return ['pending', 'accepted', 'in_progress'].includes(shipment.status);
-    if (filter === 'completed') return ['delivered', 'cancelled'].includes(shipment.status);
+    if (filter === 'active') return ['pending', 'inspecting', 'driver_accepted_awaiting_customer', 'confirmed', 'driver_going_to_pickup', 'pickup_completed', 'in_transit'].includes(shipment.status);
+    if (filter === 'completed') return shipment.status === 'payment_completed';
+    if (filter === 'cancelled') return shipment.status === 'cancelled';
     return true;
   }) : [];
+
+  console.log('Filtered shipments:', filteredShipments.length, 'Current filter:', filter);
 
   const openDetailModal = (shipment: Shipment) => {
     setSelectedShipment(shipment);
@@ -218,6 +225,7 @@ export default function ShipmentsScreen() {
   const getStatusText = (status: string) => {
     const statusMap: { [key: string]: string } = {
       'pending': 'Beklemede',
+      'inspecting': 'İnceleniyor',
       'driver_accepted_awaiting_customer': 'Sürücü Kabul Etti',
       'confirmed': 'Onaylandı',
       'driver_going_to_pickup': 'Sürücü Yolda',
@@ -323,31 +331,36 @@ export default function ShipmentsScreen() {
 
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
-        <TouchableOpacity 
-          style={[styles.filterTab, filter === 'all' && styles.activeFilterTab]}
-          onPress={() => setFilter('all')}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScrollContent}
         >
-          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>Tümü</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.filterTab, filter === 'active' && styles.activeFilterTab]}
-          onPress={() => setFilter('active')}
-        >
-          <Text style={[styles.filterText, filter === 'active' && styles.activeFilterText]}>Aktif</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.filterTab, filter === 'completed' && styles.activeFilterTab]}
-          onPress={() => setFilter('completed')}
-        >
-          <Text 
-            style={[styles.filterText, filter === 'completed' && styles.activeFilterText]}
-            numberOfLines={1}
-            adjustsFontSizeToFit={true}
-            minimumFontScale={0.8}
+          <TouchableOpacity 
+            style={[styles.filterTab, filter === 'all' && styles.activeFilterTab]}
+            onPress={() => setFilter('all')}
           >
-            Tamamlanan
-          </Text>
-        </TouchableOpacity>
+            <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>Tümü</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterTab, filter === 'active' && styles.activeFilterTab]}
+            onPress={() => setFilter('active')}
+          >
+            <Text style={[styles.filterText, filter === 'active' && styles.activeFilterText]}>Aktif</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterTab, filter === 'completed' && styles.activeFilterTab]}
+            onPress={() => setFilter('completed')}
+          >
+            <Text style={[styles.filterText, filter === 'completed' && styles.activeFilterText]}>Tamamlanan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterTab, filter === 'cancelled' && styles.activeFilterTab]}
+            onPress={() => setFilter('cancelled')}
+          >
+            <Text style={[styles.filterText, filter === 'cancelled' && styles.activeFilterText]}>İptal Edilenler</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* Shipments List */}
@@ -371,7 +384,9 @@ export default function ShipmentsScreen() {
                 ? 'Henüz hiç taşıma siparişi vermediniz.' 
                 : filter === 'active'
                 ? 'Aktif taşıma siparişiniz bulunmuyor.'
-                : 'Tamamlanmış taşıma siparişiniz bulunmuyor.'}
+                : filter === 'completed'
+                ? 'Tamamlanmış taşıma siparişiniz bulunmuyor.'
+                : 'İptal edilmiş taşıma siparişiniz bulunmuyor.'}
             </Text>
             <TouchableOpacity 
               style={styles.createOrderButton}
@@ -566,21 +581,23 @@ const styles = StyleSheet.create({
     width: 40,
   },
   filterContainer: {
-    flexDirection: 'row',
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
+  filterScrollContent: {
+    flexDirection: 'row',
+    paddingHorizontal: 0,
+  },
   filterTab: {
-    flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
     borderRadius: 20,
-    marginHorizontal: 2,
+    marginRight: 8,
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
-    minWidth: 0,
+    minWidth: 80,
   },
   activeFilterTab: {
     backgroundColor: '#FFD700',
