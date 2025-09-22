@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  Alert,
   ActivityIndicator,
   Linking,
 } from 'react-native';
@@ -94,16 +93,10 @@ export default function AccountDetailsScreen() {
       
       // İzin verilmediyse kullanıcıyı uyar
       if (mediaStatus !== 'granted') {
-        Alert.alert(
+        showModal(
           'Galeri İzni Gerekli',
           'Fotoğraf seçebilmek için galeri izni gereklidir. Ayarlardan izni açabilirsiniz.',
-          [
-            { text: 'İptal', style: 'cancel' },
-            { 
-              text: 'Ayarlara Git', 
-              onPress: () => Linking.openSettings() 
-            }
-          ]
+          'error'
         );
         return;
       }
@@ -182,9 +175,10 @@ export default function AccountDetailsScreen() {
         return;
       }
 
-      Alert.alert(
+      showModal(
         'Profil Fotoğrafını Sil',
         'Profil fotoğrafınızı silmek istediğinizden emin misiniz?',
+        'warning',
         [
           { text: 'İptal', style: 'cancel' },
           {

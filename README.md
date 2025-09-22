@@ -26,7 +26,7 @@ Bu proje artık **merkezi konfigürasyon sistemi** kullanmaktadır. Tüm IP adre
 ### Environment Variables (.env)
 ```bash
 # Server Configuration
-API_HOST=localhost
+API_HOST=192.168.1.134
 API_PORT=3000
 SOCKET_PORT=3001
 
@@ -68,9 +68,9 @@ Tüm uygulamalar otomatik olarak yeni IP adresini kullanacaktır!
 ### Development
 ```bash
 NODE_ENV=development
-API_HOST=localhost
+API_HOST=192.168.1.134
 ```
-→ URLs: `http://localhost:3000`, `http://localhost:3001`
+→ URLs: `http://192.168.1.134:3000`, `http://192.168.1.134:3001`
 
 ### Production  
 ```bash

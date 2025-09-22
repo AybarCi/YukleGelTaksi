@@ -270,8 +270,12 @@ class SocketService {
     });
 
     this.socket.on('order_cancelled_successfully', (data) => {
-      console.log('Order cancelled successfully:', data);
+      console.log('🔥 SOCKET SERVICE: order_cancelled_successfully event alındı!');
+      console.log('🔥 SOCKET SERVICE: Event data:', JSON.stringify(data, null, 2));
+      console.log('🔥 SOCKET SERVICE: Event listener sayısı:', this.eventListeners.get('order_cancelled_successfully')?.length || 0);
+      console.log('🔥 SOCKET SERVICE: Event emit ediliyor...');
       this.emit('order_cancelled_successfully', data);
+      console.log('🔥 SOCKET SERVICE: Event başarıyla emit edildi!');
     });
 
     this.socket.on('cancel_order_error', (data) => {

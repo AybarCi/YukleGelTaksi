@@ -32,6 +32,15 @@ export default function CustomModal({
   type,
   buttons = [{ text: 'Tamam', onPress: onClose }],
 }: CustomModalProps) {
+  console.log('🔵 CustomModal render edildi:', { visible, title, message, type });
+  
+  if (!visible) {
+    console.log('🔵 CustomModal: visible false, modal render edilmiyor');
+    return null;
+  }
+  
+  console.log('🔵 CustomModal: Modal render ediliyor!');
+  
   const getIconName = () => {
     switch (type) {
       case 'success':

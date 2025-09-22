@@ -23,6 +23,8 @@ import YukKonumuInput, { YukKonumuInputRef } from './YukKonumuInput';
 import VarisNoktasiInput, { VarisNoktasiInputRef } from './VarisNoktasiInput';
 import VehicleTypeModal from './VehicleTypeModal';
 import ImagePickerModal from './ImagePickerModal';
+import PhotoSuccessModal from './PhotoSuccessModal';
+import DriverNotFoundModal from './DriverNotFoundModal';
 import { usePriceCalculation } from '../app/utils/priceUtils';
 
 interface LocationCoords {
@@ -90,6 +92,10 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   // Modal states
   const [showVehicleTypeModal, setShowVehicleTypeModal] = useState<boolean>(false);
   const [showImagePickerModal, setShowImagePickerModal] = useState<boolean>(false);
+  const [photoSuccessModalVisible, setPhotoSuccessModalVisible] = useState(false);
+  const [addedPhotoCount, setAddedPhotoCount] = useState(0);
+  const [driverNotFoundModalVisible, setDriverNotFoundModalVisible] = useState(false);
+  const [driverNotFoundMessage, setDriverNotFoundMessage] = useState('');
 
   // Refs
   const pickupLocationRef = useRef<YukKonumuInputRef>(null);
@@ -410,7 +416,6 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
-          allowsEditing: true,
           aspect: [4, 3],
           quality: 0.8,
           allowsMultipleSelection: true,
@@ -420,7 +425,19 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const newImages = result.assets.map(asset => asset.uri);
         setCargoImages(prev => [...prev, ...newImages]);
-        showModal?.('Başarılı', `${newImages.length} fotoğraf başarıyla eklendi.`, 'success');
+        
+        // Success modalı göstermeden ÖNCE koordinat bilgilerini Home bileşenine tekrar ilet
+        // Bu sayede haritadaki markerlar ve rota korunur
+        if (pickupCoords && onPickupLocationChange) {
+          onPickupLocationChange(pickupCoords, pickupAddress);
+        }
+        if (destinationCoords && onDestinationLocationChange) {
+          onDestinationLocationChange(destinationCoords, destinationAddress);
+        }
+        
+        // PhotoSuccessModal'ı göster
+        setAddedPhotoCount(newImages.length);
+        setPhotoSuccessModalVisible(true);
       }
     } catch (error) {
       console.error('Image picker error:', error);
@@ -458,7 +475,8 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
       })).unwrap();
 
       if (!availabilityResult.available) {
-        showModal?.('Sürücü Bulunamadı', 'Konumunuz ve seçtiğiniz araç tipine uygun sürücü bulunamamıştır. Lütfen daha sonra tekrar deneyin.', 'error');
+        setDriverNotFoundMessage('Konumunuz ve seçtiğiniz araç tipine uygun sürücü bulunamamıştır. Lütfen daha sonra tekrar deneyin.');
+        setDriverNotFoundModalVisible(true);
         return;
       }
 
@@ -672,6 +690,18 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         visible={showImagePickerModal}
         onClose={() => setShowImagePickerModal(false)}
         onPickImage={handleImageSelected}
+      />
+
+      <PhotoSuccessModal
+        visible={photoSuccessModalVisible}
+        onClose={() => setPhotoSuccessModalVisible(false)}
+        photoCount={addedPhotoCount}
+      />
+
+      <DriverNotFoundModal
+        visible={driverNotFoundModalVisible}
+        onClose={() => setDriverNotFoundModalVisible(false)}
+        message={driverNotFoundMessage}
       />
     </KeyboardAvoidingView>
   );

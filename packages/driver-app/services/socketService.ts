@@ -270,6 +270,11 @@ class SocketService {
       this.emit('order_cancelled_successfully', data);
     });
 
+    this.socket.on('order_cancelled_by_customer', (data) => {
+      console.log('Order cancelled by customer:', data);
+      this.emit('order_cancelled_by_customer', data);
+    });
+
     this.socket.on('cancel_order_error', (data) => {
       console.log('Cancel order error:', data);
       this.emit('cancel_order_error', data);

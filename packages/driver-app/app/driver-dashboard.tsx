@@ -316,6 +316,92 @@ export default function DriverDashboardScreen() {
           setRouteDuration(null);
           console.log('🏠 Aktif sipariş iptal edildi, sürücü ana ekrana getirildi');
         }
+        
+        // Sürücüye bilgilendirme modalı göster
+        showModal('Sipariş İptal Edildi', `#${orderId} numaralı sipariş müşteri tarafından iptal edildi.`, 'info');
+      });
+
+      // Sipariş başarıyla iptal edildiğinde (müşteri tarafından onay kodu ile)
+      socketService.on('order_cancelled_successfully', (data: { orderId: number, message?: string }) => {
+        console.log('🔔 ORDER CANCELLED SUCCESSFULLY BİLDİRİMİ ALINDI:');
+        console.log('🆔 İptal Edilen Sipariş ID:', data.orderId);
+        console.log('💬 Mesaj:', data.message);
+        
+        // İptal edilen siparişi listeden kaldır
+        setCustomers(prev => {
+          const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
+          console.log('❌ Sipariş listeden kaldırıldı:', data.orderId);
+          console.log('📊 Kalan sipariş sayısı:', filtered.length);
+          return filtered;
+        });
+        
+        // Eğer iptal edilen sipariş aktif sipariş ise, sürücüyü ana ekrana getir
+        if (activeOrder && activeOrder.id === data.orderId) {
+          setActiveOrder(null);
+          setCurrentPhase('pickup');
+          setRouteCoordinates([]);
+          setRouteDuration(null);
+          console.log('🏠 Aktif sipariş iptal edildi, sürücü ana ekrana getirildi');
+        }
+
+        // İnceleme modalı açıksa ve iptal edilen sipariş bu sipariş ise modalı kapat
+        if (selectedOrder && selectedOrder.id === data.orderId) {
+          console.log('🚪 İnceleme modalı kapatılıyor - sipariş iptal edildi:', data.orderId);
+          setShowInspectionModal(false);
+          setSelectedOrder(null);
+          setOrderDetails(null);
+        }
+
+        // İnceleme listesinden de kaldır
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          console.log('🗑️ İptal edilen sipariş inspectingOrders listesinden çıkarıldı:', data.orderId);
+          return newSet;
+        });
+      });
+
+      // Müşteri siparişi iptal ettiğinde (backend'ten gelen event)
+      socketService.on('order_cancelled_by_customer', (data: { orderId: number, message?: string }) => {
+        console.log('🔔 ORDER CANCELLED BY CUSTOMER BİLDİRİMİ ALINDI:');
+        console.log('🆔 İptal Edilen Sipariş ID:', data.orderId);
+        console.log('💬 Mesaj:', data.message);
+        
+        // İptal edilen siparişi listeden kaldır
+        setCustomers(prev => {
+          const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
+          console.log('❌ Sipariş listeden kaldırıldı (müşteri iptal etti):', data.orderId);
+          console.log('📊 Kalan sipariş sayısı:', filtered.length);
+          return filtered;
+        });
+        
+        // Eğer iptal edilen sipariş aktif sipariş ise, sürücüyü ana ekrana getir
+        if (activeOrder && activeOrder.id === data.orderId) {
+          setActiveOrder(null);
+          setCurrentPhase(null);
+          setRouteCoordinates([]);
+          setRouteDuration(null);
+          console.log('🏠 Aktif sipariş iptal edildi (müşteri iptal etti), sürücü idle durumuna getirildi');
+        }
+
+        // İnceleme modalı açıksa ve iptal edilen sipariş bu sipariş ise modalı kapat
+        if (selectedOrder && selectedOrder.id === data.orderId) {
+          console.log('🚪 İnceleme modalı kapatılıyor - sipariş müşteri tarafından iptal edildi:', data.orderId);
+          setShowInspectionModal(false);
+          setSelectedOrder(null);
+          setOrderDetails(null);
+        }
+
+        // İnceleme listesinden de kaldır
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          console.log('🗑️ İptal edilen sipariş inspectingOrders listesinden çıkarıldı (müşteri iptal etti):', data.orderId);
+          return newSet;
+        });
+
+        // Kullanıcıya bilgi mesajı göster
+        showModal('Sipariş İptal Edildi', data.message || 'Müşteri siparişi iptal etti.', 'info');
       });
       
       // Müşteri siparişi onayladığında
@@ -558,6 +644,7 @@ export default function DriverDashboardScreen() {
       socketService.off('new_order');
       socketService.off('order_created');
       socketService.off('order_cancelled');
+      socketService.off('order_cancelled_by_customer');
       socketService.off('request_location_update');
       socketService.off('order_status_update');
       socketService.off('order_phase_update');

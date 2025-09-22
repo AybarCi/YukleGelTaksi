@@ -1118,18 +1118,12 @@ class SocketServer extends EventEmitter {
         console.log('🔍 Removed order from inspecting list:', orderId);
       }
 
-      // Müşteriye başarılı iptal mesajı gönder
-      const customerSocketId = this.connectedCustomers.get(userId);
-      if (customerSocketId) {
-        this.io.to(customerSocketId).emit('order_cancelled_successfully', {
-          orderId,
-          message: 'Sipariş başarıyla iptal edildi.',
-          cancellationFee: order.cancellation_fee
-        });
-        console.log('✅ order_cancelled_successfully event sent to customer', userId);
-      }
+      // Müşteriye başarılı iptal mesajı gönder - KALDIRILDI
+      // Artık müşteri kendi iptal işlemini socket'ten dinlemeyecek
+      // Sadece HTTP response ile bilgilendirilecek
+      console.log('✅ Order cancelled successfully - customer will be notified via HTTP response');
 
-      // Eğer sürücü atanmışsa, sürücüye de bildir
+      // Eğer sürücü atanmışsa, sürücüye bildir
       if (order.driver_id) {
         const driverData = this.connectedDrivers.get(order.driver_id);
         if (driverData) {
@@ -1142,11 +1136,11 @@ class SocketServer extends EventEmitter {
         }
       }
 
-      // Tüm sürücülere sipariş iptal edildi bilgisi gönder
-      this.broadcastToAllDrivers('order_cancelled', {
-        orderId,
-        message: 'Sipariş müşteri tarafından iptal edildi.'
-      });
+      // Müşteri odasındaki sürücülere sipariş iptal edildi bilgisi gönder (oda mantığı kullanarak)
+      this.broadcastToCustomerRoomDrivers(userId, 'order_cancelled', orderId);
+      
+      // Tüm sürücülere de order_cancelled event'i gönder (güvenlik için)
+      this.broadcastToAllDrivers('order_cancelled', orderId);
 
     } catch (error) {
       console.error('Error in cancelOrderWithCode:', error);

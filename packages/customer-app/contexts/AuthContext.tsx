@@ -728,6 +728,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const showModal = (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => {
+    console.log('🟢 AuthContext showModal çağrıldı:', { title, message, type, buttons });
+    console.log('🟢 Modal state öncesi:', { modalVisible, modalTitle, modalMessage, modalType });
+    
     setModalTitle(title);
     setModalMessage(message);
     setModalType(type);
@@ -736,15 +739,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const wrappedButtons = buttons ? buttons.map(button => ({
       ...button,
       onPress: () => {
+        console.log('🟢 Modal button tıklandı:', button.text);
         setModalVisible(false);
         if (button.onPress) {
           button.onPress();
         }
       }
-    })) : [{ text: 'Tamam', onPress: () => setModalVisible(false) }];
+    })) : [{ text: 'Tamam', onPress: () => {
+      console.log('🟢 Default Tamam button tıklandı');
+      setModalVisible(false);
+    } }];
     
     setModalButtons(wrappedButtons);
+    
+    // Modal'ı göster - bu işlemi en son yap
+    console.log('🟢 Modal visible true yapılıyor...');
     setModalVisible(true);
+    
+    console.log('🟢 Modal state sonrası:', { modalVisible: true, modalTitle: title, modalMessage: message, modalType: type });
   };
 
   const value: AuthContextType = {

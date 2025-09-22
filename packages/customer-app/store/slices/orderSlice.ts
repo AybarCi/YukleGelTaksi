@@ -293,6 +293,46 @@ export const calculateCancellationFee = createAsyncThunk(
   }
 );
 
+// Cancel order with code async thunk
+export const cancelOrderWithCode = createAsyncThunk(
+  'order/cancelOrderWithCode',
+  async (
+    { orderId, confirmCode }: { orderId: number; confirmCode: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      }
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/orders/${orderId}/cancel-with-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ confirmCode }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // AsyncStorage'dan mevcut siparişi temizle
+        await AsyncStorage.removeItem('currentOrder');
+        return result;
+      } else {
+        throw new Error(result.message || 'Sipariş iptal edilirken bir hata oluştu.');
+      }
+    } catch (error) {
+      console.error('Sipariş iptal hatası:', error);
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Sipariş iptal edilirken bir hata oluştu.'
+      );
+    }
+  }
+);
+
 export const cancelOrder = createAsyncThunk(
   'order/cancelOrder',
   async (
@@ -413,6 +453,20 @@ const orderSlice = createSlice({
         state.error = null;
       })
       .addCase(cancelOrder.rejected, (state, action) => {
+        state.cancelOrderLoading = false;
+        state.error = action.payload as string;
+      })
+      // Cancel Order With Code
+      .addCase(cancelOrderWithCode.pending, (state) => {
+        state.cancelOrderLoading = true;
+        state.error = null;
+      })
+      .addCase(cancelOrderWithCode.fulfilled, (state) => {
+        state.cancelOrderLoading = false;
+        state.currentOrder = null;
+        state.error = null;
+      })
+      .addCase(cancelOrderWithCode.rejected, (state, action) => {
         state.cancelOrderLoading = false;
         state.error = action.payload as string;
       })

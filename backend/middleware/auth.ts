@@ -121,3 +121,6 @@ export function hashToken(token: string): string {
   const crypto = require('crypto');
   return crypto.createHash('sha256').update(token).digest('hex');
 }
+
+// verifyToken fonksiyonu - authenticateToken'ın alias'ı
+export const verifyToken = authenticateToken;

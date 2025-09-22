@@ -5,11 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Linking,
   Image,
+  TextInput,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -17,8 +18,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
 import ReviewOrderPhotos from '../components/ReviewOrderPhotos';
-import { cancelOrder } from '../store/slices/orderSlice';
+import { cancelOrder, calculateCancellationFee, clearCurrentOrder } from '../store/slices/orderSlice';
 import socketService from '../services/socketService';
+import PaymentModal from '../components/PaymentModal';
+import CancelOrderModal from '../components/CancelOrderModal';
+import SuccessModal from '../components/SuccessModal';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Order {
   id?: string;
@@ -57,36 +62,39 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
+  const { showModal: authShowModal } = useAuth();
   const { orderId } = useLocalSearchParams();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [cancelOrderModalVisible, setCancelOrderModalVisible] = useState(false);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [successModalData, setSuccessModalData] = useState({ title: '', message: '' });
+  const [cancellationFee, setCancellationFee] = useState(0);
+  const [estimatedAmount, setEstimatedAmount] = useState(0);
+  const [userCancelCode, setUserCancelCode] = useState('');
+  const [confirmCodeInputs, setConfirmCodeInputs] = useState(['', '', '', '']);
+  const confirmCodeInputRefs = React.useRef<(TextInput | null)[]>([]);
+  const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
+  const [cancelConfirmCode, setCancelConfirmCode] = useState('');
   const vehicleTypes = useSelector((state: RootState) => state.vehicle.vehicleTypes);
   const { currentOrder } = useSelector((state: RootState) => state.order);
 
+  // Debug: successModalVisible state değişimini takip et
   useEffect(() => {
-    console.log('OrderDetail Debug - currentOrder:', currentOrder);
-    console.log('OrderDetail Debug - orderId:', orderId);
-    console.log('OrderDetail Debug - vehicleTypes:', vehicleTypes);
-    console.log('OrderDetail Debug - vehicleTypes length:', vehicleTypes?.length);
+    // Debug logs removed
+  }, [successModalVisible, successModalData]);
+
+  useEffect(() => {
+    // Debug logs removed
     
     // Eğer orderId'dan order ID geliyorsa, o siparişi bul
     // Şimdilik currentOrder'ı kullanıyoruz
     if (currentOrder) {
-      console.log('OrderDetail - currentOrder bulundu, order state e set ediliyor');
-      console.log('Vehicle Type Debug:', {
-         vehicleTypeId: currentOrder.vehicleTypeId,
-         vehicleTypes: vehicleTypes,
-         vehicleTypesLength: vehicleTypes?.length
-       });
-      console.log('Cargo Photos Debug:', {
-        cargoImages: currentOrder.cargoImages,
-        cargoImages_type: typeof currentOrder.cargoImages,
-        cargoImages_length: currentOrder.cargoImages?.length,
-        combined: currentOrder.cargoImages || []
-      });
+      // Debug logs removed
       setOrder(currentOrder);
     } else {
-      console.log('OrderDetail - currentOrder bulunamadı');
+      // Debug logs removed
       setOrder(null);
     }
     setLoading(false);
@@ -94,12 +102,14 @@ export default function OrderDetailScreen() {
 
   // Socket event listener for order status updates
   useEffect(() => {
+    // Debug logs removed
+    
     const handleOrderStatusUpdate = (data: any) => {
-      console.log('📊 ORDER DETAIL: Sipariş durumu güncellendi:', data);
+      // Debug logs removed
       
       // Eğer güncellenen sipariş bu sayfadaki siparişse, durumu güncelle
       if (order && data.orderId && data.orderId.toString() === order.id?.toString()) {
-        console.log('📊 ORDER DETAIL: Sipariş durumu güncelleniyor:', data.status);
+        // Debug logs removed
         setOrder(prevOrder => ({
           ...prevOrder!,
           status: data.status
@@ -107,41 +117,112 @@ export default function OrderDetailScreen() {
       }
     };
 
-    // Socket event listener'ını ekle
+    const handleCancelOrderConfirmationRequired = (data: any) => {
+      // Debug logs removed
+      setCancelOrderId(data.orderId);
+      setCancelConfirmCode(data.confirmCode);
+      setCancellationFee(data.cancellationFee || 0);
+      setCancelOrderModalVisible(true);
+    };
+
+
+
+    // Socket bağlantısını kontrol et
+    if (!socketService.isSocketConnected()) {
+      // Debug logs removed
+      socketService.reconnect();
+    }
+
+    // Socket event listener'larını ekle
+    // Debug logs removed
     socketService.on('order_status_update', handleOrderStatusUpdate);
+    socketService.on('cancel_order_confirmation_required', handleCancelOrderConfirmationRequired);
+    
+    // Debug logs removed
 
     // Cleanup function
     return () => {
+      // Debug logs removed
       socketService.off('order_status_update', handleOrderStatusUpdate);
+      socketService.off('cancel_order_confirmation_required', handleCancelOrderConfirmationRequired);
     };
-  }, [order]);
+  }, [order, dispatch, router]);
 
-  const handleCancelOrder = () => {
+  const handleCancelOrder = async () => {
     if (!order?.id) {
-      Alert.alert('Hata', 'Sipariş bilgisi bulunamadı.');
+      authShowModal('Hata', 'Sipariş bilgisi bulunamadı.', 'error');
       return;
     }
 
-    Alert.alert(
-      'Siparişi İptal Et',
-      'Bu siparişi iptal etmek istediğinizden emin misiniz?',
-      [
-        {
-          text: 'Vazgeç',
-          style: 'cancel',
-        },
-        {
-          text: 'İptal Et',
-          style: 'destructive',
-          onPress: () => {
-            dispatch(cancelOrder({ 
-              orderId: parseInt(order.id!), 
-              reason: 'Müşteri tarafından iptal edildi' 
-            }) as any);
-          },
-        },
-      ]
-    );
+    try {
+      // Cezai şart hesaplama
+      const result = await dispatch(calculateCancellationFee({ 
+        orderId: parseInt(order.id) 
+      }) as any).unwrap();
+      
+      if (result.success) {
+        const fee = result.data.cancellationFee || 0;
+        const estimated = result.data.estimatedAmount || order.estimatedPrice || order.total_price || 0;
+        
+        setCancellationFee(fee);
+        setEstimatedAmount(estimated);
+        
+        // PaymentModal'ı göster (cezai şart var/yok durumuna göre)
+        setPaymentModalVisible(true);
+      } else {
+        authShowModal('Hata', 'Cezai şart bilgisi alınamadı.', 'error');
+      }
+    } catch (error) {
+      console.error('Cezai şart hesaplama hatası:', error);
+      authShowModal('Hata', 'Cezai şart bilgisi alınamadı.', 'error');
+    }
+  };
+
+  const handlePayment = () => {
+    setPaymentModalVisible(false);
+    // Ödeme sayfasına yönlendir
+    router.push({
+      pathname: '/payment',
+      params: {
+        orderId: order?.id,
+        cancellationFee: cancellationFee.toString(),
+        estimatedAmount: estimatedAmount.toString()
+      }
+    });
+  };
+
+  const handleDirectCancel = () => {
+    setPaymentModalVisible(false);
+    // Direkt modal açmak yerine önce backend'e cancel_order gönder
+    if (order?.id) {
+      // Debug logs removed
+      socketService.cancelOrder(parseInt(order.id));
+    } else {
+      authShowModal('Hata', 'Sipariş bilgisi bulunamadı.', 'error');
+    }
+  };
+
+  const handleCancelOrderModalClose = () => {
+    setCancelOrderModalVisible(false);
+    setUserCancelCode('');
+    setConfirmCodeInputs(['', '', '', '']);
+  };
+
+  const showModal = (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', onPress?: () => void) => {
+    // Debug logs removed
+    
+    // İptal işlemi başarılı olduğunda anasayfaya yönlendir
+    if (type === 'success' && title === 'İptal İşlemi Başarılı') {
+      const handleSuccess = () => {
+        // Debug logs removed
+        router.push('/');
+        if (onPress) onPress();
+      };
+      authShowModal(title, message, type, [{ text: 'Tamam', onPress: handleSuccess }]);
+    } else {
+      // Diğer durumlar için normal modal
+      authShowModal(title, message, type, onPress ? [{ text: 'Tamam', onPress }] : undefined);
+    }
   };
 
   const canCancelOrder = (status?: string) => {
@@ -190,7 +271,7 @@ export default function OrderDetailScreen() {
     if (order?.driver_phone) {
       Linking.openURL(`tel:${order.driver_phone}`);
     } else {
-      Alert.alert('Uyarı', 'Sürücü telefon numarası bulunamadı.');
+      authShowModal('Uyarı', 'Sürücü telefon numarası bulunamadı.', 'warning');
     }
   };
 
@@ -199,7 +280,7 @@ export default function OrderDetailScreen() {
       const url = `https://maps.apple.com/?q=${latitude},${longitude}&ll=${latitude},${longitude}`;
       Linking.openURL(url);
     } else {
-      Alert.alert('Uyarı', 'Konum bilgisi bulunamadı.');
+      authShowModal('Uyarı', 'Konum bilgisi bulunamadı.', 'warning');
     }
   };
 
@@ -217,7 +298,7 @@ export default function OrderDetailScreen() {
         const urlArray = Array.isArray(photoUrls) ? photoUrls : photoUrls.split(',');
         images = [...images, ...urlArray.map((url: string) => url.trim())];
       } catch (error) {
-        console.log('Fotoğraf parse hatası:', error);
+        // Error log removed
       }
     }
     
@@ -473,6 +554,65 @@ export default function OrderDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* PaymentModal */}
+      <PaymentModal
+        visible={paymentModalVisible}
+        onClose={() => setPaymentModalVisible(false)}
+        onPayment={handlePayment}
+        onDirectCancel={handleDirectCancel}
+        cancellationFee={cancellationFee}
+        estimatedAmount={estimatedAmount}
+        orderId={order?.id ? parseInt(order.id) : 0}
+      />
+
+      {/* CancelOrderModal */}
+      <CancelOrderModal
+        visible={cancelOrderModalVisible}
+        onClose={handleCancelOrderModalClose}
+        cancelOrderId={cancelOrderId}
+        userCancelCode={userCancelCode}
+        setUserCancelCode={setUserCancelCode}
+        confirmCodeInputs={confirmCodeInputs}
+        setConfirmCodeInputs={setConfirmCodeInputs}
+        confirmCodeInputRefs={confirmCodeInputRefs}
+        showModal={showModal}
+      />
+
+      {/* SuccessModal */}
+      <SuccessModal
+        visible={successModalVisible}
+        onClose={() => {
+          console.log('🔍 DEBUG: SuccessModal onClose çağrıldı');
+          setSuccessModalVisible(false);
+        }}
+        title={successModalData.title || "İptal İşlemi Başarılı"}
+        message={successModalData.message || "Siparişiniz başarılı bir şekilde iptal edilmiştir."}
+        buttonText="Ana Sayfaya Dön"
+        onButtonPress={() => {
+          console.log('🔍 DEBUG: SuccessModal onButtonPress çağrıldı');
+          setSuccessModalVisible(false);
+          router.replace('/home');
+        }}
+      />
+
+      {/* Debug: Modal visible durumunu göster */}
+      {successModalVisible && (
+        <View style={{
+          position: 'absolute',
+          top: 100,
+          left: 20,
+          backgroundColor: 'red',
+          padding: 10,
+          zIndex: 9999
+        }}>
+          <Text style={{ color: 'white', fontWeight: 'bold' }}>
+            DEBUG: Modal visible = {successModalVisible.toString()}
+          </Text>
+        </View>
+      )}
+
+      <StatusBar style="dark" />
     </View>
   );
 }

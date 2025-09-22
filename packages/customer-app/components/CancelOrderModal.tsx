@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   Modal,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
+import { useDispatch } from 'react-redux';
+import { AppDispatch } from '../store';
+import { cancelOrderWithCode } from '../store/slices/orderSlice';
 import socketService from '../services/socketService';
 
 interface CancelOrderModalProps {
@@ -40,17 +44,58 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
     }, 100);
   };
 
-  const handleConfirm = () => {
+  const [loading, setLoading] = useState(false);
+  const dispatch = useDispatch<AppDispatch>();
+
+  const handleConfirm = async () => {
     if (userCancelCode.length === 4 && cancelOrderId) {
-      console.log('🔴 Confirm code ile iptal işlemi:', userCancelCode);
-      const success = socketService.cancelOrderWithCode(cancelOrderId, userCancelCode);
-      if (success) {
+      setLoading(true);
+      try {
+        console.log('🔴 HTTP API ile iptal işlemi:', userCancelCode);
+        
+        // HTTP API çağrısı yap
+        const result = await dispatch(cancelOrderWithCode({
+          orderId: cancelOrderId,
+          confirmCode: userCancelCode
+        })).unwrap();
+
+        console.log('🔴 İptal işlemi RESPONSE:', JSON.stringify(result, null, 2));
+        console.log('🔴 Response type:', typeof result);
+        console.log('🔴 Response keys:', Object.keys(result || {}));
+        console.log('🔴 İptal işlemi başarılı mı?', !!result);
+        
+        console.log('🟢 SUCCESS MODAL AÇILIYOR...');
+        // Success modal göster - modal kapatmadan önce
+        console.log('🟢 showModal çağrılıyor:', 'İptal İşlemi Başarılı');
+        showModal('İptal İşlemi Başarılı', 'Siparişiniz başarılı bir şekilde iptal edilmiştir.', 'success');
+        
+        // Modal'ı kapat ve formu temizle - success modal gösterildikten sonra
+        setTimeout(() => {
+          console.log('🟢 CancelOrderModal kapatılıyor...');
+          onClose();
+          setUserCancelCode('');
+          setConfirmCodeInputs(['', '', '', '']);
+        }, 100);
+        
+      } catch (error: any) {
+        console.error('🔴 İptal işlemi hatası:', error);
+        console.log('🔴 Error type:', typeof error);
+        console.log('🔴 Error message:', error?.message);
+        console.log('🔴 Full error:', JSON.stringify(error, null, 2));
+        
+        // Hata durumunda modal'ı kapat ve formu temizle
         onClose();
         setUserCancelCode('');
         setConfirmCodeInputs(['', '', '', '']);
-        showModal('Başarılı', 'Sipariş iptal işlemi başlatıldı.', 'success');
-      } else {
-        showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
+        
+        console.log('🔴 ERROR MODAL AÇILIYOR...');
+        // Hata modalını göster - modal kapatıldıktan sonra
+        setTimeout(() => {
+          console.log('🔴 showModal çağrılıyor (ERROR):', error.message || 'İptal işlemi sırasında bir hata oluştu');
+          showModal('Hata', error.message || 'İptal işlemi sırasında bir hata oluştu. Lütfen yeniden kod oluşturup tekrar deneyin.', 'error');
+        }, 500);
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -162,17 +207,24 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
             
             <TouchableOpacity
               style={{
-                backgroundColor: userCancelCode.length === 4 ? '#10B981' : '#9CA3AF',
+                backgroundColor: userCancelCode.length === 4 && !loading ? '#10B981' : '#9CA3AF',
                 paddingHorizontal: 20,
                 paddingVertical: 12,
                 borderRadius: 8,
                 flex: 1,
-                marginLeft: 10
+                marginLeft: 10,
+                flexDirection: 'row',
+                justifyContent: 'center',
+                alignItems: 'center'
               }}
-              disabled={userCancelCode.length !== 4}
               onPress={handleConfirm}
+              disabled={userCancelCode.length !== 4 || loading}
             >
-              <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>İptal Et</Text>
+              {loading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>İptal Et</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

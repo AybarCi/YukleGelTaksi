@@ -21,6 +21,7 @@ const ImagePickerModal: React.FC<ImagePickerModalProps> = ({
 }) => {
   const handlePickImage = (source: 'camera' | 'gallery') => {
     onClose();
+    // Modal kapandıktan sonra image picker'ı aç
     setTimeout(() => onPickImage(source), 1000);
   };
 

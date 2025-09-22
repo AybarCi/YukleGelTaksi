@@ -24,7 +24,7 @@ const getEnvVar = (key: string, defaultValue?: string): string => {
 
 // Merkezi konfigürasyon
 export const ENV_CONFIG: EnvironmentConfig = {
-  API_HOST: getEnvVar('API_HOST', '192.168.1.134'),
+  API_HOST: getEnvVar('API_HOST', '172.20.10.8'),
   API_PORT: parseInt(getEnvVar('API_PORT', '3000')),
   SOCKET_PORT: parseInt(getEnvVar('SOCKET_PORT', '3001')),
   NODE_ENV: (getEnvVar('NODE_ENV', 'development') as 'development' | 'production' | 'test'),

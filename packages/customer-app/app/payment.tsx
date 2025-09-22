@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
@@ -12,6 +11,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import socketService from '../services/socketService';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PaymentScreenProps {}
 
@@ -19,6 +19,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [isProcessing, setIsProcessing] = useState(false);
+  const { showModal } = useAuth();
   
   // URL parametrelerinden bilgileri al
   const orderId = params.orderId as string;
@@ -30,7 +31,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = () => {
   useEffect(() => {
     // Gerekli parametreler yoksa ana sayfaya yönlendir
     if (!orderId || !cancellationFee || !estimatedAmount) {
-      Alert.alert('Hata', 'Ödeme bilgileri eksik. Ana sayfaya yönlendiriliyorsunuz.');
+      showModal('Hata', 'Ödeme bilgileri eksik. Ana sayfaya yönlendiriliyorsunuz.', 'error');
       router.replace('/home');
     }
   }, [orderId, cancellationFee, estimatedAmount]);
@@ -43,9 +44,10 @@ const PaymentScreen: React.FC<PaymentScreenProps> = () => {
       // Şimdilik simüle ediyoruz
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      Alert.alert(
+      showModal(
         'Ödeme Başarılı',
         'Cezai şart ödemesi tamamlandı. Şimdi sipariş iptal işlemini tamamlayabilirsiniz.',
+        'success',
         [
           {
             text: 'Tamam',
@@ -64,16 +66,17 @@ const PaymentScreen: React.FC<PaymentScreenProps> = () => {
         ]
       );
     } catch (error) {
-      Alert.alert('Ödeme Hatası', 'Ödeme işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+      showModal('Ödeme Hatası', 'Ödeme işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.', 'error');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleCancel = () => {
-    Alert.alert(
+    showModal(
       'Ödeme İptal',
       'Ödeme işlemini iptal etmek istediğinizden emin misiniz?',
+      'warning',
       [
         { text: 'Hayır', style: 'cancel' },
         {

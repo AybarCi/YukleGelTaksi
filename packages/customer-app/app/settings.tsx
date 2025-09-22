@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
-  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -225,10 +224,11 @@ export default function SettingsScreen() {
 
   const handleFreezeAccount = () => {
     if (isAccountFrozen) {
-      // Hesap aktifleştirme için basit alert kullan
-      Alert.alert(
+      // Hesap aktifleştirme için showModal kullan
+      showModal(
         'Hesabı Aktifleştir',
         'Hesabınızı aktif hale getirmek istediğinizden emin misiniz?',
+        'warning',
         [
           { text: 'İptal', style: 'cancel' },
           {

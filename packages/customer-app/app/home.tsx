@@ -36,7 +36,7 @@ import { useAuth } from '../contexts/AuthContext';
 import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
 import { useAppDispatch, useAppSelector } from '../store';
-import { fetchActiveOrders, fetchCancellationFee, createOrder, setCurrentOrder as setReduxCurrentOrder } from '../store/slices/orderSlice';
+import { fetchActiveOrders, fetchCancellationFee, createOrder, setCurrentOrder as setReduxCurrentOrder, clearCurrentOrder } from '../store/slices/orderSlice';
 import { loadVehicleTypes } from '../store/slices/vehicleSlice';
 import { checkDriverAvailability } from '../store/slices/driverSlice';
 import YukKonumuInput, { YukKonumuInputRef } from '../components/YukKonumuInput';
@@ -50,6 +50,7 @@ import VehicleTypeModal from '../components/VehicleTypeModal';
 import PaymentModal from '../components/PaymentModal';
 import ActiveOrderCard from '../components/ActiveOrderCard';
 import NewOrderForm from '../components/NewOrderForm';
+import DriverNotFoundModal from '../components/DriverNotFoundModal';
 import { DriverMarker, PickupMarker, DestinationMarker } from './components/MapMarkers';
 import { calculateZoomLevel, animateToRegionWithOffset, animateToShowBothPoints } from './utils/mapUtils';
 import { useImagePicker } from './utils/imageUtils';
@@ -275,6 +276,10 @@ function HomeScreen() {
   
   // Vehicle type modal için state
   const [showVehicleTypeModal, setShowVehicleTypeModal] = useState(false);
+  
+  // Driver not found modal için state
+  const [driverNotFoundModalVisible, setDriverNotFoundModalVisible] = useState(false);
+  const [driverNotFoundMessage, setDriverNotFoundMessage] = useState('');
   
   // BottomSheet için state'ler
   const screenHeight = Dimensions.get('window').height;
@@ -1138,17 +1143,7 @@ function HomeScreen() {
           break;
         case 'completed':
           message = `Sipariş tamamlandı! Doğrulama kodu: ${data.confirmCode}`;
-          showModal(
-            'Sipariş Tamamlandı',
-            message,
-            'success',
-            [
-              {
-                text: 'Doğrula',
-                onPress: () => showConfirmCodeModal(data.orderId, data.confirmCode)
-              }
-            ]
-          );
+          showModal('Sipariş Tamamlandı', message, 'success');
           break;
         case 'cancelled':
           message = 'Sipariş iptal edildi.';
@@ -1192,16 +1187,8 @@ function HomeScreen() {
     
 
     
-    // Sipariş iptal etme event'lerini dinle
-    socketService.on('cancel_order_confirmation_required', (data: any) => {
-      console.log('🔴 Cancel order confirmation required:', data);
-      console.log('🔴 Calling showCancelOrderModal with:', {
-        orderId: data.orderId,
-        confirmCode: data.confirmCode,
-        cancellationFee: data.cancellationFee
-      });
-      showCancelOrderModal(data.orderId, data.confirmCode, data.cancellationFee);
-    });
+    // Sipariş iptal etme event'lerini dinle - KALDIRILDI
+    // Artık confirm code modalı açılmayacak
     
     // Socket bağlantı event'lerini dinle
     socketService.on('connected', (data: any) => {
@@ -1216,48 +1203,49 @@ function HomeScreen() {
       console.log('🔴 Socket bağlantı hatası:', data);
     });
 
-    socketService.on('order_cancelled_successfully', (data: any) => {
-      console.log('🔴 Order cancelled successfully:', data);
-      console.log('🔴 pickupLocationRef.current:', pickupLocationRef.current);
-      console.log('🔴 destinationLocationRef.current:', destinationLocationRef.current);
-      
-      setCancelOrderModalVisible(false);
-      setUserCancelCode('');
-      setCurrentOrder(null);
-      setCurrentOrderId(null);
-      AsyncStorage.removeItem('currentOrder');
-      
-      // Form alanlarını sıfırla
-      setPickupLocation('');
-      setDestinationLocation('');
-      setPickupCoords(null);
-      setDestinationCoords(null);
-      setNotes('');
-      setCargoImages([]);
-      setDistance(null);
-      setRouteDuration(null);
-      setRouteCoordinates([]);
-      
-      // Input referanslarını temizle
-      if (pickupLocationRef.current) {
-        console.log('🔴 Calling pickupLocationRef.current.clear()');
-        pickupLocationRef.current.clear();
-      } else {
-        console.log('🔴 pickupLocationRef.current is null!');
-      }
-      if (destinationLocationRef.current) {
-        console.log('🔴 Calling destinationLocationRef.current.clear()');
-        destinationLocationRef.current.clear();
-      } else {
-        console.log('🔴 destinationLocationRef.current is null!');
-      }
-      
-      showModal('Sipariş İptal Edildi', data.message || 'Sipariş başarıyla iptal edildi!', 'success');
-    });
-
     socketService.on('cancel_order_error', (data: any) => {
       console.log('Cancel order error:', data);
       showModal('Hata', data.message || 'Sipariş iptal edilirken bir hata oluştu!', 'error');
+    });
+
+    // Sipariş iptal edildi event'i - müşteri home sayfasındayken
+    socketService.on('order_cancelled', (data: any) => {
+      console.log('🔴 MÜŞTERI: Sipariş iptal edildi:', data);
+      
+      // Mevcut sipariş ve sürücü bilgilerini temizle
+      setCurrentOrder(null);
+      currentOrderRef.current = null;
+      setAssignedDriver(null);
+      setIsTrackingDriver(false);
+      setEstimatedArrival(null);
+      
+      // Harita durumunu temizle
+      setDrivers([]);
+      setRouteCoordinates([]);
+      setActiveOrderRouteCoordinates([]);
+      setDistance(null);
+      setRouteDuration(null);
+      
+      // AsyncStorage'dan temizle
+      AsyncStorage.removeItem('currentOrder').catch((error: any) => {
+        console.error('AsyncStorage temizleme hatası:', error);
+      });
+      
+      // Redux store'u temizle
+      dispatch(clearCurrentOrder());
+      
+      // Modal göstermeden sadece temizlik işlemlerini yap
+      // Haritayı müşteri konumuna odakla
+      if (mapRef.current && userLocation && userLocation.coords) {
+        setTimeout(() => {
+          mapRef.current?.animateToRegion({
+            latitude: userLocation.coords.latitude,
+            longitude: userLocation.coords.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 1000);
+        }, 500);
+      }
     });
 
     // order_created eventi kaldırıldı - müşteri zaten kendi siparişini oluşturuyor
@@ -1376,8 +1364,8 @@ function HomeScreen() {
       socketService.off('confirm_code_verified');
       socketService.off('confirm_code_error');
       socketService.off('cancel_order_confirmation_required');
-      socketService.off('order_cancelled_successfully');
       socketService.off('cancel_order_error');
+      socketService.off('order_cancelled');
       socketService.off('driver_offline');
       socketService.off('driver_went_offline');
       socketService.off('order_being_inspected');
@@ -1490,8 +1478,49 @@ function HomeScreen() {
     useCallback(() => {
       if (token) {
         checkExistingOrder();
+        
+        // Eğer aktif sipariş yoksa haritayı sıfırla ve müşteri konumuna odakla
+        if (!reduxCurrentOrder && userLocation && mapRef.current) {
+          console.log('🗺️ Ana sayfaya dönüldü, harita sıfırlanıyor ve müşteri konumuna odaklanıyor');
+          
+          // Form state'lerini sıfırla
+          setPickupCoords(null);
+          setDestinationCoords(null);
+          setPickupLocation('');
+          setDestinationLocation('');
+          setRouteCoordinates([]);
+          setActiveOrderRouteCoordinates([]);
+          setDistance(null);
+          setRouteDuration(null);
+          setUserInteractedWithMap(false);
+          
+          // Input alanlarını temizle
+          if (pickupLocationRef.current) {
+            pickupLocationRef.current.setAddressText('');
+          }
+          if (destinationLocationRef.current) {
+            destinationLocationRef.current.setAddressText('');
+          }
+          
+          // Haritayı müşteri konumuna odakla
+          const screenHeight = Dimensions.get('window').height;
+          const bottomSheetHeight = screenHeight * 0.6;
+          const offsetRatio = (bottomSheetHeight / 2) / screenHeight;
+          const latitudeOffset = 0.008 * offsetRatio * 0.8;
+          
+          setTimeout(() => {
+            if (mapRef.current && userLocation) {
+              mapRef.current.animateToRegion({
+                latitude: userLocation.coords.latitude - latitudeOffset,
+                longitude: userLocation.coords.longitude,
+                latitudeDelta: 0.008,
+                longitudeDelta: 0.006,
+              }, 1500);
+            }
+          }, 300);
+        }
       }
-    }, [token, checkExistingOrder])
+    }, [token, checkExistingOrder, reduxCurrentOrder, userLocation])
   );
 
   // Form her zaman görünür
@@ -1696,12 +1725,19 @@ function HomeScreen() {
         }, 100);
       }
     } else {
-      setDistance(null);
-      setRouteCoordinates([]);
-      setRouteDuration(null);
-      setUserInteractedWithMap(false); // Reset user interaction when no route
+      // Aktif sipariş pending veya inspecting durumundaysa rotayı temizleme
+      const hasActiveOrderWithRoute = reduxCurrentOrder && 
+        ['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') &&
+        routeCoordinates.length > 0;
+      
+      if (!hasActiveOrderWithRoute) {
+        setDistance(null);
+        setRouteCoordinates([]);
+        setRouteDuration(null);
+        setUserInteractedWithMap(false); // Reset user interaction when no route
+      }
     }
-  }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints, userInteractedWithMap]);
+  }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints, userInteractedWithMap, reduxCurrentOrder, routeCoordinates.length]);
   
   const handleCreateOrder = useCallback(async () => {
     if (!pickupCoords || !destinationCoords || cargoImages.length === 0) {
@@ -1718,11 +1754,8 @@ function HomeScreen() {
       })).unwrap();
       
       if (!driverCheck.available) {
-        showModal(
-          'Yakın Sürücü Bulunamadı', 
-          `Şu anda yakınınızda müsait sürücü bulunmamaktadır. Tahmini bekleme süresi: ${driverCheck.estimatedWaitTime} dakika.`, 
-          'warning'
-        );
+        setDriverNotFoundMessage(`Şu anda yakınınızda müsait sürücü bulunmamaktadır. Tahmini bekleme süresi: ${driverCheck.estimatedWaitTime} dakika.`);
+        setDriverNotFoundModalVisible(true);
         return;
       }
     } catch (error) {
@@ -2562,6 +2595,12 @@ function HomeScreen() {
             showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
           }
         }}
+      />
+
+      <DriverNotFoundModal
+        visible={driverNotFoundModalVisible}
+        onClose={() => setDriverNotFoundModalVisible(false)}
+        message={driverNotFoundMessage}
       />
 
       {/* Loading Splash Screen */}

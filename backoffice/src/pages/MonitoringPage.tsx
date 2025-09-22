@@ -194,8 +194,8 @@ const MonitoringPage: React.FC = () => {
       return;
     }
 
-    // Socket URL'sini düzelt - /api kısmını çıkar ve localhost kullan
-    const socketUrl = API_BASE_URL.replace('/api', '').replace(/192\.168\.\d+\.\d+/, 'localhost');
+    // Socket URL'sini düzelt - /api kısmını çıkar
+    const socketUrl = API_BASE_URL.replace('/api', '');
     console.log('Connecting to socket:', socketUrl);
     
     const newSocket = io(socketUrl, {
