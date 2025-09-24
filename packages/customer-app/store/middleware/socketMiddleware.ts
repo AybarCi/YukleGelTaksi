@@ -70,13 +70,13 @@ class SocketManager {
 
     // Connection events
     this.socket.on('connect', () => {
-      console.log('Socket connected');
+      // Socket connected
       this.store.dispatch(setNetworkStatus(true));
       this.reconnectAttempts = 0;
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
+      // Socket disconnected
       this.store.dispatch(setNetworkStatus(false));
       
       if (reason === 'io server disconnect') {
@@ -109,23 +109,23 @@ class SocketManager {
     // Customer specific events
     this.socket.on('nearbyDriversUpdate', (data) => {
       // Dispatch to appropriate slice
-      console.log('Nearby drivers update:', data);
+      // Nearby drivers update
     });
 
     this.socket.on('rideUpdate', (data) => {
-      console.log('Ride update:', data);
+      // Ride update
     });
 
     this.socket.on('driverLocationUpdate', (data) => {
-      console.log('Driver location update:', data);
+      // Driver location update
     });
 
     this.socket.on('order_status_update', (data) => {
-      console.log('Order status update:', data);
+      // Order status update
     });
 
     this.socket.on('order_cancelled', (data) => {
-      console.log('Order cancelled:', data);
+      // Order cancelled
       this.store.dispatch(showModal({
         title: 'Sipariş İptal Edildi',
         message: 'Siparişiniz iptal edildi.',
@@ -138,7 +138,7 @@ class SocketManager {
     });
 
     this.socket.on('driver_assigned', (data) => {
-      console.log('Driver assigned:', data);
+      // Driver assigned
       this.store.dispatch(showModal({
         title: 'Sürücü Atandı',
         message: `Sürücünüz: ${data.driverName}`,
@@ -157,7 +157,7 @@ class SocketManager {
       const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
       
       setTimeout(() => {
-        console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        // Attempting to reconnect
         this.socket?.connect();
       }, delay);
     } else {

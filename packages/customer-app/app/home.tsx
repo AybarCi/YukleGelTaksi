@@ -1058,9 +1058,23 @@ function HomeScreen() {
     });
     
     socketService.on('order_accepted', (data: any) => {
+      console.log('✅ Order accepted event alındı:', data);
+      
+      // Null/undefined kontrolleri ekle
+      if (!data || !data.driver || !data.orderId) {
+        console.error('❌ Order accepted event: Eksik veri', data);
+        return;
+      }
+      
       // Hammaliye bilgisi ile yeniden hesaplanmış sipariş bilgisini göster
       const { driver, estimatedArrival, updatedPrice, laborCost, orderId } = data;
-      const message = `Siparişiniz ${driver.name} tarafından kabul edildi.\n\nSürücü Bilgileri:\n${driver.vehicle}\nTahmini Varış: ${estimatedArrival} dakika\n\nGüncellenmiş Fiyat:\nTaşıma Ücreti: ${updatedPrice - laborCost} TL\nHammaliye: ${laborCost} TL\nToplam: ${updatedPrice} TL\n\nOnaylıyor musunuz?`;
+      const driverName = driver?.name || 'Bilinmeyen Sürücü';
+      const driverVehicle = driver?.vehicle || 'Araç bilgisi yok';
+      const arrival = estimatedArrival || 'Bilinmiyor';
+      const totalPrice = updatedPrice || 0;
+      const labor = laborCost || 0;
+      
+      const message = `Siparişiniz ${driverName} tarafından kabul edildi.\n\nSürücü Bilgileri:\n${driverVehicle}\nTahmini Varış: ${arrival} dakika\n\nGüncellenmiş Fiyat:\nTaşıma Ücreti: ${totalPrice - labor} TL\nHammaliye: ${labor} TL\nToplam: ${totalPrice} TL\n\nOnaylıyor musunuz?`;
       
       showModal(
         'Sipariş Kabul Edildi',
@@ -1071,32 +1085,64 @@ function HomeScreen() {
             text: 'İptal',
             style: 'cancel',
             onPress: () => {
-               // Sipariş iptal edildi socket event'i gönder
-               socketService.rejectOrder(orderId);
+               try {
+                 // Sipariş iptal edildi socket event'i gönder
+                 if (orderId && socketService.isSocketConnected()) {
+                   socketService.rejectOrder(orderId);
+                 } else {
+                   console.error('❌ Sipariş iptal edilemedi: OrderId veya socket bağlantısı yok');
+                   showModal('Hata', 'Sipariş iptal edilemedi. Lütfen tekrar deneyin.', 'error');
+                 }
+               } catch (error) {
+                 console.error('❌ Sipariş iptal hatası:', error);
+                 showModal('Hata', 'Sipariş iptal edilirken bir hata oluştu.', 'error');
+               }
              }
           },
           {
             text: 'Onayla',
             onPress: () => {
-               // Müşteri onayladı, socket room oluştur ve sürücü takibini başlat
-               socketService.confirmOrder(orderId);
-               
-               // Sipariş ve sürücü bilgilerini kaydet
-               setCurrentOrder({ ...data, id: orderId });
-               setAssignedDriver({
-                 id: driver.id,
-                 latitude: driver.latitude || 0,
-                 longitude: driver.longitude || 0,
-                 heading: driver.heading || 0,
-                 name: driver.name
-               });
-               setIsTrackingDriver(true);
-               setEstimatedArrival(estimatedArrival);
-               
-               // AsyncStorage'a kaydet
-               AsyncStorage.setItem('currentOrder', JSON.stringify({ ...data, id: orderId }));
-               
-               showModal('Sipariş Onaylandı', 'Sürücünüz yola çıkıyor. Canlı takip başlatılıyor.', 'success');
+               try {
+                 // Müşteri onayladı, socket room oluştur ve sürücü takibini başlat
+                 if (orderId && socketService.isSocketConnected()) {
+                   socketService.confirmOrder(orderId);
+                   
+                   // Sipariş ve sürücü bilgilerini kaydet
+                   const orderData = { ...data, id: orderId };
+                   setCurrentOrder(orderData);
+                   
+                   // Sürücü bilgilerini güvenli şekilde kaydet
+                   if (driver && driver.id) {
+                     setAssignedDriver({
+                       id: driver.id,
+                       latitude: driver.latitude || 0,
+                       longitude: driver.longitude || 0,
+                       heading: driver.heading || 0,
+                       name: driver.name || 'Bilinmeyen Sürücü'
+                     });
+                     setIsTrackingDriver(true);
+                   }
+                   
+                   if (estimatedArrival) {
+                     setEstimatedArrival(estimatedArrival);
+                   }
+                   
+                   // AsyncStorage'a güvenli şekilde kaydet
+                   try {
+                     AsyncStorage.setItem('currentOrder', JSON.stringify(orderData));
+                   } catch (storageError) {
+                     console.error('❌ AsyncStorage kaydetme hatası:', storageError);
+                   }
+                   
+                   showModal('Sipariş Onaylandı', 'Sürücünüz yola çıkıyor. Canlı takip başlatılıyor.', 'success');
+                 } else {
+                   console.error('❌ Sipariş onaylanamadı: OrderId veya socket bağlantısı yok');
+                   showModal('Hata', 'Sipariş onaylanamadı. Lütfen tekrar deneyin.', 'error');
+                 }
+               } catch (error) {
+                 console.error('❌ Sipariş onaylama hatası:', error);
+                 showModal('Hata', 'Sipariş onaylanırken bir hata oluştu.', 'error');
+               }
              }
           }
         ]
@@ -1106,18 +1152,70 @@ function HomeScreen() {
     socketService.on('order_status_update', (data: any) => {
       console.log('📊 MÜŞTERI: Sipariş durumu güncellendi:', data);
       console.log('📊 MÜŞTERI: Mevcut sipariş:', currentOrderRef.current);
-      console.log('📊 MÜŞTERI: Event alındı - Order ID:', data.orderId, 'Status:', data.status);
+      console.log('📊 MÜŞTERI: Event alındı - Order ID:', data?.orderId, 'Status:', data?.status);
       console.log('📊 MÜŞTERI: Socket bağlantı durumu:', socketService.isSocketConnected());
       
-      // Mevcut siparişi güncelle
-      if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
-        console.log(`📊 MÜŞTERI: Sipariş durumu ${currentOrderRef.current.status} -> ${data.status}`);
-        const updatedOrder = { ...currentOrderRef.current, status: data.status };
-        setCurrentOrder(updatedOrder);
+      // Null/undefined kontrolleri ekle
+      if (!data || !data.orderId || !data.status) {
+        console.error('❌ Order status update event: Eksik veri', data);
+        return;
+      }
+      
+      // Mevcut siparişi güçlendirilmiş kontrollerle güncelle
+      try {
+        // currentOrderRef kontrollerini güçlendir
+        if (!currentOrderRef || typeof currentOrderRef !== 'object') {
+          console.error('❌ currentOrderRef tanımlı değil veya geçersiz');
+          return;
+        }
+        
+        const currentOrder = currentOrderRef.current;
+        
+        // Mevcut sipariş kontrolü
+        if (!currentOrder) {
+          console.log('📊 MÜŞTERI: Mevcut sipariş yok, status update atlanıyor');
+          return;
+        }
+        
+        // Order ID kontrolü
+        if (!currentOrder.id) {
+          console.error('❌ Mevcut siparişin ID\'si yok');
+          return;
+        }
+        
+        // ID eşleşme kontrolü
+        if (currentOrder.id.toString() !== data.orderId.toString()) {
+          console.log(`📊 MÜŞTERI: Sipariş ID eşleşmiyor. Mevcut: ${currentOrder.id}, Gelen: ${data.orderId}`);
+          return;
+        }
+        
+        console.log(`📊 MÜŞTERI: Sipariş durumu ${currentOrder.status} -> ${data.status}`);
+        
+        // Güvenli şekilde sipariş güncelle
+        const updatedOrder = {
+          ...currentOrder,
+          status: data.status,
+          updated_at: new Date().toISOString()
+        };
+        
+        // State güncellemeleri
+        if (typeof setCurrentOrder === 'function') {
+          setCurrentOrder(updatedOrder);
+        }
+        
+        // Ref güncelleme
         currentOrderRef.current = updatedOrder;
-        AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
-      } else {
-        console.log('📊 MÜŞTERI: Sipariş ID eşleşmiyor veya mevcut sipariş yok');
+        
+        // AsyncStorage güvenli şekilde güncelle
+         try {
+           AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
+           console.log('✅ AsyncStorage başarıyla güncellendi');
+         } catch (storageError) {
+           console.error('❌ AsyncStorage kaydetme hatası:', storageError);
+         }
+        
+      } catch (updateError) {
+        console.error('❌ Order status update işlemi hatası:', updateError);
       }
       
       let message = '';
@@ -1520,7 +1618,7 @@ function HomeScreen() {
           }, 300);
         }
       }
-    }, [token, checkExistingOrder, reduxCurrentOrder, userLocation])
+    }, [token, reduxCurrentOrder, userLocation])
   );
 
   // Form her zaman görünür
@@ -1797,11 +1895,6 @@ function HomeScreen() {
         token: token!,
         refreshAuthToken
       })).unwrap();
-      
-      // Sipariş oluşturulduktan sonra aktif siparişleri yeniden yükle
-      dispatch(fetchActiveOrders());
-      
-      showModal('Sipariş Oluşturuldu', 'Yük taşıma siparişiniz başarıyla oluşturuldu. Yakındaki sürücülere bildirim gönderildi.', 'success');
       
       // Form alanlarını temizle
       setNotes('');
@@ -2245,7 +2338,6 @@ function HomeScreen() {
                   setDestinationCoords(coords);
                   setDestinationLocation(address);
                 }}
-                showModal={showModal}
               />
             )}
           </ScrollView>

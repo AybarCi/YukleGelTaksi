@@ -97,7 +97,7 @@ const YukFotografiUpload: React.FC<YukFotografiUploadProps> = ({
 
       if (!result.canceled && result.assets[0]) {
         const photoUri = result.assets[0].uri;
-        console.log('📸 Fotoğraf çekildi:', photoUri);
+        // Photo taken
         onPhotoSelect(photoUri);
       }
     } catch (error) {
@@ -149,7 +149,7 @@ const YukFotografiUpload: React.FC<YukFotografiUploadProps> = ({
 
       if (!result.canceled && result.assets[0]) {
         const photoUri = result.assets[0].uri;
-        console.log('🖼️ Galeriden fotoğraf seçildi:', photoUri);
+        // Photo selected from gallery
         onPhotoSelect(photoUri);
       }
     } catch (error) {

@@ -170,34 +170,92 @@ export const useSocketEvents = (
     // Order events
     socketService.on('order_accepted', (data: any) => {
       console.log('✅ Sipariş kabul edildi:', data);
-      if (data.order) {
-        setCurrentOrder(data.order);
-        currentOrderRef.current = data.order;
-        
-        if (data.driver) {
-          setAssignedDriver(data.driver);
-          setIsTrackingDriver(true);
+      
+      try {
+        // Güvenlik kontrolleri
+        if (!data) {
+          console.error('❌ order_accepted: data boş');
+          return;
         }
         
-        showModal('Sipariş Kabul Edildi', 'Siparişiniz bir sürücü tarafından kabul edildi!', 'success');
+        if (data.order) {
+          // Order bilgilerini güvenli şekilde güncelle
+          if (typeof setCurrentOrder === 'function') {
+            setCurrentOrder(data.order);
+          }
+          
+          if (currentOrderRef && currentOrderRef.current !== undefined) {
+            currentOrderRef.current = data.order;
+          }
+          
+          // Driver bilgilerini kontrol et ve güncelle
+          if (data.driver && data.driver.id) {
+            if (typeof setAssignedDriver === 'function') {
+              setAssignedDriver({
+                ...data.driver,
+                name: data.driver.name || 'Bilinmeyen Sürücü',
+                latitude: data.driver.latitude || 0,
+                longitude: data.driver.longitude || 0
+              });
+            }
+            
+            if (typeof setIsTrackingDriver === 'function') {
+              setIsTrackingDriver(true);
+            }
+          }
+          
+          // Modal göster
+          if (typeof showModal === 'function') {
+            showModal('Sipariş Kabul Edildi', 'Siparişiniz bir sürücü tarafından kabul edildi!', 'success');
+          }
+        } else {
+          console.error('❌ order_accepted: order bilgisi eksik');
+        }
+      } catch (error) {
+        console.error('❌ order_accepted event hatası:', error);
       }
     });
 
     socketService.on('order_status_update', (data: any) => {
       console.log('📦 Sipariş durumu güncellendi:', data);
-      if (data.order) {
-        setCurrentOrder(data.order);
-        currentOrderRef.current = data.order;
+      
+      try {
+        // Güvenlik kontrolleri
+        if (!data) {
+          console.error('❌ order_status_update: data boş');
+          return;
+        }
         
-        const statusMessages: { [key: string]: string } = {
-          'confirmed': 'Sipariş onaylandı, sürücü yola çıkıyor',
-          'in_progress': 'Sürücü yük alma noktasına gidiyor',
-          'started': 'Yük alındı, varış noktasına gidiliyor',
-          'completed': 'Sipariş tamamlandı'
-        };
-        
-        const message = statusMessages[data.order.status] || `Sipariş durumu: ${data.order.status}`;
-        showModal('Sipariş Güncellendi', message, 'info');
+        if (data.order && data.order.status) {
+          // Order bilgilerini güvenli şekilde güncelle
+          if (typeof setCurrentOrder === 'function') {
+            setCurrentOrder(data.order);
+          }
+          
+          if (currentOrderRef && currentOrderRef.current !== undefined) {
+            currentOrderRef.current = data.order;
+          }
+          
+          // Status mesajları
+          const statusMessages: { [key: string]: string } = {
+            'confirmed': 'Sipariş onaylandı, sürücü yola çıkıyor',
+            'in_progress': 'Sürücü yük alma noktasına gidiyor',
+            'started': 'Yük alındı, varış noktasına gidiliyor',
+            'completed': 'Sipariş tamamlandı'
+          };
+          
+          const status = data.order.status || 'unknown';
+          const message = statusMessages[status] || `Sipariş durumu: ${status}`;
+          
+          // Modal göster
+          if (typeof showModal === 'function') {
+            showModal('Sipariş Güncellendi', message, 'info');
+          }
+        } else {
+          console.error('❌ order_status_update: order veya status bilgisi eksik', data);
+        }
+      } catch (error) {
+        console.error('❌ order_status_update event hatası:', error);
       }
     });
 

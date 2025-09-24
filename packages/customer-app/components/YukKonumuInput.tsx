@@ -57,7 +57,7 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
     }));
 
     const handleLocationSelect = (location: any) => {
-      console.log('YukKonumuInput - handleLocationSelect called with:', location);
+      // YukKonumuInput - handleLocationSelect called
       setInputText(location.address);
       setSearchText(location.address); // Arama metnini de güncelle
       setModalVisible(false);
@@ -76,14 +76,7 @@ const YukKonumuInput = forwardRef<YukKonumuInputRef, YukKonumuInputProps>(
       setSearchText(text);
     };
 
-    useEffect(() => {
-      console.log('YukKonumu Debug:', { 
-        onCurrentLocationPress: !!onCurrentLocationPress, 
-        searchTextLength: searchText.length, 
-        searchText,
-        modalVisible 
-      });
-    }, [onCurrentLocationPress, searchText, modalVisible]);
+
 
     if (disabled) {
       return (

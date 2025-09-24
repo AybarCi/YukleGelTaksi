@@ -173,10 +173,9 @@ export default function VerifyCodeScreen() {
               console.log('userData.full_name:', userData.full_name);
               console.log('userData.email:', userData.email);
               
-              // Eğer full_name VE email hepsi boş/null ise user-info ekranına yönlendir
-              // Aksi halde kullanıcının bilgileri var demektir, direkt home'a git
-              if ((!userData.full_name || userData.full_name.trim() === '') &&
-                  (!userData.email || userData.email.trim() === '' || userData.email.includes('yuklegeltaksi.com'))) {
+              // Sadece full_name kontrolü yap - email opsiyonel
+              // full_name boşsa user-info ekranına yönlendir
+              if (!userData.full_name || userData.full_name.trim() === '') {
                 console.log('User info incomplete, redirecting to user-info');
                 router.replace('/user-info');
               } else {

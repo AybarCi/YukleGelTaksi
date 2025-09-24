@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -6,15 +6,28 @@ import { router } from 'expo-router';
 interface Order {
   id?: string;
   status?: string;
-  pickup_address?: string;
-  destination_address?: string;
-  pickup_latitude?: string;
-  pickup_longitude?: string;
-  destination_latitude?: string;
-  destination_longitude?: string;
-  vehicle_type_id?: number;
-  created_at?: string;
-  estimated_price?: number;
+  pickupAddress?: string;
+  destinationAddress?: string;
+  pickupLatitude?: number;
+  pickupLongitude?: number;
+  destinationLatitude?: number;
+  destinationLongitude?: number;
+  vehicleTypeId?: string | number;
+  vehicle_type_id?: string | number;
+  createdAt?: string;
+  estimatedPrice?: number;
+  distance?: number;
+  estimatedTime?: number;
+  notes?: string;
+  laborRequired?: boolean;
+  laborCount?: number;
+  weight_kg?: number;
+  cargoImages?: string[];
+  driver_id?: string;
+  driver_name?: string;
+  driver_latitude?: number;
+  driver_longitude?: number;
+  driver_heading?: number;
 }
 
 interface ActiveOrderCardProps {
@@ -26,6 +39,13 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
   order, 
   vehicleTypes = []
 }) => {
+  console.log('🔴 ActiveOrderCard render başladı:', {
+    order,
+    vehicleTypes,
+    orderKeys: order ? Object.keys(order) : 'order null',
+    vehicleTypesLength: vehicleTypes?.length
+  });
+
   // Animasyonlu progress bar için
   const progressAnimation = useRef(new Animated.Value(0)).current;
 
@@ -52,13 +72,16 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
   }, [progressAnimation]);
 
   // Araç tipi adını bul
-  const getVehicleTypeName = (vehicleTypeId?: number) => {
+  const getVehicleTypeName = useCallback((vehicleTypeId?: string | number) => {
     if (!vehicleTypeId || !vehicleTypes || vehicleTypes.length === 0) {
-      return null;
+      return 'Araç Tipi Belirtilmemiş';
     }
-    const vehicleType = vehicleTypes.find((type: any) => type.id === vehicleTypeId);
-    return vehicleType ? vehicleType.name : null;
-  };
+    
+    const id = typeof vehicleTypeId === 'string' ? parseInt(vehicleTypeId) : vehicleTypeId;
+    const vehicleType = vehicleTypes.find(type => type.id === id);
+    
+    return vehicleType ? vehicleType.name : 'Bilinmeyen Araç Tipi';
+  }, [vehicleTypes]);
 
   // Durum metnini al
   const getStatusText = (status?: string) => {
@@ -90,7 +113,10 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
     }
   };
 
-  const vehicleTypeName = getVehicleTypeName(order.vehicle_type_id);
+  const vehicleTypeName = useMemo(() => {
+    return getVehicleTypeName(order.vehicleTypeId || order.vehicle_type_id);
+  }, [getVehicleTypeName, order.vehicleTypeId, order.vehicle_type_id]);
+  
   const statusText = getStatusText(order.status);
   const statusColor = getStatusColor(order.status);
 
@@ -121,10 +147,9 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
             <View style={styles.orderDetails}>
               <Text style={styles.orderTitle}>Aktif Siparişiniz</Text>
               <Text style={styles.orderSubtitle}>
-                {order.pickup_address ? 
-                  `${order.pickup_address.substring(0, 40)}...` : 
-                  'Yük taşıma siparişi'
-                }
+                {order.pickupAddress && order.pickupAddress.length > 50 
+                  ? `${order.pickupAddress.substring(0, 50)}...` 
+                  : order.pickupAddress || 'Yükleme adresi belirtilmemiş'}
               </Text>
               <View style={styles.orderMeta}>
                 <Text style={styles.orderMetaText}>
@@ -135,9 +160,9 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
                     • {vehicleTypeName}
                   </Text>
                 )}
-                {order.estimated_price && (
+                {order.estimatedPrice && (
                   <Text style={styles.orderMetaText}>
-                    • ₺{order.estimated_price}
+                    • ₺{order.estimatedPrice.toFixed(2)}
                   </Text>
                 )}
               </View>

@@ -15,6 +15,7 @@ interface OrderData {
   estimatedTime: number;
   notes?: string;
   vehicleTypeId?: string | number;
+  vehicle_type_id?: string | number; // Socket service için alternatif alan
   laborRequired?: boolean;
   laborCount?: number;
   weight_kg?: number;
@@ -134,8 +135,9 @@ export const createOrder = createAsyncThunk(
 
         await AsyncStorage.setItem('currentOrder', JSON.stringify(orderInfo));
 
-        // Socket'e sipariş bilgisini gönder
+        // Socket'e sipariş bilgisini gönder (sipariş ID'si ile birlikte)
         socketService.createOrder({
+          orderId: result.order.id, // API'den dönen sipariş ID'si
           pickupLatitude: orderData.pickupLatitude,
           pickupLongitude: orderData.pickupLongitude,
           destinationLatitude: orderData.destinationLatitude,
@@ -145,6 +147,7 @@ export const createOrder = createAsyncThunk(
           weight: 1, // Default weight
           laborCount: 1, // Default labor count
           estimatedPrice: result.order.estimatedPrice || 0,
+          vehicle_type_id: Number(orderData.vehicleTypeId || orderData.vehicle_type_id) || undefined, // Araç tipi ID'si
         });
 
         return result.order;
@@ -216,7 +219,7 @@ export const fetchActiveOrders = createAsyncThunk(
         throw new Error(data.message || 'Aktif siparişler getirilemedi');
       }
 
-      return data;
+      return data.data?.orders || [];
     } catch (error) {
       console.error('Aktif siparişler getirme hatası:', error);
       return rejectWithValue(
@@ -479,6 +482,8 @@ const orderSlice = createSlice({
         state.loading = false;
         if (action.payload && action.payload.length > 0) {
           state.currentOrder = action.payload[0];
+        } else {
+          state.currentOrder = null;
         }
         state.error = null;
       })

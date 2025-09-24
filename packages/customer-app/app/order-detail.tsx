@@ -42,6 +42,7 @@ interface Order {
   destination_longitude?: number;
   distance?: number;
   distance_km?: number;
+  estimatedTime?: number;
   estimatedPrice?: number;
   total_price?: number;
   notes?: string;
@@ -49,8 +50,15 @@ interface Order {
   driver_notes?: string;
   driver_name?: string;
   driver_phone?: string;
+  driver_id?: string;
+  driver_latitude?: number;
+  driver_longitude?: number;
+  driver_heading?: number;
   vehicleTypeId?: string | number;
-  vehicle_type_id?: number;
+  vehicle_type_id?: string | number;
+  laborRequired?: boolean;
+  laborCount?: number;
+  weight_kg?: number;
   cargoImages?: string[];
   cargo_photo_urls?: string[];
   createdAt?: string;
@@ -373,7 +381,7 @@ export default function OrderDetailScreen() {
                 <MaterialIcons name="person" size={24} color="#F59E0B" />
                 <View style={styles.driverDetails}>
                   <Text style={styles.driverName}>{order.driver_name}</Text>
-                  <Text style={styles.vehicleType}>{getVehicleTypeName(order.vehicle_type_id)}</Text>
+                  <Text style={styles.vehicleType}>{getVehicleTypeName(typeof order.vehicle_type_id === 'string' ? parseInt(order.vehicle_type_id) : order.vehicle_type_id)}</Text>
                 </View>
               </View>
               {order.driver_phone && (
@@ -444,7 +452,7 @@ export default function OrderDetailScreen() {
             )}
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Araç Tipi:</Text>
-              <Text style={styles.infoValue}>{getVehicleTypeName(order.vehicle_type_id || (typeof order.vehicleTypeId === 'string' ? parseInt(order.vehicleTypeId) : order.vehicleTypeId))}</Text>
+              <Text style={styles.infoValue}>{getVehicleTypeName(typeof order.vehicle_type_id === 'string' ? parseInt(order.vehicle_type_id) : order.vehicle_type_id || (typeof order.vehicleTypeId === 'string' ? parseInt(order.vehicleTypeId) : order.vehicleTypeId))}</Text>
             </View>
             {order.created_at && (
               <View style={styles.infoRow}>

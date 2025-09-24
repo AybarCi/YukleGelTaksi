@@ -56,6 +56,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [modalMessage, setModalMessage] = useState('');
   const [modalType, setModalType] = useState<'success' | 'warning' | 'error' | 'info'>('info');
   const [modalButtons, setModalButtons] = useState<any[]>([]);
+  const [modalQueue, setModalQueue] = useState<Array<{
+    title: string;
+    message: string;
+    type: 'success' | 'warning' | 'error' | 'info';
+    buttons?: any[];
+  }>>([]);
   const [tokenRefreshTimer, setTokenRefreshTimer] = useState<number | null>(null);
 
 
@@ -68,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Socket token yenileme olayını dinle
   useEffect(() => {
     const handleTokenRefresh = (data: { token: string }) => {
-      console.log('Token refreshed via socket:', data.token);
+      // Token refreshed via socket
       setToken(data.token);
     };
 
@@ -81,12 +87,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadStoredAuth = async () => {
     try {
-      const storedToken = await AsyncStorage.getItem('auth_token');
-      const storedRefreshToken = await AsyncStorage.getItem('refresh_token');
-      const storedUser = await AsyncStorage.getItem('user_data');
+      setIsLoading(true);
+      
+      // AsyncStorage işlemlerini güvenli şekilde yap
+      let storedToken: string | null = null;
+      let storedRefreshToken: string | null = null;
+      let storedUser: string | null = null;
+      
+      try {
+        storedToken = await AsyncStorage.getItem('auth_token');
+      } catch (error) {
+        console.error('Error reading auth_token from AsyncStorage:', error);
+      }
+      
+      try {
+        storedRefreshToken = await AsyncStorage.getItem('refresh_token');
+      } catch (error) {
+        console.error('Error reading refresh_token from AsyncStorage:', error);
+      }
+      
+      try {
+        storedUser = await AsyncStorage.getItem('user_data');
+      } catch (error) {
+        console.error('Error reading user_data from AsyncStorage:', error);
+      }
       
       if (storedToken && storedRefreshToken && storedUser) {
-        const userData = JSON.parse(storedUser);
+        let userData: User;
+        try {
+          userData = JSON.parse(storedUser);
+          
+          // Parsed data validation
+          if (!userData || typeof userData !== 'object' || !userData.id || !userData.phone) {
+            throw new Error('Invalid user data structure');
+          }
+        } catch (parseError) {
+          console.error('Error parsing stored user data:', parseError);
+          await clearAuthData();
+          return;
+        }
         setToken(storedToken);
         setRefreshToken(storedRefreshToken);
         setUser(userData);
@@ -128,7 +167,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (refreshData.success) {
               const { token: newToken } = refreshData.data;
               setToken(newToken);
-              await AsyncStorage.setItem('auth_token', newToken);
+              try {
+                await AsyncStorage.setItem('auth_token', newToken);
+              } catch (storageError) {
+                console.error('Error storing new token:', storageError);
+              }
             } else {
               // Refresh token also expired, logout user
               await clearAuthData();
@@ -165,14 +208,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 // Null/undefined kontrolü ekle
                 if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
                   // Approved driver - navigation will be handled by index.tsx
-                  console.log('Driver approved and active');
+                  // Driver approved and active
                 } else {
-                  // Driver not approved - navigation will be handled by index.tsx
-                  console.log('Driver not approved or inactive');
+            // Driver not approved - navigation will be handled by index.tsx
+            // Driver not approved or inactive
                 }
               } else if (driverStatusResponse.status === 404) {
-                // No driver record - navigation will be handled by index.tsx
-                console.log('No driver record found');
+          // No driver record - navigation will be handled by index.tsx
+          // No driver record found
               } else {
                 // Other HTTP errors - navigation will be handled by index.tsx
                 console.error('Driver status check failed with status:', driverStatusResponse.status);
@@ -182,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               
               // AbortError durumunda kullanıcıyı logout yapma
               if (driverError instanceof Error && driverError.name === 'AbortError') {
-                console.log('Driver status check timed out');
+                // Driver status check timed out
                 return;
               }
               
@@ -194,7 +237,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           } else {
             // Regular user - navigation will be handled by index.tsx
-            console.log('Regular user authenticated');
+            // Regular user authenticated
           }
           
         } catch (tokenTestError) {
@@ -202,7 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           // AbortError durumunda kullanıcıyı logout yapma, sadece loading'i durdur
           if (tokenTestError instanceof Error && tokenTestError.name === 'AbortError') {
-            console.log('Token validation timed out, keeping user logged in');
+            // Token validation timed out, keeping user logged in
             return;
           }
           
@@ -221,22 +264,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const storeAuthData = async (token: string, refreshToken: string, userData: User) => {
+    const errors: string[] = [];
+    
     try {
       await AsyncStorage.setItem('auth_token', token);
-      await AsyncStorage.setItem('refresh_token', refreshToken);
-      await AsyncStorage.setItem('user_data', JSON.stringify(userData));
     } catch (error) {
-      console.error('Error storing auth data:', error);
+      console.error('Error storing auth_token:', error);
+      errors.push('auth_token');
+    }
+    
+    try {
+      await AsyncStorage.setItem('refresh_token', refreshToken);
+    } catch (error) {
+      console.error('Error storing refresh_token:', error);
+      errors.push('refresh_token');
+    }
+    
+    try {
+      const userDataString = JSON.stringify(userData);
+      await AsyncStorage.setItem('user_data', userDataString);
+    } catch (error) {
+      console.error('Error storing user_data:', error);
+      errors.push('user_data');
+    }
+    
+    if (errors.length > 0) {
+      console.warn(`Failed to store some auth data: ${errors.join(', ')}`);
+      // Show user-friendly error if critical data couldn't be stored
+      if (errors.includes('auth_token')) {
+        showModal(
+          'Uyarı',
+          'Oturum bilgileri kaydedilirken bir sorun oluştu. Uygulamayı yeniden başlatmanız gerekebilir.',
+          'warning'
+        );
+      }
     }
   };
 
   const clearAuthData = async () => {
+    const errors: string[] = [];
+    
     try {
       await AsyncStorage.removeItem('auth_token');
+    } catch (error) {
+      console.error('Error removing auth_token:', error);
+      errors.push('auth_token');
+    }
+    
+    try {
       await AsyncStorage.removeItem('refresh_token');
+    } catch (error) {
+      console.error('Error removing refresh_token:', error);
+      errors.push('refresh_token');
+    }
+    
+    try {
       await AsyncStorage.removeItem('user_data');
     } catch (error) {
-      console.error('Error clearing auth data:', error);
+      console.error('Error removing user_data:', error);
+      errors.push('user_data');
+    }
+    
+    // Also clear other related data
+    try {
+      await AsyncStorage.removeItem('userType');
+    } catch (error) {
+      console.error('Error removing userType:', error);
+    }
+    
+    try {
+      await AsyncStorage.removeItem('currentOrder');
+    } catch (error) {
+      console.error('Error removing currentOrder:', error);
+    }
+    
+    if (errors.length > 0) {
+      console.warn(`Failed to clear some auth data: ${errors.join(', ')}`);
     }
   };
 
@@ -367,9 +470,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const sendSMS = async (phone: string): Promise<boolean> => {
     try {
-      // Debug: API_BASE_URL değerini logla
-      console.log('🔍 SMS API Debug - API_BASE_URL:', API_BASE_URL);
-      console.log('🔍 SMS API Debug - Full URL:', `${API_BASE_URL}/api/auth/send-sms`);
+      // SMS API Debug - sending to auth endpoint
       
       // Timeout controller ekle
       const controller = new AbortController();
@@ -444,15 +545,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         startTokenRefreshTimer();
         
         // SMS doğrulama sonrası kullanıcı tipine göre yönlendirme
-        console.log('SMS verification successful, user data:', userData);
-        console.log('User type:', userData.user_type);
+        // SMS verification successful
         setTimeout(() => {
           if (userData.user_type === 'driver') {
-            console.log('Redirecting driver to status check');
+            // Redirecting driver to status check
             // Sürücü için durum kontrolü yap
             checkDriverStatusAndRedirect(authToken);
           } else {
-            console.log('Redirecting customer to info check');
+          // Redirecting customer to info check
             // Normal kullanıcı için bilgi kontrolü yap
             checkCustomerInfoAndRedirect(userData);
           }
@@ -477,7 +577,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Önce AsyncStorage'dan kullanıcı tipini kontrol et
       const storedUserType = await AsyncStorage.getItem('userType');
-      console.log('Stored user type:', storedUserType);
+      // Stored user type check
       
       const driverStatusResponse = await fetch(`${API_BASE_URL}/api/drivers/status`, {
         headers: {
@@ -489,24 +589,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (driverStatusResponse.ok) {
         const driverData = await driverStatusResponse.json();
         if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
-          console.log('Driver approved after SMS verification');
+          // Driver approved after SMS verification
           // Onaylanmış ve aktif sürücü - dashboard'a yönlendir
           (router as any).replace('/driver-dashboard');
         } else {
-          console.log('Driver not approved after SMS verification');
+          // Driver not approved after SMS verification
           // Henüz onaylanmamış sürücü - durum ekranına yönlendir
           (router as any).replace('/driver-status');
         }
       } else if (driverStatusResponse.status === 404) {
-        console.log('No driver record found after SMS verification');
+         // No driver record found after SMS verification
         // Sürücü kaydı yok - kayıt ekranına yönlendir
         // Eğer kullanıcı daha önce sürücü kayıt sürecindeyse form verilerini koru
         if (storedUserType === 'driver') {
-          console.log('User was in driver registration process, preserving form data');
+          // User was in driver registration process, preserving form data
         }
         (router as any).replace('/driver-registration');
       } else {
-        console.log('Driver status check failed after SMS verification');
+        // Driver status check failed after SMS verification
         // Hata durumunda kayıt ekranına yönlendir
         (router as any).replace('/driver-registration');
       }
@@ -519,14 +619,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Müşteri bilgi kontrolü yap ve yönlendir
   const checkCustomerInfoAndRedirect = (userData: User) => {
-    console.log('Checking customer info for redirect:', userData);
-    console.log('userData.full_name:', userData.full_name);
+    // Checking customer info for redirect
     // Ad/soyad eksikse user-info ekranına yönlendir
     if (!userData.full_name || userData.full_name.trim().length === 0) {
-      console.log('User info incomplete - redirecting to user-info');
+      // User info incomplete - redirecting to user-info
       router.replace('/user-info');
     } else {
-      console.log('User info complete - redirecting to home');
+      // User info complete - redirecting to home
       // Bilgiler tamamsa ana ekrana yönlendir
       router.replace('/home');
     }
@@ -667,7 +766,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 50 dakikada bir token'ı yenile (token süresi 1 saat olacak)
     const timer = setInterval(async () => {
       if (token && refreshToken) {
-        console.log('Auto-refreshing token...');
+        // Auto-refreshing token
         await refreshAuthToken();
       }
     }, 50 * 60 * 1000); // 50 dakika
@@ -683,80 +782,194 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const refreshAuthToken = async (): Promise<boolean> => {
+  const refreshAuthToken = async (retryCount: number = 0): Promise<boolean> => {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 saniye
+    
     try {
       if (!refreshToken) {
-        console.log('No refresh token available');
+        // No refresh token available
         return false;
       }
 
-      console.log('Refreshing auth token...');
+      // Refreshing auth token with retry
+      
+      // Timeout controller ekle
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 saniye timeout
+      
       const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ refreshToken }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+
+      // Response kontrolü
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const data = await response.json();
 
       if (data.success) {
         const { token: newToken, refreshToken: newRefreshToken } = data.data;
-        setToken(newToken);
         
-        // Yeni refresh token varsa onu da güncelle
-        if (newRefreshToken) {
-          setRefreshToken(newRefreshToken);
-          await AsyncStorage.setItem('refresh_token', newRefreshToken);
+        // Token validation
+        if (!newToken || typeof newToken !== 'string') {
+          throw new Error('Invalid token received from server');
         }
         
-        await AsyncStorage.setItem('auth_token', newToken);
-        console.log('Token refreshed successfully');
+        setToken(newToken);
+        
+        // AsyncStorage işlemlerini güvenli şekilde yap
+        const storageErrors: string[] = [];
+        
+        try {
+          await AsyncStorage.setItem('auth_token', newToken);
+        } catch (error) {
+          console.error('Error storing new auth token:', error);
+          storageErrors.push('auth_token');
+        }
+        
+        // Yeni refresh token varsa onu da güncelle
+        if (newRefreshToken && typeof newRefreshToken === 'string') {
+          setRefreshToken(newRefreshToken);
+          try {
+            await AsyncStorage.setItem('refresh_token', newRefreshToken);
+          } catch (error) {
+            console.error('Error storing new refresh token:', error);
+            storageErrors.push('refresh_token');
+          }
+        }
+        
+        if (storageErrors.length > 0) {
+          console.warn(`Failed to store tokens in AsyncStorage: ${storageErrors.join(', ')}`);
+        }
+        
+        // Token refreshed successfully
         return true;
       } else {
-        console.log('Refresh token is invalid, logging out user');
+          // Refresh token is invalid, logging out user
         // Refresh token is invalid, logout user
         await logout();
         return false;
       }
     } catch (error) {
-      console.error('Refresh token error:', error);
+      console.error(`Refresh token error (attempt ${retryCount + 1}):`, error);
+      
+      // Network veya timeout hatalarında retry yap
+      const isRetryableError = 
+        error instanceof TypeError || // Network error
+        (error as Error).name === 'AbortError' || // Timeout
+        (error as Error).message.includes('fetch'); // Fetch related errors
+      
+      if (isRetryableError && retryCount < maxRetries) {
+        // Exponential backoff ile retry
+        const delay = baseDelay * Math.pow(2, retryCount);
+        // Retrying token refresh with delay
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return refreshAuthToken(retryCount + 1);
+      }
+      
+      // Max retry'a ulaştık veya retry edilemez hata
+      console.error('Token refresh failed permanently, logging out user');
       await logout();
       return false;
     }
   };
 
-  const showModal = (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => {
-    console.log('🟢 AuthContext showModal çağrıldı:', { title, message, type, buttons });
-    console.log('🟢 Modal state öncesi:', { modalVisible, modalTitle, modalMessage, modalType });
-    
-    setModalTitle(title);
-    setModalMessage(message);
-    setModalType(type);
-    
-    // Button'ların onPress fonksiyonlarını wrap et ki modal kapansın
-    const wrappedButtons = buttons ? buttons.map(button => ({
-      ...button,
-      onPress: () => {
-        console.log('🟢 Modal button tıklandı:', button.text);
-        setModalVisible(false);
-        if (button.onPress) {
-          button.onPress();
+  // Modal queue'yu işle
+  useEffect(() => {
+    if (!modalVisible && modalQueue.length > 0) {
+      const nextModal = modalQueue[0];
+      setModalQueue(prev => prev.slice(1));
+      
+      setModalTitle(nextModal.title);
+      setModalMessage(nextModal.message);
+      setModalType(nextModal.type);
+      
+      // Button'ların onPress fonksiyonlarını wrap et ki modal kapansın
+      const wrappedButtons = nextModal.buttons ? nextModal.buttons.map(button => ({
+        ...button,
+        onPress: () => {
+          // Modal button clicked
+          setModalVisible(false);
+          if (button.onPress) {
+            button.onPress();
+          }
         }
-      }
-    })) : [{ text: 'Tamam', onPress: () => {
-      console.log('🟢 Default Tamam button tıklandı');
-      setModalVisible(false);
-    } }];
+      })) : [{ text: 'Tamam', onPress: () => {
+        // Default OK button clicked
+        setModalVisible(false);
+      } }];
+      
+      setModalButtons(wrappedButtons);
+      setModalVisible(true);
+      
+      // Showing modal from queue
+    }
+  }, [modalVisible]);
+
+  const showModal = (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => {
+    // AuthContext showModal called
     
-    setModalButtons(wrappedButtons);
+    // Güvenlik kontrolleri
+    if (!title || !message) {
+      console.error('❌ Modal title veya message boş:', { title, message });
+      return;
+    }
     
-    // Modal'ı göster - bu işlemi en son yap
-    console.log('🟢 Modal visible true yapılıyor...');
-    setModalVisible(true);
+    const modalData = { title, message, type, buttons };
     
-    console.log('🟢 Modal state sonrası:', { modalVisible: true, modalTitle: title, modalMessage: message, modalType: type });
+    if (modalVisible) {
+      // Eğer modal zaten açıksa queue'ya ekle
+      // Modal already open, adding to queue
+      setModalQueue(prev => {
+        const newQueue = [...prev, modalData];
+        // New queue state
+        return newQueue;
+      });
+    } else {
+      // Modal kapalıysa direkt göster
+      // Updating modal state
+      
+      // Button'ların onPress fonksiyonlarını wrap et ki modal kapansın
+      const wrappedButtons = buttons ? buttons.map(button => ({
+        ...button,
+        onPress: () => {
+          // Modal button clicked
+          setModalVisible(false);
+          if (button.onPress) {
+            try {
+              button.onPress();
+            } catch (error) {
+              console.error('❌ Button onPress hatası:', error);
+            }
+          }
+        }
+      })) : [{ text: 'Tamam', onPress: () => {
+        // Default OK button clicked
+        setModalVisible(false);
+      } }];
+      
+      // State'leri sırayla güncelle
+      setModalTitle(title);
+      setModalMessage(message);
+      setModalType(type);
+      setModalButtons(wrappedButtons);
+      
+      // Modal'ı göster
+      setTimeout(() => {
+        // Setting modal visible
+       setModalVisible(true);
+      }, 50); // Küçük bir delay ile state güncellemelerinin tamamlanmasını sağla
+    }
   };
 
   const value: AuthContextType = {
