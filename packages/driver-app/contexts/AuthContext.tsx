@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Socket token yenileme olayını dinle
   useEffect(() => {
     const handleTokenRefresh = (data: { token: string }) => {
-      console.log('Token refreshed via socket:', data.token);
+      // Token refreshed via socket
       setToken(data.token);
     };
 
@@ -167,14 +167,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 // Null/undefined kontrolü ekle
                 if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
                   // Approved driver - navigation will be handled by index.tsx
-                  console.log('Driver approved and active');
+                  // Driver approved and active
                 } else {
                   // Driver not approved - navigation will be handled by index.tsx
-                  console.log('Driver not approved or inactive');
+                  // Driver not approved or inactive
                 }
               } else if (driverStatusResponse.status === 404) {
                 // No driver record - navigation will be handled by index.tsx
-                console.log('No driver record found');
+                // No driver record found
               } else {
                 // Other HTTP errors - navigation will be handled by index.tsx
                 console.error('Driver status check failed with status:', driverStatusResponse.status);
@@ -184,7 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               
               // AbortError durumunda kullanıcıyı logout yapma
               if (driverError instanceof Error && driverError.name === 'AbortError') {
-                console.log('Driver status check timed out');
+                // Driver status check timed out
                 return;
               }
               
@@ -196,7 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           } else {
             // Regular user - navigation will be handled by index.tsx
-            console.log('Regular user authenticated');
+            // Regular user authenticated
           }
           
         } catch (tokenTestError) {
@@ -204,7 +204,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           // AbortError durumunda kullanıcıyı logout yapma, sadece loading'i durdur
           if (tokenTestError instanceof Error && tokenTestError.name === 'AbortError') {
-            console.log('Token validation timed out, keeping user logged in');
+            // Token validation timed out, keeping user logged in
             return;
           }
           
@@ -471,7 +471,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Önce AsyncStorage'dan kullanıcı tipini kontrol et
       const storedUserType = await AsyncStorage.getItem('userType');
-      console.log('Stored user type:', storedUserType);
+      // Stored user type check
       
       const driverStatusResponse = await fetch(`${API_BASE_URL}/api/drivers/status`, {
         headers: {
@@ -483,24 +483,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (driverStatusResponse.ok) {
         const driverData = await driverStatusResponse.json();
         if (driverData && driverData.data && driverData.data.is_approved && driverData.data.is_active) {
-          console.log('Driver approved after SMS verification');
+          // Driver approved after SMS verification
           // Onaylanmış ve aktif sürücü - dashboard'a yönlendir
           router.replace('/driver-dashboard');
         } else {
-          console.log('Driver not approved after SMS verification');
+          // Driver not approved after SMS verification
           // Henüz onaylanmamış sürücü - durum ekranına yönlendir
           router.replace('/driver-status');
         }
       } else if (driverStatusResponse.status === 404) {
-        console.log('No driver record found after SMS verification');
+         // No driver record found after SMS verification
         // Sürücü kaydı yok - kayıt ekranına yönlendir
         // Eğer kullanıcı daha önce sürücü kayıt sürecindeyse form verilerini koru
         if (storedUserType === 'driver') {
-          console.log('User was in driver registration process, preserving form data');
+          // User was in driver registration process, preserving form data
         }
         router.replace('/driver-registration');
       } else {
-        console.log('Driver status check failed after SMS verification');
+        // Driver status check failed after SMS verification
         // Hata durumunda kayıt ekranına yönlendir
         router.replace('/driver-registration');
       }
@@ -515,10 +515,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkCustomerInfoAndRedirect = (userData: User) => {
     // Ad/soyad eksikse user-info ekranına yönlendir
     if (!userData.full_name || userData.full_name.trim().length === 0) {
-      console.log('User info incomplete');
+      // User info incomplete
       router.replace('/user-info');
     } else {
-      console.log('User info complete');
+        // User info complete
       // Bilgiler tamamsa ana ekrana yönlendir
       router.replace('/driver-dashboard');
     }
@@ -659,7 +659,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 50 dakikada bir token'ı yenile (token süresi 1 saat olacak)
     const timer = setInterval(async () => {
       if (token && refreshToken) {
-        console.log('Auto-refreshing token...');
+        // Auto-refreshing token
         await refreshAuthToken();
       }
     }, 50 * 60 * 1000); // 50 dakika
@@ -675,45 +675,103 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const refreshAuthToken = async (): Promise<boolean> => {
+  const refreshAuthToken = async (retryCount: number = 0): Promise<boolean> => {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 saniye
+    
     try {
       if (!refreshToken) {
-        console.log('No refresh token available');
+        // No refresh token available
         return false;
       }
 
-      console.log('Refreshing auth token...');
+      // Refreshing auth token with retry
+      
+      // Timeout controller ekle
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 saniye timeout
+      
       const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ refreshToken }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+
+      // Response kontrolü
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const data = await response.json();
 
       if (data.success) {
         const { token: newToken, refreshToken: newRefreshToken } = data.data;
-        setToken(newToken);
         
-        // Yeni refresh token varsa onu da güncelle
-        if (newRefreshToken) {
-          setRefreshToken(newRefreshToken);
-          await AsyncStorage.setItem('refresh_token', newRefreshToken);
+        // Token validation
+        if (!newToken || typeof newToken !== 'string') {
+          throw new Error('Invalid token received from server');
         }
         
-        await AsyncStorage.setItem('auth_token', newToken);
-        console.log('Token refreshed successfully');
+        setToken(newToken);
+        
+        // AsyncStorage işlemlerini güvenli şekilde yap
+        const storageErrors: string[] = [];
+        
+        try {
+          await AsyncStorage.setItem('auth_token', newToken);
+        } catch (error) {
+          console.error('Error storing new auth token:', error);
+          storageErrors.push('auth_token');
+        }
+        
+        // Yeni refresh token varsa onu da güncelle
+        if (newRefreshToken && typeof newRefreshToken === 'string') {
+          setRefreshToken(newRefreshToken);
+          try {
+            await AsyncStorage.setItem('refresh_token', newRefreshToken);
+          } catch (error) {
+            console.error('Error storing new refresh token:', error);
+            storageErrors.push('refresh_token');
+          }
+        }
+        
+        if (storageErrors.length > 0) {
+          console.warn(`Failed to store tokens in AsyncStorage: ${storageErrors.join(', ')}`);
+        }
+        
+        // Token refreshed successfully
         return true;
       } else {
-        console.log('Refresh token is invalid, logging out user');
+          // Refresh token is invalid, logging out user
         // Refresh token is invalid, logout user
         await logout();
         return false;
       }
     } catch (error) {
-      console.error('Refresh token error:', error);
+      console.error(`Refresh token error (attempt ${retryCount + 1}):`, error);
+      
+      // Network veya timeout hatalarında retry yap
+      const isRetryableError = 
+        error instanceof TypeError || // Network error
+        (error as Error).name === 'AbortError' || // Timeout
+        (error as Error).message.includes('fetch'); // Fetch related errors
+      
+      if (isRetryableError && retryCount < maxRetries) {
+        // Exponential backoff ile retry
+        const delay = baseDelay * Math.pow(2, retryCount);
+        // Retrying token refresh with delay
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return refreshAuthToken(retryCount + 1);
+      }
+      
+      // Max retry'a ulaştık veya retry edilemez hata
+      console.error('Token refresh failed permanently, logging out user');
       await logout();
       return false;
     }

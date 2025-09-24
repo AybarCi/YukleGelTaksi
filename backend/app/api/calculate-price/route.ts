@@ -31,6 +31,9 @@ interface PriceCalculationResult {
 // POST - Fiyat hesaplama
 export async function POST(request: NextRequest) {
   try {
+    // Request'i clone et çünkü body sadece bir kez okunabilir
+    const clonedRequest = request.clone();
+    
     // Kullanıcı authentication kontrolü
     const authResult = await authenticateToken(request);
     if (!authResult.success) {
@@ -40,7 +43,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body: CalculatePriceRequest = await request.json();
+    let body: CalculatePriceRequest;
+    try {
+      // Clone edilmiş request'ten body'yi oku
+      body = await clonedRequest.json();
+    } catch (jsonError) {
+      console.error('JSON parse error:', jsonError);
+      console.error('Request headers:', Object.fromEntries(request.headers.entries()));
+      console.error('Request method:', request.method);
+      console.error('Request URL:', request.url);
+      return NextResponse.json(
+        { error: 'Geçersiz JSON formatı' },
+        { status: 400 }
+      );
+    }
     const { distance_km, labor_count, vehicle_type_id } = body;
 
     // Validation

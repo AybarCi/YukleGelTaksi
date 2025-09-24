@@ -31,6 +31,7 @@ interface CustomerListProps {
   maskPhoneNumber: (phone: string) => string;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  isOnline?: boolean;
 }
 
 const CustomerList: React.FC<CustomerListProps> = ({
@@ -41,6 +42,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
   maskPhoneNumber,
   onRefresh,
   isRefreshing = false,
+  isOnline = true,
 }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -68,79 +70,102 @@ const CustomerList: React.FC<CustomerListProps> = ({
     }
   };
 
-  const renderCustomerItem = ({ item }: { item: Customer }) => (
-    <View style={styles.customerCard}>
-      <View style={styles.customerHeader}>
-        <View>
-          <Text style={styles.customerName}>{item.name}</Text>
-          <Text style={styles.customerPhone}>{maskPhoneNumber(item.phone)}</Text>
+  const renderCustomerItem = ({ item }: { item: Customer }) => {
+    // Null/undefined kontrolü
+    if (!item) {
+      console.warn('🚨 CustomerList: Null item received');
+      return null;
+    }
+    
+    // Gerekli alanların varlığını kontrol et
+    const safeName = item.name || 'İsimsiz Müşteri';
+    const safePhone = item.phone || 'Telefon yok';
+    const safePickupLocation = item.pickup_location || 'Adres belirtilmemiş';
+    const safeDestination = item.destination || 'Varış belirtilmemiş';
+    const safeDistance = item.distance || '0 km';
+    const safeEstimatedFare = item.estimated_fare || 0;
+    const safeStatus = item.status || 'pending';
+    const safeId = item.id || Date.now();
+    
+    return (
+      <View style={styles.customerCard}>
+        <View style={styles.customerHeader}>
+          <View>
+            <Text style={styles.customerName}>{safeName}</Text>
+            <Text style={styles.customerPhone}>{maskPhoneNumber(safePhone)}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(safeStatus) }]}>
+            <Text style={styles.statusText}>{getStatusText(safeStatus)}</Text>
+          </View>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+        
+        <View style={styles.locationInfo}>
+          <View style={styles.locationRow}>
+            <Ionicons name="location" size={16} color="#FFD700" />
+            <Text style={styles.locationText}>Alış: {safePickupLocation}</Text>
+          </View>
+          <View style={styles.locationRow}>
+            <Ionicons name="flag" size={16} color="#EF4444" />
+            <Text style={styles.locationText}>Varış: {safeDestination}</Text>
+          </View>
         </View>
-      </View>
-      
-      <View style={styles.locationInfo}>
-        <View style={styles.locationRow}>
-          <Ionicons name="location" size={16} color="#FFD700" />
-          <Text style={styles.locationText}>Alış: {item.pickup_location}</Text>
+        
+        <View style={styles.fareInfo}>
+          <Text style={styles.distanceText}>{safeDistance}</Text>
+          <Text style={styles.fareText}>₺{safeEstimatedFare}</Text>
         </View>
-        <View style={styles.locationRow}>
-          <Ionicons name="flag" size={16} color="#EF4444" />
-          <Text style={styles.locationText}>Varış: {item.destination}</Text>
-        </View>
-      </View>
       
-      <View style={styles.fareInfo}>
-        <Text style={styles.distanceText}>{item.distance}</Text>
-        <Text style={styles.fareText}>₺{item.estimated_fare}</Text>
-      </View>
-      
-      {(item.status === 'pending') && (
-        <TouchableOpacity
-          style={[styles.actionButton, styles.inspectButton, { marginHorizontal: 0 }]}
-          onPress={() => onInspectOrder(item)}
-          disabled={inspectingOrders.has(item.id)}
-        >
-          <Ionicons name="eye" size={16} color="#FFFFFF" />
-          <Text style={styles.actionButtonText}>
-            {inspectingOrders.has(item.id) ? 'İnceleniyor...' : 'İncele'}
-          </Text>
-        </TouchableOpacity>
-      )}
-      
-      {item.status === 'inspecting' && (
-        <View style={[styles.actionButton, { backgroundColor: '#F59E0B', marginHorizontal: 0 }]}>
-          <Ionicons name="eye" size={16} color="#FFFFFF" />
-          <Text style={styles.actionButtonText}>İnceleme Devam Ediyor</Text>
-        </View>
-      )}
-      
-      {item.status === 'confirmed' && (
-        <View style={styles.actionButtonsContainer}>
+        {(safeStatus === 'pending') && (
           <TouchableOpacity
-            style={[styles.actionButton, styles.startButton]}
-            onPress={() => onUpdateOrderStatus(item.id, 'started')}
+            style={[
+              styles.actionButton, 
+              styles.inspectButton, 
+              { marginHorizontal: 0 },
+              (!isOnline || inspectingOrders.has(safeId)) && { backgroundColor: '#9CA3AF' }
+            ]}
+            onPress={() => onInspectOrder(item)}
+            disabled={!isOnline || inspectingOrders.has(safeId)}
           >
-            <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>Yük Aldım</Text>
+            <Ionicons name="eye" size={16} color="#FFFFFF" />
+            <Text style={styles.actionButtonText}>
+              {!isOnline ? 'Çevrimdışı' : inspectingOrders.has(safeId) ? 'İnceleniyor...' : 'İncele'}
+            </Text>
           </TouchableOpacity>
-        </View>
-      )}
-      
-      {item.status === 'in_progress' && (
-        <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.completeButton]}
-            onPress={() => onUpdateOrderStatus(item.id, 'completed')}
-          >
-            <Ionicons name="flag" size={20} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>Teslim Ettim</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
+        )}
+        
+        {safeStatus === 'inspecting' && (
+          <View style={[styles.actionButton, { backgroundColor: '#F59E0B', marginHorizontal: 0 }]}>
+            <Ionicons name="eye" size={16} color="#FFFFFF" />
+            <Text style={styles.actionButtonText}>İnceleme Devam Ediyor</Text>
+          </View>
+        )}
+        
+        {safeStatus === 'confirmed' && (
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.startButton]}
+              onPress={() => onUpdateOrderStatus(safeId, 'started')}
+            >
+              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Yük Aldım</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {safeStatus === 'in_progress' && (
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.completeButton]}
+              onPress={() => onUpdateOrderStatus(safeId, 'completed')}
+            >
+              <Ionicons name="flag" size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Teslim Ettim</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -168,12 +193,23 @@ const CustomerList: React.FC<CustomerListProps> = ({
         )}
       </View>
       <FlatList
-        data={customers}
+        data={customers || []}
         renderItem={renderCustomerItem}
-        keyExtractor={(item) => item?.id?.toString() || `customer-${Date.now()}-${Math.random()}`}
+        keyExtractor={(item, index) => {
+          if (!item) {
+            console.warn('🚨 CustomerList: Null item in keyExtractor at index', index);
+            return `null-item-${index}-${Date.now()}`;
+          }
+          const key = item.id?.toString() || `customer-${index}-${Date.now()}-${Math.random()}`;
+          return key;
+        }}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmptyState}
+        removeClippedSubviews={false}
+        initialNumToRender={10}
+        maxToRenderPerBatch={5}
+        windowSize={10}
       />
     </View>
   );

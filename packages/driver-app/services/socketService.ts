@@ -61,7 +61,7 @@ class SocketService {
       refreshToken = await AsyncStorage.getItem('refresh_token');
       
       if (!authToken) {
-        console.log('No token found, cannot connect to socket');
+        // No token found, cannot connect to socket
         return;
       }
 
@@ -83,8 +83,10 @@ class SocketService {
         transports: ['websocket', 'polling'], // websocket öncelikli
         timeout: 20000, // 20 saniye timeout
         forceNew: false,
-        reconnection: false, // Otomatik yeniden bağlanmayı kapat
-        autoConnect: false,
+        reconnection: true, // Otomatik yeniden bağlanmayı aç
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+        autoConnect: true, // Otomatik bağlanmayı aç
         upgrade: true,
         rememberUpgrade: false
       });
@@ -104,7 +106,7 @@ class SocketService {
     if (!this.socket) return;
 
     this.socket.on('connect', () => {
-      console.log('Socket connected:', this.socket?.id);
+      // Socket connected
       this.isConnected = true;
       this.reconnectAttempts = 0;
       this.hasShownConnectionError = false;
@@ -112,28 +114,14 @@ class SocketService {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
+      console.log('🔴 Socket disconnected:', reason);
       this.isConnected = false;
       this.emit('disconnected', { reason });
-      
-      // Sadece client tarafından disconnect edilmemişse yeniden bağlan
-      if (reason !== 'io client disconnect' && this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        const delay = Math.min(2000 * this.reconnectAttempts, 10000); // 2s, 4s, 6s, 8s, 10s
-        
-        console.log(`Attempting reconnection in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        
-        setTimeout(() => {
-          if (!this.isConnected && this.socket) {
-            this.socket.connect();
-          }
-        }, delay);
-      }
     });
 
     // Token yenileme olayını dinle
     this.socket.on('token_refreshed', async (data) => {
-      console.log('Token refreshed by server:', data);
+      // Token refreshed by server
       if (data.token) {
         // Yeni token'ı kaydet
         await AsyncStorage.setItem('auth_token', data.token);
@@ -142,159 +130,147 @@ class SocketService {
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      console.error('🔴 Socket connection error:', error);
       this.isConnected = false;
-      
-      // Sadece birkaç deneme sonrasında ve daha önce gösterilmemişse modal göster
-      if (this.reconnectAttempts >= 3 && !this.hasShownConnectionError) {
-        this.hasShownConnectionError = true;
-        // Timeout hatası özel olarak handle et
-        if (error.message.includes('timeout')) {
-          console.log('Connection timeout, will retry with different transport');
-          this.emit('connection_error', { error: 'Bağlantı zaman aşımı. Yeniden deneniyor...' });
-        } else {
-          this.emit('connection_error', { error: error.message });
-        }
-      }
-      
-      this.handleReconnection();
+      this.emit('connection_error', { error: error.message });
     });
 
     // Order related events
     this.socket.on('order_created', (data) => {
-      console.log('Order created:', data);
+      // Order created
       this.emit('order_created', data);
     });
 
     this.socket.on('order_accepted', (data) => {
-      console.log('Order accepted:', data);
+      // Order accepted
       this.emit('order_accepted', data);
     });
 
     this.socket.on('order_status_update', (data) => {
-      console.log('Order status update:', data);
+      // Order status update
       this.emit('order_status_update', data);
     });
 
     this.socket.on('order_cancelled', (data) => {
-      console.log('Order cancelled:', data);
+      // Order cancelled
       this.emit('order_cancelled', data);
     });
 
     this.socket.on('order_taken', (data) => {
-      console.log('Order taken by another driver:', data);
+      // Order taken by another driver
       this.emit('order_taken', data);
     });
 
     // Driver location events
     this.socket.on('driver_location_update', (data) => {
-      console.log('Driver location update:', data);
+      // Driver location update
       this.emit('driver_location_update', data);
     });
 
     // Nearby drivers update event
     this.socket.on('nearbyDriversUpdate', (data) => {
-      console.log('Nearby drivers update:', data);
+      // Nearby drivers update
       this.emit('nearbyDriversUpdate', data);
     });
 
     // New order for drivers
     this.socket.on('new_order_available', (data) => {
-      console.log('New order available:', data);
+      console.log('🔔 NEW ORDER AVAILABLE EVENT ALINDI:', data);
+      // New order available
       this.emit('new_order', data);
     });
 
     // Order created event - yeni sipariş oluşturulduğunda sürücülere bildirim
     this.socket.on('order_created', (data) => {
-      console.log('Order created:', data);
+      // Order created (duplicate)
       this.emit('order_created', data);
     });
 
     // Driver offline event
     this.socket.on('driver_offline', (data) => {
-      console.log('Driver went offline:', data);
+      // Driver went offline
       this.emit('driver_offline', data);
     });
 
     // Server konum güncellemesi istediğinde
     this.socket.on('request_location_update', async () => {
-      console.log('Server konum güncellemesi istiyor...');
+      // Server requesting location update
       this.emit('request_location_update', {});
     });
 
     // Sürücü disconnect olduğunda
     this.socket.on('driver_disconnected', (data) => {
-      console.log('Driver disconnected:', data);
+      // Driver disconnected
       this.emit('driver_disconnected', data);
     });
 
     // Backend'den gelen eksik eventleri ekle
     this.socket.on('order_locked_for_inspection', (data) => {
-      console.log('Order locked for inspection:', data);
+      // Order locked for inspection
       this.emit('order_locked_for_inspection', data);
     });
 
     this.socket.on('order_already_taken', (data) => {
-      console.log('Order already taken:', data);
+      // Order already taken
       this.emit('order_already_taken', data);
     });
 
     this.socket.on('order_acceptance_confirmed', (data) => {
-      console.log('Order acceptance confirmed:', data);
+      // Order acceptance confirmed
       this.emit('order_acceptance_confirmed', data);
     });
 
     this.socket.on('order_phase_update', (data) => {
-      console.log('Order phase update:', data);
+      // Order phase update
       this.emit('order_phase_update', data);
     });
 
     this.socket.on('order_inspection_started', (data) => {
-      console.log('Order inspection started:', data);
+      // Order inspection started
       this.emit('order_inspection_started', data);
     });
 
     this.socket.on('order_inspection_stopped', (data) => {
-      console.log('Order inspection stopped:', data);
+      // Order inspection stopped
       this.emit('order_inspection_stopped', data);
     });
 
     // Sipariş iptal eventleri
     this.socket.on('cancel_order_confirmation_required', (data) => {
-      console.log('Cancel order confirmation required:', data);
+      // Cancel order confirmation required
       this.emit('cancel_order_confirmation_required', data);
     });
 
     this.socket.on('order_cancelled_successfully', (data) => {
-      console.log('Order cancelled successfully:', data);
+      // Order cancelled successfully
       this.emit('order_cancelled_successfully', data);
     });
 
     this.socket.on('order_cancelled_by_customer', (data) => {
-      console.log('Order cancelled by customer:', data);
+      // Order cancelled by customer
       this.emit('order_cancelled_by_customer', data);
     });
 
     this.socket.on('cancel_order_error', (data) => {
-      console.log('Cancel order error:', data);
+      // Cancel order error
       this.emit('cancel_order_error', data);
     });
 
     // Confirm code eventleri
     this.socket.on('confirm_code_verified', (data) => {
-      console.log('Confirm code verified:', data);
+      // Confirm code verified
       this.emit('confirm_code_verified', data);
     });
 
     this.socket.on('confirm_code_error', (data) => {
-      console.log('Confirm code error:', data);
+      // Confirm code error
       this.emit('confirm_code_error', data);
     });
   }
 
   private handleReconnection() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('Max reconnection attempts reached');
+      // Max reconnection attempts reached
       this.emit('max_reconnect_attempts_reached', {});
       return;
     }
@@ -302,7 +278,7 @@ class SocketService {
     // Sadece connection error durumunda manuel yeniden bağlanma
     if (!this.isConnected && this.socket) {
       const delay = Math.min(3000 * this.reconnectAttempts, 15000);
-      console.log(`Connection error - attempting reconnection in ${delay}ms`);
+      // Connection error - attempting reconnection with delay
       
       setTimeout(() => {
         if (!this.isConnected && this.socket) {
@@ -328,19 +304,15 @@ class SocketService {
   }
 
   public cancelOrder(orderId: number) {
-    console.log(`🔴 cancelOrder called with orderId: ${orderId}`);
-    console.log(`🔗 Socket connected: ${this.isConnected}`);
-    console.log(`🔌 Socket object exists: ${!!this.socket}`);
-    console.log(`🆔 Socket ID: ${this.socket?.id}`);
+    // cancelOrder called
     
     if (!this.isConnected || !this.socket) {
       console.error('❌ Socket not connected or socket object missing');
       return false;
     }
 
-    console.log(`📤 Emitting cancel_order event with orderId: ${orderId} from socket: ${this.socket.id}`);
-    this.socket.emit('cancel_order', orderId);
-    console.log(`✅ cancel_order event emitted successfully from socket: ${this.socket.id}`);
+    // Emitting cancel_order event
+      this.socket.emit('cancel_order', orderId);
     return true;
   }
 

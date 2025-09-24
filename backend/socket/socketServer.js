@@ -491,8 +491,8 @@ class SocketServer extends EventEmitter {
       // Sürücüyü bağlı sürücüler listesinden sil
       this.connectedDrivers.delete(driverId);
       
-      // Müşterilere sürücünün offline olduğunu bildir
-      this.broadcastToAllCustomers('driver_went_offline', {
+      // Sadece ilgili müşterilere sürücünün offline olduğunu bildir
+      this.broadcastDriverStatusToRelevantCustomers(driverId, 'driver_went_offline', {
         driverId: driverId.toString()
       });
       
@@ -666,8 +666,8 @@ class SocketServer extends EventEmitter {
         console.log(`🗑️ Driver ${driverId} deleted from map: ${deleteResult}`);
         console.log(`🔍 After delete - Connected drivers count: ${this.connectedDrivers.size}`);
         
-        // Müşterilere sürücünün disconnect olduğunu bildir
-        this.broadcastToAllCustomers('driver_disconnected', {
+        // Sadece ilgili müşterilere sürücünün disconnect olduğunu bildir
+        this.broadcastDriverStatusToRelevantCustomers(driverId, 'driver_disconnected', {
           driverId: driverId.toString()
         });
         
@@ -790,9 +790,18 @@ class SocketServer extends EventEmitter {
     }
   }
 
+  // 🚨 DEPRECATED: Bu fonksiyon güvenlik riski taşır - tüm sürücülere broadcast yapar
+  // Bunun yerine broadcastToOrderRelatedDrivers() veya broadcastToCustomerRoomDrivers() kullanın
   broadcastToAllDrivers(event, data) {
-    this.connectedDrivers.forEach((socketId) => {
-      this.io.to(socketId).emit(event, data);
+    console.warn(`⚠️ SECURITY WARNING: broadcastToAllDrivers is deprecated and unsafe. Use targeted broadcast instead.`);
+    console.log(`📡 Broadcasting ${event} to all ${this.connectedDrivers.size} connected drivers:`, data);
+    this.connectedDrivers.forEach((driverData, driverId) => {
+      if (driverData && driverData.socketId) {
+        this.io.to(driverData.socketId).emit(event, data);
+        console.log(`✅ Event ${event} sent to driver ${driverId} (socket: ${driverData.socketId})`);
+      } else {
+        console.warn(`⚠️ Invalid driver data for driver ${driverId}:`, driverData);
+      }
     });
   }
 
@@ -834,9 +843,56 @@ class SocketServer extends EventEmitter {
     }
   }
 
+  // 🔒 Güvenli broadcast: Sadece belirli müşterinin yakındaki sürücülere gönder
+  broadcastToNearbyDriversOfCustomer(customerId, event, data) {
+    const customerRoom = roomUtils.getCustomerRoomId(customerId);
+    this.io.to(customerRoom).emit(event, data);
+    console.log(`🎯 Broadcast to nearby drivers of customer ${customerId} in room ${customerRoom}: ${event}`);
+  }
+
+  // 🔒 Güvenli broadcast: Sürücü durumu değişikliklerini sadece ilgili müşteri odalarına gönder
+  broadcastDriverStatusToRelevantCustomers(driverId, event, data) {
+    // Sürücünün hangi müşteri odalarında olduğunu bul
+    const driverData = this.connectedDrivers.get(driverId);
+    if (!driverData) {
+      console.warn(`⚠️ Driver ${driverId} not found for status broadcast`);
+      return;
+    }
+
+    // Sürücünün bulunduğu tüm müşteri odalarına gönder
+    this.connectedCustomers.forEach((customerData, customerId) => {
+      if (customerData && customerData.location) {
+        // Mesafe kontrolü yap
+        const distance = this.calculateDistance(
+          driverData.location?.latitude || 0,
+          driverData.location?.longitude || 0,
+          customerData.location.latitude,
+          customerData.location.longitude
+        );
+        
+        // 10km yarıçap içindeki müşterilere gönder
+        if (distance <= 10) {
+          const customerRoom = roomUtils.getCustomerRoomId(customerId);
+          this.io.to(customerRoom).emit(event, data);
+        }
+      }
+    });
+    
+    console.log(`🎯 Driver ${driverId} status broadcasted to relevant customer rooms: ${event}`);
+  }
+
+  // 🚨 DEPRECATED: Bu fonksiyon güvenlik riski taşır - tüm müşterilere broadcast yapar
+  // Bunun yerine oda bazlı broadcast fonksiyonları kullanın
   broadcastToAllCustomers(event, data) {
-    this.connectedCustomers.forEach((socketId) => {
-      this.io.to(socketId).emit(event, data);
+    console.warn(`⚠️ SECURITY WARNING: broadcastToAllCustomers is deprecated and unsafe. Use room-based broadcast instead.`);
+    console.log(`📡 Broadcasting ${event} to all ${this.connectedCustomers.size} connected customers:`, data);
+    this.connectedCustomers.forEach((customerData, customerId) => {
+      if (customerData && customerData.socketId) {
+        this.io.to(customerData.socketId).emit(event, data);
+        console.log(`✅ Event ${event} sent to customer ${customerId} (socket: ${customerData.socketId})`);
+      } else {
+        console.warn(`⚠️ Invalid customer data for customer ${customerId}:`, customerData);
+      }
     });
   }
 
@@ -951,10 +1007,13 @@ class SocketServer extends EventEmitter {
         orderId: orderData.orderId || orderData.id
       });
       
-      // Sipariş oluşturulduktan sonra sürücülere bildirim gönder
-      this.broadcastToAllDrivers('order_created', {
+      // Sipariş oluşturulduktan sonra yakındaki uygun sürücülere bildirim gönder
+      await this.broadcastOrderToNearbyDrivers(orderData.orderId || orderData.id, {
         orderId: orderData.orderId || orderData.id,
         customerId: userId,
+        pickupLatitude: orderData.pickupLatitude,
+        pickupLongitude: orderData.pickupLongitude,
+        vehicle_type_id: orderData.vehicle_type_id || orderData.vehicleTypeId, // Her iki format da desteklenir
         ...orderData
       });
       
@@ -1139,8 +1198,8 @@ class SocketServer extends EventEmitter {
       // Müşteri odasındaki sürücülere sipariş iptal edildi bilgisi gönder (oda mantığı kullanarak)
       this.broadcastToCustomerRoomDrivers(userId, 'order_cancelled', orderId);
       
-      // Tüm sürücülere de order_cancelled event'i gönder (güvenlik için)
-      this.broadcastToAllDrivers('order_cancelled', orderId);
+      // Sipariş ile ilgili sürücülere iptal bilgisi gönder (güvenli broadcast)
+      await this.broadcastToOrderRelatedDrivers(orderId, 'order_cancelled', { orderId, reason: 'cancelled_by_customer' });
 
     } catch (error) {
       console.error('Error in cancelOrderWithCode:', error);
@@ -1180,8 +1239,8 @@ class SocketServer extends EventEmitter {
       return;
     }
 
-    // Broadcast driver location update to all connected customers
-    this.broadcastToAllCustomers('driver_location_update', {
+    // Sadece ilgili müşterilere sürücü konum güncellemesi gönder
+    this.broadcastDriverStatusToRelevantCustomers(driverId, 'driver_location_update', {
       driverId: driverId.toString(),
       latitude: location.latitude,
       longitude: location.longitude,

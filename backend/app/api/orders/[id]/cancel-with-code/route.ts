@@ -96,8 +96,8 @@ export async function POST(
           }
         }
 
-        // Tüm sürücülere order_cancelled event'i gönder
-        socketServer.broadcastToAllDrivers('order_cancelled', parseInt(orderId));
+        // Sadece ilgili sürücülere order_cancelled event'i gönder
+        socketServer.broadcastToOrderRelatedDrivers(parseInt(orderId), 'order_cancelled', parseInt(orderId));
         
         // Eğer sipariş inspecting durumundaysa, inspectingOrders Map'inden kaldır
         if (order.order_status === 'inspecting') {

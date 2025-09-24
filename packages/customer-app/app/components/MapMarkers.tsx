@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
-import { View } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { View, Text } from 'react-native';
+import { Marker, Callout } from 'react-native-maps';
 import { MaterialIcons } from '@expo/vector-icons';
 import { styles } from '../styles';
 
@@ -36,7 +36,11 @@ export const DriverMarker = memo(({ driver }: { driver: Driver }) => {
   );
 });
 
-export const PickupMarker = memo(({ coords }: { coords: { latitude: number; longitude: number } }) => {
+export const PickupMarker = memo(({ coords, estimatedPrice, distance }: { 
+  coords: { latitude: number; longitude: number };
+  estimatedPrice?: number;
+  distance?: number;
+}) => {
   console.log('Rendering pickup marker with coords:', coords);
   
   // Koordinatların geçerli olup olmadığını kontrol et
@@ -57,11 +61,28 @@ export const PickupMarker = memo(({ coords }: { coords: { latitude: number; long
       <View style={styles.pickupMarker}>
         <MaterialIcons name="inventory" size={20} color="#FFFFFF" />
       </View>
+      {(estimatedPrice || distance) && (
+        <Callout>
+          <View style={styles.calloutContainer}>
+            <Text style={styles.calloutTitle}>Yük Bilgileri</Text>
+            {distance && (
+              <Text style={styles.calloutText}>Mesafe: {distance.toFixed(1)} km</Text>
+            )}
+            {estimatedPrice && (
+              <Text style={styles.calloutPrice}>Tahmini Ücret: ₺{estimatedPrice.toFixed(2)}</Text>
+            )}
+          </View>
+        </Callout>
+      )}
     </Marker>
   );
 });
 
-export const DestinationMarker = memo(({ coords }: { coords: { latitude: number; longitude: number } }) => {
+export const DestinationMarker = memo(({ coords, estimatedPrice, distance }: { 
+  coords: { latitude: number; longitude: number };
+  estimatedPrice?: number;
+  distance?: number;
+}) => {
   console.log('Rendering destination marker with coords:', coords);
   
   // Koordinatların geçerli olup olmadığını kontrol et
@@ -82,6 +103,19 @@ export const DestinationMarker = memo(({ coords }: { coords: { latitude: number;
       <View style={styles.destinationMarker}>
         <MaterialIcons name="flag" size={20} color="#FFFFFF" />
       </View>
+      {(estimatedPrice || distance) && (
+        <Callout>
+          <View style={styles.calloutContainer}>
+            <Text style={styles.calloutTitle}>Teslimat Bilgileri</Text>
+            {distance && (
+              <Text style={styles.calloutText}>Toplam Mesafe: {distance.toFixed(1)} km</Text>
+            )}
+            {estimatedPrice && (
+              <Text style={styles.calloutPrice}>Tahmini Ücret: ₺{estimatedPrice.toFixed(2)}</Text>
+            )}
+          </View>
+        </Callout>
+      )}
     </Marker>
   );
 });

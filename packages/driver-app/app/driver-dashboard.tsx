@@ -23,6 +23,8 @@ import socketService from '../services/socketService';
 import { styles } from './driver-dashboard.styles';
 import { PhotoModal } from '../components/PhotoModal';
 import OrderInspectionModal from '../components/OrderInspectionModal';
+import NewOrderNotificationModal from '../components/NewOrderNotificationModal';
+import OrderCancellationModal from '../components/OrderCancellationModal';
 
 import { Header } from '../components/driver-dashboard/Header';
 import { MapComponent } from '../components/driver-dashboard/MapComponent';
@@ -104,6 +106,20 @@ export default function DriverDashboardScreen() {
   const [laborCount, setLaborCount] = useState('1');
   const [laborPrice, setLaborPrice] = useState(800); // Default değer pricing_settings tablosundan
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Yeni sipariş bildirim modal state'leri
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+  const [newOrderData, setNewOrderData] = useState<OrderData | null>(null);
+  
+  // Sipariş iptali modal state'leri
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
+  const [cancellationData, setCancellationData] = useState<{
+    orderId: number;
+    message?: string;
+    customerName?: string;
+    pickupAddress?: string;
+    destinationAddress?: string;
+  } | null>(null);
   
   // Fotoğraf modal state'leri
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
@@ -213,6 +229,10 @@ export default function DriverDashboardScreen() {
         console.log('⚖️ Ağırlık:', orderData.weight);
         console.log('👷 İşçi Sayısı:', orderData.laborCount);
         
+        // Yeni sipariş bildirim modalını göster
+        setNewOrderData(orderData);
+        setShowNewOrderModal(true);
+        
         // OrderData'yı Customer formatına dönüştür
         const newCustomer: Customer = {
           id: orderData.id || Date.now(),
@@ -258,6 +278,10 @@ export default function DriverDashboardScreen() {
         console.log('🎯 Varış Konumu:', orderData.destinationAddress);
         console.log('💰 Tahmini Fiyat:', orderData.estimatedPrice);
         
+        // Yeni sipariş bildirim modalını göster
+        setNewOrderData(orderData);
+        setShowNewOrderModal(true);
+        
         // OrderData'yı Customer formatına dönüştür
         const newCustomer: Customer = {
           id: orderData.orderId || orderData.id || Date.now(),
@@ -290,10 +314,6 @@ export default function DriverDashboardScreen() {
             return [newCustomer, ...currentCustomers];
           }
         });
-        
-        // Bildirim göster
-        showModal('Yeni Sipariş', `${newCustomer.name} tarafından yeni bir sipariş oluşturuldu.`, 'info');
-        console.log('📱 Modal bildirim gösterildi:', newCustomer.name);
       });
       
       socketService.on('order_cancelled', (orderId: number) => {
@@ -374,6 +394,19 @@ export default function DriverDashboardScreen() {
           console.log('📊 Kalan sipariş sayısı:', filtered.length);
           return filtered;
         });
+        
+        // İptal edilen sipariş bilgilerini al ve modal göster
+        const cancelledOrder = customers?.find(customer => customer.id === data.orderId);
+        if (cancelledOrder) {
+          setCancellationData({
+            orderId: data.orderId,
+            message: data.message || 'Müşteri siparişi iptal etti',
+            customerName: cancelledOrder.name,
+            pickupAddress: cancelledOrder.pickup_location,
+            destinationAddress: cancelledOrder.destination
+          });
+          setShowCancellationModal(true);
+        }
         
         // Eğer iptal edilen sipariş aktif sipariş ise, sürücüyü ana ekrana getir
         if (activeOrder && activeOrder.id === data.orderId) {
@@ -992,6 +1025,12 @@ export default function DriverDashboardScreen() {
 
   const inspectOrder = async (order: Customer) => {
     try {
+      // Sürücü offline modda iken sipariş incelemesini engelle
+      if (!isOnline) {
+        showModal('Çevrimdışı Durum', 'Çevrimdışı olduğunuzda sipariş inceleyemezsiniz. Lütfen önce çevrimiçi olun.', 'warning');
+        return;
+      }
+      
       setLoadingDetails(true);
       setSelectedOrder(order);
       
@@ -1525,6 +1564,7 @@ export default function DriverDashboardScreen() {
         maskPhoneNumber={(phone) => phone.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2')}
         onRefresh={refreshCustomers}
         isRefreshing={isRefreshing}
+        isOnline={isOnline}
       />
 
 
@@ -1550,6 +1590,27 @@ export default function DriverDashboardScreen() {
           currentImageIndex={currentImageIndex}
           onClose={closePhotoModal}
           onImageIndexChange={handleImageIndexChange}
+        />
+
+        {/* Yeni Sipariş Bildirim Modalı */}
+        <NewOrderNotificationModal
+          visible={showNewOrderModal}
+          onClose={() => setShowNewOrderModal(false)}
+          onViewOrder={() => {
+            setShowNewOrderModal(false);
+            // Sipariş listesine odaklan veya sipariş detayına git
+          }}
+          orderData={newOrderData}
+        />
+
+        {/* Sipariş İptal Bildirim Modalı */}
+        <OrderCancellationModal
+          visible={showCancellationModal}
+          orderData={cancellationData}
+          onClose={() => {
+            setShowCancellationModal(false);
+            setCancellationData(null);
+          }}
         />
       </View>
     );

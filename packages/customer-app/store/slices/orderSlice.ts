@@ -481,7 +481,40 @@ const orderSlice = createSlice({
       .addCase(fetchActiveOrders.fulfilled, (state, action) => {
         state.loading = false;
         if (action.payload && action.payload.length > 0) {
-          state.currentOrder = action.payload[0];
+          const apiOrder = action.payload[0];
+          console.log('🔍 DEBUG - fetchActiveOrders API response:', apiOrder);
+          
+          // API formatını Redux formatına çevir
+          const reduxOrder: OrderData = {
+            id: apiOrder.id?.toString(),
+            pickupAddress: apiOrder.pickup_address || '',
+            pickupLatitude: apiOrder.pickup_latitude || 0,
+            pickupLongitude: apiOrder.pickup_longitude || 0,
+            destinationAddress: apiOrder.destination_address || '',
+            destinationLatitude: apiOrder.destination_latitude || 0,
+            destinationLongitude: apiOrder.destination_longitude || 0,
+            distance: apiOrder.distance_km || 0,
+            estimatedTime: 0,
+            notes: apiOrder.customer_notes || '',
+            vehicleTypeId: apiOrder.vehicle_type_id?.toString(),
+            laborRequired: (apiOrder.labor_count || 0) > 0,
+            laborCount: apiOrder.labor_count || 0,
+            weight_kg: apiOrder.weight_kg || 0,
+            cargoImages: apiOrder.cargo_photo_urls ? 
+              (typeof apiOrder.cargo_photo_urls === 'string' ? JSON.parse(apiOrder.cargo_photo_urls) : apiOrder.cargo_photo_urls) 
+              : [],
+            status: apiOrder.status,
+            estimatedPrice: apiOrder.total_price || 0,
+            createdAt: apiOrder.created_at,
+            driver_id: apiOrder.driver?.id?.toString(),
+            driver_name: apiOrder.driver?.name,
+            driver_latitude: apiOrder.driver?.latitude,
+            driver_longitude: apiOrder.driver?.longitude,
+            driver_heading: apiOrder.driver?.heading,
+          };
+          
+          console.log('🔍 DEBUG - Converted Redux order:', reduxOrder);
+          state.currentOrder = reduxOrder;
         } else {
           state.currentOrder = null;
         }

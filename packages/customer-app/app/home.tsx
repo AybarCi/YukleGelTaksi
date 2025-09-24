@@ -1575,7 +1575,10 @@ function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       if (token) {
-        checkExistingOrder();
+        // Sadece token varsa ve aktif sipariş yoksa kontrol et
+        if (!reduxCurrentOrder) {
+          checkExistingOrder();
+        }
         
         // Eğer aktif sipariş yoksa haritayı sıfırla ve müşteri konumuna odakla
         if (!reduxCurrentOrder && userLocation && mapRef.current) {
@@ -1836,6 +1839,41 @@ function HomeScreen() {
       }
     }
   }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints, userInteractedWithMap, reduxCurrentOrder, routeCoordinates.length]);
+
+  // Aktif sipariş için rota çizimi
+  useEffect(() => {
+    if (reduxCurrentOrder && 
+        reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude &&
+        reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude) {
+      
+      const pickupCoords = {
+        latitude: reduxCurrentOrder.pickupLatitude,
+        longitude: reduxCurrentOrder.pickupLongitude
+      };
+      
+      const destinationCoords = {
+        latitude: reduxCurrentOrder.destinationLatitude,
+        longitude: reduxCurrentOrder.destinationLongitude
+      };
+      
+      console.log('🗺️ Aktif sipariş için rota çiziliyor:', { pickupCoords, destinationCoords });
+      
+      // Aktif sipariş için Google Directions API ile rota al
+      getActiveOrderDirectionsRoute(pickupCoords, destinationCoords);
+      
+      // Haritayı her iki noktayı gösterecek şekilde ayarla
+      if (mapRef.current && !userInteractedWithMap) {
+        setTimeout(() => {
+          if (!userInteractedWithMap) {
+            animateToShowBothPoints(mapRef, bottomSheetHeight, pickupCoords, destinationCoords);
+          }
+        }, 500);
+      }
+    } else if (!reduxCurrentOrder) {
+      // Aktif sipariş yoksa aktif sipariş rotasını temizle
+      setActiveOrderRouteCoordinates([]);
+    }
+  }, [reduxCurrentOrder, getActiveOrderDirectionsRoute, animateToShowBothPoints, userInteractedWithMap]);
   
   const handleCreateOrder = useCallback(async () => {
     if (!pickupCoords || !destinationCoords || cargoImages.length === 0) {
@@ -2176,23 +2214,31 @@ function HomeScreen() {
                      {/* Pickup marker - reduxCurrentOrder veya pickupCoords'dan al */}
                      {((reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude) || 
                        (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && pickupCoords)) && (
-                       <PickupMarker coords={
-                         reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude ? {
-                           latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
-                           longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
-                         } : pickupCoords!
-                       } />
+                       <PickupMarker 
+                         coords={
+                           reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude ? {
+                             latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+                             longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+                           } : pickupCoords!
+                         }
+                         estimatedPrice={reduxCurrentOrder.estimatedPrice}
+                         distance={reduxCurrentOrder.distance}
+                       />
                      )}
                      
                      {/* Destination marker - reduxCurrentOrder veya destinationCoords'dan al */}
                      {((reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude) || 
                        (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && destinationCoords)) && (
-                       <DestinationMarker coords={
-                         reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude ? {
-                           latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
-                           longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
-                         } : destinationCoords!
-                       } />
+                       <DestinationMarker 
+                         coords={
+                           reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude ? {
+                             latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+                             longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+                           } : destinationCoords!
+                         }
+                         estimatedPrice={reduxCurrentOrder.estimatedPrice}
+                         distance={reduxCurrentOrder.distance}
+                       />
                      )}
                    </>
                  )}
@@ -2201,14 +2247,22 @@ function HomeScreen() {
                  {!reduxCurrentOrder && pickupCoords && (
                    <>
                      {console.log('Rendering new order pickup marker with coords:', pickupCoords)}
-                     <PickupMarker coords={pickupCoords} />
+                     <PickupMarker 
+                         coords={pickupCoords} 
+                         estimatedPrice={estimatedPrice || undefined}
+                         distance={distance || undefined}
+                       />
                    </>
                  )}
                  
                  {!reduxCurrentOrder && destinationCoords && (
                    <>
                      {console.log('Rendering new order destination marker with coords:', destinationCoords)}
-                     <DestinationMarker coords={destinationCoords} />
+                     <DestinationMarker 
+                         coords={destinationCoords} 
+                         estimatedPrice={estimatedPrice || undefined}
+                         distance={distance || undefined}
+                       />
                    </>
                  )}
                  

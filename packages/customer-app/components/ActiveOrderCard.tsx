@@ -7,11 +7,17 @@ interface Order {
   id?: string;
   status?: string;
   pickupAddress?: string;
+  pickup_address?: string;
   destinationAddress?: string;
+  destination_address?: string;
   pickupLatitude?: number;
+  pickup_latitude?: number;
   pickupLongitude?: number;
+  pickup_longitude?: number;
   destinationLatitude?: number;
+  destination_latitude?: number;
   destinationLongitude?: number;
+  destination_longitude?: number;
   vehicleTypeId?: string | number;
   vehicle_type_id?: string | number;
   createdAt?: string;
@@ -147,10 +153,25 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
             <View style={styles.orderDetails}>
               <Text style={styles.orderTitle}>Aktif Siparişiniz</Text>
               <Text style={styles.orderSubtitle}>
-                {order.pickupAddress && order.pickupAddress.length > 50 
-                  ? `${order.pickupAddress.substring(0, 50)}...` 
-                  : order.pickupAddress || 'Yükleme adresi belirtilmemiş'}
+                <Text style={{fontWeight: '600', color: '#059669'}}>Yükleme: </Text>
+                {(() => {
+                  const pickupAddr = order.pickupAddress || order.pickup_address;
+                  return pickupAddr && pickupAddr.length > 40 
+                    ? `${pickupAddr.substring(0, 40)}...` 
+                    : pickupAddr || 'Yükleme adresi belirtilmemiş';
+                })()}
               </Text>
+              {(() => {
+                const destAddr = order.destinationAddress || order.destination_address;
+                return destAddr && (
+                  <Text style={styles.orderSubtitle}>
+                    <Text style={{fontWeight: '600', color: '#DC2626'}}>Varış: </Text>
+                    {destAddr.length > 40 
+                      ? `${destAddr.substring(0, 40)}...` 
+                      : destAddr}
+                  </Text>
+                );
+              })()}
               <View style={styles.orderMeta}>
                 <Text style={styles.orderMetaText}>
                   Sipariş #{order.id}

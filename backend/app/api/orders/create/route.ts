@@ -228,6 +228,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const socketServer = global.socketServer as SocketServer;
       if (socketServer) {
         const orderData = {
+          id: newOrder.id,
           pickupAddress,
           pickupLatitude,
           pickupLongitude,
@@ -235,12 +236,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           destinationLatitude,
           destinationLongitude,
           vehicle_type_id: vehicle_type_id,
+          vehicleTypeId: vehicle_type_id, // Backward compatibility
           laborCount: laborCount || 0,
-          estimatedPrice: priceCalculation.total_price
+          estimatedPrice: priceCalculation.total_price,
+          distance,
+          estimatedTime,
+          notes: notes || '',
+          status: 'pending',
+          createdAt: newOrder.created_at
         };
         
-        await socketServer.broadcastOrderToNearbyDrivers(newOrder.id, orderData);
-        console.log(`Order ${newOrder.id} broadcasted to nearby drivers`);
+        // createOrder fonksiyonunu kullan (bu fonksiyon broadcastOrderToNearbyDrivers'ı çağırır)
+        await socketServer.createOrder(authResult.user.id, orderData);
+        console.log(`Order ${newOrder.id} created and broadcasted via createOrder function`);
       }
     } catch (socketError) {
       console.error('Socket broadcast error:', socketError);

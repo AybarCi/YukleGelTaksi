@@ -477,4 +477,32 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 4,
   },
+  calloutContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    minWidth: 150,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  calloutTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  calloutText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  calloutPrice: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#10B981',
+    marginTop: 4,
+  },
 });
