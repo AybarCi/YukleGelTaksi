@@ -54,28 +54,17 @@ export default function AccountDetailsScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Profile image API response:', data);
-        console.log('API_CONFIG.BASE_URL:', API_CONFIG.BASE_URL);
         if (data.success && data.data && data.data.profile_image_url) {
-          console.log('Raw profile_image_url from API:', data.data.profile_image_url);
           // Cache busting için timestamp ekle
           const timestamp = new Date().getTime();
           const fullImageUrl = `${API_CONFIG.BASE_URL}${data.data.profile_image_url}?t=${timestamp}`;
-          console.log('Full image URL constructed with timestamp:', fullImageUrl);
-          console.log('Setting profile image state with URL:', fullImageUrl);
           setProfileImage(fullImageUrl);
         } else {
-          console.log('No profile image found or API error');
-          console.log('data.success:', data.success);
-          console.log('data.data:', data.data);
-          console.log('data.data?.profile_image_url:', data.data?.profile_image_url);
           setProfileImage(null);
         }
       } else {
-        console.log('Profile image API failed:', response.status);
       }
     } catch (error) {
-      console.error('Error loading profile image:', error);
     }
   };
 
@@ -113,7 +102,6 @@ export default function AccountDetailsScreen() {
         await uploadImage(result.assets[0].uri);
       }
     } catch (error) {
-      console.error('Error picking image:', error);
       showModal('Hata', 'Fotoğraf seçilirken bir hata oluştu.', 'error');
     }
   };
@@ -146,20 +134,15 @@ export default function AccountDetailsScreen() {
       });
 
       const data = await response.json();
-      console.log('Upload response status:', response.status);
-      console.log('Upload response data:', data);
 
       if (response.ok && data.success) {
-        console.log('Upload successful, reloading profile image...');
         // Reload profile image to ensure it's displayed
         await loadProfileImage();
         showModal('Başarılı', 'Profil fotoğrafınız başarıyla güncellendi.', 'success');
       } else {
-        console.log('Upload failed:', data.error);
         showModal('Hata', data.error || 'Fotoğraf yüklenirken bir hata oluştu.', 'error');
       }
     } catch (error) {
-        console.error('Error uploading image:', error);
         showModal('Hata', 'Fotoğraf yüklenirken bir hata oluştu.', 'error');
       } finally {
       setIsUploading(false);
@@ -206,7 +189,6 @@ export default function AccountDetailsScreen() {
         ]
       );
     } catch (error) {
-      console.error('Error removing image:', error);
       showModal('Hata', 'Fotoğraf silinirken bir hata oluştu.', 'error');
     }
   };
@@ -241,18 +223,8 @@ export default function AccountDetailsScreen() {
               <Image 
                 source={{ uri: profileImage }} 
                 style={styles.profileImagePhoto}
-                onLoad={() => {
-                  console.log('✅ Image loaded successfully!');
-                  console.log('✅ Loaded image URL:', profileImage);
-                }}
                 onError={(error) => {
-                  console.log('❌ Image load error:', error.nativeEvent.error);
-                  console.log('❌ Failed image URL:', profileImage);
-                  console.log('❌ Full error object:', error.nativeEvent);
                   setProfileImage(null);
-                }}
-                onLoadStart={() => {
-                  console.log('🔄 Image load started for URL:', profileImage);
                 }}
               />
             ) : (

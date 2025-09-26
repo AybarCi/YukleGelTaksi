@@ -83,16 +83,8 @@ function HomeScreen() {
   const { vehicleTypes: reduxVehicleTypes, selectedVehicleType: reduxSelectedVehicleType, loading: vehicleLoading } = useAppSelector(state => state.vehicle);
   const { availability: driverAvailability, loading: driverLoading } = useAppSelector(state => state.driver);
   
-  // Debug: reduxCurrentOrder değerini izle
+  // reduxCurrentOrder değerini izle
   useEffect(() => {
-    console.log('🔍 DEBUG - reduxCurrentOrder değişti:', {
-      reduxCurrentOrder,
-      status: reduxCurrentOrder?.status,
-      id: reduxCurrentOrder?.id,
-      orderLoading,
-      orderError
-    });
-    
     // Aktif sipariş varsa ve koordinatları mevcutsa rota çiz
     if (reduxCurrentOrder && 
         reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude && 
@@ -133,13 +125,15 @@ function HomeScreen() {
   // Tekrarlayan fillOrderData çağrılarını engellemek için ref
   const lastProcessedOrderId = useRef<number | null>(null);
   
+  // fetchActiveOrders çağrılarını engellemek için loading state
+  const [isFetchingActiveOrders, setIsFetchingActiveOrders] = useState(false);
+  
   // Drivers state'inin güvenli olduğundan emin olmak için
   const safeDrivers = useMemo(() => Array.isArray(drivers) ? drivers : [], [drivers]);
 
-  // Debug: drivers state değişimini izle
+  // drivers state değişimini izle
   useEffect(() => {
-    console.log('🗺️ Drivers state changed:', drivers);
-    console.log('🗺️ Safe drivers for map:', safeDrivers);
+    // Drivers state değişimi
   }, [drivers, safeDrivers]);
   
   // Yük bilgileri state'leri
@@ -160,36 +154,6 @@ function HomeScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null);
   const [isLocationLoading, setIsLocationLoading] = useState(true);
-  
-  // Aktif sipariş rotası çizildikten sonra haritayı rotaya odakla
-  useEffect(() => {
-    if (activeOrderRouteCoordinates.length > 0 && reduxCurrentOrder && mapRef.current) {
-      console.log('🗺️ Aktif sipariş rotası çizildi, haritayı rotaya odaklıyorum');
-      
-      const origin = {
-        latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
-        longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
-      };
-      
-      const destination = {
-        latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
-        longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
-      };
-      
-      // Koordinatların geçerli olduğunu kontrol et
-      if (origin.latitude && origin.longitude && destination.latitude && destination.longitude) {
-        // Kısa bir gecikme ile haritayı rotaya odakla (diğer animasyonların tamamlanması için)
-        setTimeout(() => {
-          if (mapRef.current && reduxCurrentOrder) {
-            console.log('🎯 Harita aktif sipariş rotasına odaklanıyor:', { origin, destination });
-            animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
-          }
-        }, 500);
-      } else {
-        console.warn('⚠️ Aktif sipariş koordinatları geçersiz:', { origin, destination });
-      }
-    }
-  }, [activeOrderRouteCoordinates, reduxCurrentOrder, animateToShowBothPoints]);
 
   // Uygulama açıldığında mevcut aktif sipariş varsa haritayı rotaya odakla
   useEffect(() => {
@@ -197,8 +161,6 @@ function HomeScreen() {
         reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude && 
         reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude && 
         mapRef.current && !isLocationLoading) {
-      
-      console.log('🗺️ Uygulama açıldı, mevcut aktif sipariş için haritayı rotaya odaklıyorum');
       
       const origin = {
         latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
@@ -215,7 +177,6 @@ function HomeScreen() {
         // Harita yüklendikten sonra rotaya odakla
         setTimeout(() => {
           if (mapRef.current && reduxCurrentOrder) {
-            console.log('🎯 Harita mevcut aktif sipariş rotasına odaklanıyor:', { origin, destination });
             animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
           }
         }, 1000); // Harita tamamen yüklenmesi için biraz daha uzun bekleme
@@ -337,9 +298,33 @@ function HomeScreen() {
   const [cancelOrderModalVisible, setCancelOrderModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
 
+  // Aktif sipariş rotası çizildikten sonra haritayı rotaya odakla
+  useEffect(() => {
+    if (activeOrderRouteCoordinates.length > 0 && reduxCurrentOrder && mapRef.current) {
+      const origin = {
+        latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+        longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+      };
+      
+      const destination = {
+        latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+        longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+      };
+      
+      // Koordinatların geçerli olduğunu kontrol et
+      if (origin.latitude && origin.longitude && destination.latitude && destination.longitude) {
+        // Rota çizildikten sonra haritayı rotaya odakla
+        setTimeout(() => {
+          if (mapRef.current && reduxCurrentOrder && !userInteractedWithMap) {
+            animateToShowBothPoints(mapRef, bottomSheetHeight, origin, destination);
+          }
+        }, 800); // Rota çiziminin tamamlanması için biraz daha uzun bekleme
+      }
+    }
+  }, [activeOrderRouteCoordinates, reduxCurrentOrder, animateToShowBothPoints, userInteractedWithMap]);
+
   // Modal state değişikliklerini takip et
   useEffect(() => {
-    console.log('🔵 cancelOrderModalVisible değişti:', cancelOrderModalVisible);
     if (cancelOrderModalVisible) {
       // Modal açıldığında ilk input'a focus yap
       setTimeout(() => {
@@ -436,7 +421,13 @@ function HomeScreen() {
 
   // Sipariş iptal etme başlatma - cezai şart kontrolü ile birlikte modal göster
   const initiateCancelOrder = useCallback(async () => {
+    // Eğer zaten bir fetchActiveOrders çağrısı devam ediyorsa, yeni çağrı yapma
+    if (isFetchingActiveOrders) {
+      return;
+    }
+    
     try {
+      setIsFetchingActiveOrders(true);
       // Redux action ile aktif sipariş kontrolü yap
       const result = await dispatch(fetchActiveOrders()).unwrap();
       
@@ -474,7 +465,6 @@ function HomeScreen() {
                    text: 'Evet, İptal Et',
                    onPress: () => {
                      // Cezai şart yok, backend'e cancel_order gönder (confirm code üretimi için)
-                     console.log('🔴 Cezai şart yok, backend\'e cancel_order gönderiliyor...');
                      socketService.cancelOrder(activeOrder.id);
                    }
                  }
@@ -497,7 +487,6 @@ function HomeScreen() {
                  text: 'Evet, İptal Et',
                  onPress: () => {
                    // Hata durumunda da confirm code üret
-                   console.log('🔴 Fee check hatası, confirm code üretimi için cancelOrder çağrılıyor...');
                    const success = socketService.cancelOrder(activeOrder.id);
                    if (!success) {
                      showModal('Hata', 'Bağlantı hatası. Lütfen tekrar deneyin.', 'error');
@@ -513,26 +502,23 @@ function HomeScreen() {
     } catch (error) {
       console.error('Cancel order error:', error);
       showModal('Hata', 'Sipariş iptal edilirken bir hata oluştu.', 'error');
+    } finally {
+      setIsFetchingActiveOrders(false);
     }
-  }, [dispatch, showModal]);
+  }, [dispatch, showModal, isFetchingActiveOrders]);
 
   // Sipariş verilerini form alanlarına dolduran fonksiyon
    const fillOrderData = useCallback(async (order: any) => {
     try {
       // Aynı sipariş için tekrar çalışmasını engelle
       if (lastProcessedOrderId.current === order.id) {
-        console.log('⚠️ fillOrderData: Same order already processed, skipping');
         return;
       }
       
-      console.log('=== fillOrderData BAŞLADI ===');
       lastProcessedOrderId.current = order.id;
-      console.log('Gelen order parametresi:', JSON.stringify(order, null, 2));
       
-      console.log('pickup_address set ediliyor:', order.pickup_address);
       setPickupLocation(order.pickup_address);
       
-      console.log('destination_address set ediliyor:', order.destination_address);
       setDestinationLocation(order.destination_address);
       
       // Araç tipi bilgisini ayarla (eğer varsa)
@@ -543,96 +529,68 @@ function HomeScreen() {
         setSelectedVehicleType(null);
       }
       
-      console.log('customer_notes set ediliyor:', order.customer_notes);
       setNotes(order.customer_notes || '');
       
       // Yük fotoğrafını set et
-      console.log('🖼️ Sipariş cargo_photo_urls:', order.cargo_photo_urls);
       if (order.cargo_photo_urls) {
         try {
           const parsedImages = JSON.parse(order.cargo_photo_urls);
-          console.log('🖼️ Parse edilmiş cargo images:', parsedImages);
           // Array olup olmadığını kontrol et
           if (Array.isArray(parsedImages)) {
             // Base URL'i ekle
             const fullUrls = parsedImages.map(url => {
               if (url.startsWith('/uploads/')) {
                 const fullUrl = `${API_CONFIG.BASE_URL}${url}`;
-                console.log('🔗 Full URL oluşturuldu:', fullUrl);
                 return fullUrl;
               }
-              console.log('🔗 URL zaten tam:', url);
               return url;
             });
-            console.log('🖼️ Final URLs with base:', fullUrls);
             setCargoImages(fullUrls);
           } else {
-            console.log('❌ Parse edilmiş veri array değil:', typeof parsedImages);
             setCargoImages([]);
           }
         } catch (error) {
-          console.log('❌ JSON parse hatası:', error);
-          console.log('❌ Ham cargo_photo_urls verisi:', order.cargo_photo_urls);
           // Eğer JSON parse başarısız olursa, string olarak tek bir URL olabilir
           if (typeof order.cargo_photo_urls === 'string' && order.cargo_photo_urls.trim()) {
             const fullUrl = order.cargo_photo_urls.startsWith('/uploads/') 
               ? `${API_CONFIG.BASE_URL}${order.cargo_photo_urls}`
               : order.cargo_photo_urls;
-            console.log('🔗 Tek URL için full URL:', fullUrl);
             setCargoImages([fullUrl]);
           } else {
             setCargoImages([]);
           }
         }
       } else {
-        console.log('❌ cargo_photo_urls boş veya null');
         setCargoImages([]);
       }
       
       // Input componentlerine adres bilgilerini set et - bir sonraki render cycle'da
       setTimeout(() => {
-        console.log('setTimeout içinde pickupLocationRef.current:', pickupLocationRef.current);
         if (pickupLocationRef.current && order.pickup_address) {
-          console.log('pickupLocationRef setAddressText çağrılıyor:', order.pickup_address);
           pickupLocationRef.current.setAddressText(order.pickup_address);
-        } else {
-          console.log('pickupLocationRef set edilemedi - ref:', !!pickupLocationRef.current, 'address:', order.pickup_address);
         }
         
-        console.log('setTimeout içinde destinationLocationRef.current:', destinationLocationRef.current);
         if (destinationLocationRef.current && order.destination_address) {
-          console.log('destinationLocationRef setAddressText çağrılıyor:', order.destination_address);
           destinationLocationRef.current.setAddressText(order.destination_address);
-        } else {
-          console.log('destinationLocationRef set edilemedi - ref:', !!destinationLocationRef.current, 'address:', order.destination_address);
         }
       }, 100);
       
       // Koordinatları set et
-      console.log('Pickup koordinatları kontrol ediliyor:', order.pickup_latitude, order.pickup_longitude);
       if (order.pickup_latitude && order.pickup_longitude) {
-        console.log('Pickup koordinatları set ediliyor:', { latitude: order.pickup_latitude, longitude: order.pickup_longitude });
         setPickupCoords({
           latitude: order.pickup_latitude,
           longitude: order.pickup_longitude
         });
-      } else {
-        console.log('Pickup koordinatları eksik!');
       }
       
-      console.log('Destination koordinatları kontrol ediliyor:', order.destination_latitude, order.destination_longitude);
       if (order.destination_latitude && order.destination_longitude) {
-        console.log('Destination koordinatları set ediliyor:', { latitude: order.destination_latitude, longitude: order.destination_longitude });
         setDestinationCoords({
           latitude: order.destination_latitude,
           longitude: order.destination_longitude
         });
-      } else {
-        console.log('Destination koordinatları eksik!');
       }
       
       // Redux store'u güncelle - backend formatını Redux formatına çevir
-      console.log('Redux store güncelleniyor - setCurrentOrder dispatch ediliyor');
       try {
         const cargoImages = order.cargo_photo_urls ? 
           (typeof order.cargo_photo_urls === 'string' ? JSON.parse(order.cargo_photo_urls) : order.cargo_photo_urls) 
@@ -664,7 +622,6 @@ function HomeScreen() {
           driver_heading: order.driver?.heading,
         };
         
-        console.log('Redux order created:', reduxOrder);
         dispatch(setReduxCurrentOrder(reduxOrder));
       } catch (parseError) {
         console.error('Redux order format dönüşüm hatası:', parseError);
@@ -688,7 +645,7 @@ function HomeScreen() {
         dispatch(setReduxCurrentOrder(basicOrder));
       }
       
-      console.log('=== fillOrderData TAMAMLANDI ===');
+      // fillOrderData tamamlandı
     } catch (error) {
       console.error('Sipariş verilerini doldurma hatası:', error);
       showModal('Hata', 'Sipariş verileri yüklenirken bir hata oluştu.', 'error');
@@ -696,7 +653,13 @@ function HomeScreen() {
   }, [reduxVehicleTypes, setPickupLocation, setDestinationLocation, setNotes, setPickupCoords, setDestinationCoords, setCargoImages, setSelectedVehicleType, showModal, dispatch]);
 
   const checkExistingOrder = useCallback(async () => {
+    // Eğer zaten bir fetchActiveOrders çağrısı devam ediyorsa, yeni çağrı yapma
+    if (isFetchingActiveOrders) {
+      return;
+    }
+    
     try {
+      setIsFetchingActiveOrders(true);
       // Redux action ile devam eden siparişleri kontrol et
       const result = await dispatch(fetchActiveOrders()).unwrap();
       
@@ -739,8 +702,10 @@ function HomeScreen() {
       console.error('Mevcut sipariş kontrol hatası:', error);
       // Hata durumunda da AsyncStorage'ı temizle
       await AsyncStorage.removeItem('currentOrder');
+    } finally {
+      setIsFetchingActiveOrders(false);
     }
-  }, [dispatch, fillOrderData]);
+  }, [dispatch, fillOrderData, isFetchingActiveOrders]);
 
   // Aktif input alanını scroll etmek için fonksiyon
   const scrollToInput = useCallback((inputIndex: number) => {
@@ -846,7 +811,7 @@ function HomeScreen() {
             setPickupLocation('Mevcut Konumum');
           }
         } catch (error) {
-          console.error('Reverse geocoding hatası:', error);
+          // Reverse geocoding hatası
           setPickupLocation('Mevcut Konumum');
         }
         
@@ -884,7 +849,6 @@ function HomeScreen() {
   // Token hazır olduğunda araç tiplerini yükle
   useEffect(() => {
     if (token) {
-      console.log('🔑 Token hazır, araç tipleri yükleniyor...');
       dispatch(loadVehicleTypes());
     }
   }, [token, dispatch]);
@@ -894,18 +858,13 @@ function HomeScreen() {
     const initializeApp = async () => {
       // Bekleyen kamera sonuçlarını kontrol et
       try {
-        console.log('🔍 Bekleyen kamera sonuçları kontrol ediliyor...');
         const pendingResult = await ImagePicker.getPendingResultAsync();
         if (pendingResult && 'assets' in pendingResult && !pendingResult.canceled && pendingResult.assets && pendingResult.assets.length > 0) {
-          console.log('📸 Bekleyen kamera sonucu bulundu:', pendingResult);
           const newImages = pendingResult.assets.map((asset: any) => asset.uri);
           setCargoImages(prev => {
             const updated = [...prev, ...newImages];
-            console.log('✅ Bekleyen kamera sonucu işlendi:', updated);
             return updated;
           });
-        } else {
-          console.log('ℹ️ Bekleyen kamera sonucu bulunamadı');
         }
       } catch (error) {
         console.error('❌ Bekleyen kamera sonucu kontrol hatası:', error);
@@ -918,7 +877,6 @@ function HomeScreen() {
     checkExistingOrder();
     
     socketService.on('connection_error', (data: any) => {
-      console.error('Socket bağlantı hatası:', data.error);
       showModal('Bağlantı Hatası', 'Sunucuya bağlanırken bir hata oluştu.', 'error');
     });
 
@@ -1002,19 +960,13 @@ function HomeScreen() {
     });
     
     socketService.on('nearbyDriversUpdate', (data: any) => {
-      console.log('📍 nearbyDriversUpdate event received:', data);
-      console.log('📍 Socket connected:', socketService.isSocketConnected());
-      console.log('📍 Current drivers state before update:', drivers);
-      
       try {
         if (!data) {
-          console.log('📍 No data received, setting empty drivers');
           setDrivers([]);
           return;
         }
         
         if (!data.drivers || !Array.isArray(data.drivers)) {
-          console.log('📍 Invalid drivers data structure:', data);
           setDrivers([]);
           return;
         }
@@ -1026,21 +978,10 @@ function HomeScreen() {
                  typeof driver.latitude === 'number' && 
                  typeof driver.longitude === 'number';
           
-          if (!isValid) {
-            console.log('📍 Invalid driver filtered out:', driver);
-          }
-          
           return isValid;
         });
         
-        console.log('📍 Valid drivers found:', validDrivers.length);
-        console.log('📍 Setting drivers:', validDrivers);
         setDrivers(validDrivers);
-        
-        // State güncellemesinin gerçekleştiğini doğrulamak için
-        setTimeout(() => {
-          console.log('📍 Drivers state after update (async check):', drivers);
-        }, 100);
         
       } catch (error) {
         console.error('nearbyDriversUpdate işleme hatası:', error);
@@ -1058,8 +999,6 @@ function HomeScreen() {
     });
     
     socketService.on('order_accepted', (data: any) => {
-      console.log('✅ Order accepted event alındı:', data);
-      
       // Null/undefined kontrolleri ekle
       if (!data || !data.driver || !data.orderId) {
         console.error('❌ Order accepted event: Eksik veri', data);
@@ -1090,11 +1029,9 @@ function HomeScreen() {
                  if (orderId && socketService.isSocketConnected()) {
                    socketService.rejectOrder(orderId);
                  } else {
-                   console.error('❌ Sipariş iptal edilemedi: OrderId veya socket bağlantısı yok');
                    showModal('Hata', 'Sipariş iptal edilemedi. Lütfen tekrar deneyin.', 'error');
                  }
                } catch (error) {
-                 console.error('❌ Sipariş iptal hatası:', error);
                  showModal('Hata', 'Sipariş iptal edilirken bir hata oluştu.', 'error');
                }
              }
@@ -1131,16 +1068,14 @@ function HomeScreen() {
                    try {
                      AsyncStorage.setItem('currentOrder', JSON.stringify(orderData));
                    } catch (storageError) {
-                     console.error('❌ AsyncStorage kaydetme hatası:', storageError);
+                     // AsyncStorage kaydetme hatası
                    }
                    
                    showModal('Sipariş Onaylandı', 'Sürücünüz yola çıkıyor. Canlı takip başlatılıyor.', 'success');
                  } else {
-                   console.error('❌ Sipariş onaylanamadı: OrderId veya socket bağlantısı yok');
                    showModal('Hata', 'Sipariş onaylanamadı. Lütfen tekrar deneyin.', 'error');
                  }
                } catch (error) {
-                 console.error('❌ Sipariş onaylama hatası:', error);
                  showModal('Hata', 'Sipariş onaylanırken bir hata oluştu.', 'error');
                }
              }
@@ -1150,14 +1085,8 @@ function HomeScreen() {
     });
     
     socketService.on('order_status_update', (data: any) => {
-      console.log('📊 MÜŞTERI: Sipariş durumu güncellendi:', data);
-      console.log('📊 MÜŞTERI: Mevcut sipariş:', currentOrderRef.current);
-      console.log('📊 MÜŞTERI: Event alındı - Order ID:', data?.orderId, 'Status:', data?.status);
-      console.log('📊 MÜŞTERI: Socket bağlantı durumu:', socketService.isSocketConnected());
-      
       // Null/undefined kontrolleri ekle
       if (!data || !data.orderId || !data.status) {
-        console.error('❌ Order status update event: Eksik veri', data);
         return;
       }
       
@@ -1165,7 +1094,6 @@ function HomeScreen() {
       try {
         // currentOrderRef kontrollerini güçlendir
         if (!currentOrderRef || typeof currentOrderRef !== 'object') {
-          console.error('❌ currentOrderRef tanımlı değil veya geçersiz');
           return;
         }
         
@@ -1173,23 +1101,18 @@ function HomeScreen() {
         
         // Mevcut sipariş kontrolü
         if (!currentOrder) {
-          console.log('📊 MÜŞTERI: Mevcut sipariş yok, status update atlanıyor');
           return;
         }
         
         // Order ID kontrolü
         if (!currentOrder.id) {
-          console.error('❌ Mevcut siparişin ID\'si yok');
           return;
         }
         
         // ID eşleşme kontrolü
         if (currentOrder.id.toString() !== data.orderId.toString()) {
-          console.log(`📊 MÜŞTERI: Sipariş ID eşleşmiyor. Mevcut: ${currentOrder.id}, Gelen: ${data.orderId}`);
           return;
         }
-        
-        console.log(`📊 MÜŞTERI: Sipariş durumu ${currentOrder.status} -> ${data.status}`);
         
         // Güvenli şekilde sipariş güncelle
         const updatedOrder = {
@@ -1203,19 +1126,21 @@ function HomeScreen() {
           setCurrentOrder(updatedOrder);
         }
         
+        // Redux state güncelleme - ActiveOrderCard'ın doğru status'u göstermesi için
+        dispatch(setReduxCurrentOrder(updatedOrder));
+        
         // Ref güncelleme
         currentOrderRef.current = updatedOrder;
         
         // AsyncStorage güvenli şekilde güncelle
          try {
            AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
-           console.log('✅ AsyncStorage başarıyla güncellendi');
          } catch (storageError) {
-           console.error('❌ AsyncStorage kaydetme hatası:', storageError);
+           // AsyncStorage kaydetme hatası
          }
         
       } catch (updateError) {
-        console.error('❌ Order status update işlemi hatası:', updateError);
+        // Order status update işlemi hatası
       }
       
       let message = '';
@@ -1261,7 +1186,6 @@ function HomeScreen() {
 
     // Confirm code doğrulama sonuçlarını dinle
     socketService.on('confirm_code_verified', (data: any) => {
-      console.log('Confirm code verified:', data);
       setCancelOrderModalVisible(false);
       setUserConfirmCode('');
       AsyncStorage.removeItem('currentOrder');
@@ -1270,16 +1194,11 @@ function HomeScreen() {
     });
 
     socketService.on('confirm_code_error', (data: any) => {
-      console.log('Confirm code error:', data);
       showModal('Hata', data.message || 'Doğrulama kodu yanlış!', 'error');
     });
 
     // Socket bağlantı durumunu kontrol et ve gerekirse bağlan
-    console.log('🔵 Socket bağlantı durumu:', socketService.isSocketConnected());
-    console.log('🔵 Socket ID:', socketService.getSocketId());
-    
     if (!socketService.isSocketConnected()) {
-      console.log('🔵 Socket bağlı değil, bağlanmaya çalışıyor...');
       socketService.connect();
     }
     
@@ -1290,25 +1209,23 @@ function HomeScreen() {
     
     // Socket bağlantı event'lerini dinle
     socketService.on('connected', (data: any) => {
-      console.log('🟢 Socket bağlandı:', data);
+      // Socket bağlandı
     });
     
     socketService.on('disconnected', (data: any) => {
-      console.log('🔴 Socket bağlantısı kesildi:', data);
+      // Socket bağlantısı kesildi
     });
     
     socketService.on('connection_error', (data: any) => {
-      console.log('🔴 Socket bağlantı hatası:', data);
+      // Socket bağlantı hatası
     });
 
     socketService.on('cancel_order_error', (data: any) => {
-      console.log('Cancel order error:', data);
       showModal('Hata', data.message || 'Sipariş iptal edilirken bir hata oluştu!', 'error');
     });
 
     // Sipariş iptal edildi event'i - müşteri home sayfasındayken
     socketService.on('order_cancelled', (data: any) => {
-      console.log('🔴 MÜŞTERI: Sipariş iptal edildi:', data);
       
       // Mevcut sipariş ve sürücü bilgilerini temizle
       setCurrentOrder(null);
@@ -1349,27 +1266,22 @@ function HomeScreen() {
     // order_created eventi kaldırıldı - müşteri zaten kendi siparişini oluşturuyor
 
     socketService.on('order_taken', (data: any) => {
-      console.log('📦 MÜŞTERI: Sipariş başka sürücü tarafından alındı:', data);
       showModal('Sipariş Alındı', 'Siparişiniz başka bir sürücü tarafından alındı.', 'info');
     });
 
     socketService.on('order_locked_for_inspection', (data: any) => {
-      console.log('🔒 MÜŞTERI: Sipariş inceleme için kilitlendi:', data);
       showModal('Sipariş İnceleniyor', 'Siparişiniz bir sürücü tarafından inceleniyor.', 'info');
     });
 
     socketService.on('order_already_taken', (data: any) => {
-      console.log('⚠️ MÜŞTERI: Sipariş zaten alınmış:', data);
       showModal('Sipariş Alınmış', 'Bu sipariş zaten başka bir sürücü tarafından alınmış.', 'warning');
     });
 
     socketService.on('order_acceptance_confirmed', (data: any) => {
-      console.log('✅ MÜŞTERI: Sipariş kabulü onaylandı:', data);
       showModal('Sipariş Onaylandı', 'Siparişiniz sürücü tarafından onaylandı.', 'success');
     });
 
     socketService.on('order_phase_update', (data: any) => {
-      console.log('🔄 MÜŞTERI: Sipariş faz güncellemesi:', data);
       if (data.currentPhase === 'pickup') {
         showModal('Sürücü Yolda', 'Sürücü yük alma noktasına doğru yola çıktı.', 'info');
       } else if (data.currentPhase === 'delivery') {
@@ -1378,11 +1290,8 @@ function HomeScreen() {
     });
 
     socketService.on('order_inspection_started', (data: any) => {
-      console.log('🔍 MÜŞTERI: Sipariş incelemesi başladı:', data);
-      
       // Mevcut siparişi güncelle
       if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
-        console.log(`🔍 MÜŞTERI: Sipariş durumu ${currentOrderRef.current.status} -> inspecting`);
         const updatedOrder = { ...currentOrderRef.current, status: 'inspecting' };
         setCurrentOrder(updatedOrder);
         currentOrderRef.current = updatedOrder;
@@ -1395,23 +1304,7 @@ function HomeScreen() {
       showModal('İnceleme Başladı', 'Sürücü siparişinizi inceliyor.', 'info');
     });
 
-    socketService.on('order_inspection_stopped', (data: any) => {
-      console.log('🔍 MÜŞTERI: Sipariş incelemesi durdu:', data);
-      
-      // Mevcut siparişi güncelle
-      if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
-        console.log(`🔍 MÜŞTERI: Sipariş durumu ${currentOrderRef.current.status} -> ${data.status || 'pending'}`);
-        const updatedOrder = { ...currentOrderRef.current, status: data.status || 'pending' };
-        setCurrentOrder(updatedOrder);
-        currentOrderRef.current = updatedOrder;
-        AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
-        
-        // Redux store'u da güncelle
-        dispatch(setReduxCurrentOrder(updatedOrder));
-      }
-      
-      showModal('İnceleme Tamamlandı', 'Sipariş incelemesi tamamlandı, tekrar beklemede.', 'info');
-    });
+
     
     socketService.on('driver_offline', (data: any) => {
       if (data && data.driverId) {
@@ -1423,7 +1316,6 @@ function HomeScreen() {
     });
 
     socketService.on('driver_went_offline', (data: any) => {
-      console.log('🔴 Driver went offline voluntarily:', data);
       if (data && data.driverId) {
         setDrivers(prevDrivers => {
           const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
@@ -1471,7 +1363,6 @@ function HomeScreen() {
       socketService.off('order_taken');
       socketService.off('order_locked_for_inspection');
       socketService.off('order_inspection_started');
-      socketService.off('order_inspection_stopped');
       socketService.off('order_already_taken');
       socketService.off('order_acceptance_confirmed');
       socketService.off('order_phase_update');
@@ -1541,7 +1432,7 @@ function HomeScreen() {
             pickupLocationRef.current?.setAddressText('Mevcut Konumum');
           }
         } catch (error) {
-          console.error('Reverse geocoding hatası:', error);
+          // Reverse geocoding hatası
           setPickupLocation('Mevcut Konumum');
           pickupLocationRef.current?.setAddressText('Mevcut Konumum');
         }
@@ -1574,52 +1465,49 @@ function HomeScreen() {
   // Ekran her odaklandığında devam eden sipariş kontrolü yap
   useFocusEffect(
     useCallback(() => {
-      if (token) {
+      if (token && !reduxCurrentOrder) {
         // Sadece token varsa ve aktif sipariş yoksa kontrol et
-        if (!reduxCurrentOrder) {
-          checkExistingOrder();
+        checkExistingOrder();
+      }
+      
+      // Eğer aktif sipariş yoksa haritayı sıfırla ve müşteri konumuna odakla
+      if (!reduxCurrentOrder && userLocation && mapRef.current) {
+        
+        // Form state'lerini sıfırla
+        setPickupCoords(null);
+        setDestinationCoords(null);
+        setPickupLocation('');
+        setDestinationLocation('');
+        setRouteCoordinates([]);
+        setActiveOrderRouteCoordinates([]);
+        setDistance(null);
+        setRouteDuration(null);
+        setUserInteractedWithMap(false);
+        
+        // Input alanlarını temizle
+        if (pickupLocationRef.current) {
+          pickupLocationRef.current.setAddressText('');
+        }
+        if (destinationLocationRef.current) {
+          destinationLocationRef.current.setAddressText('');
         }
         
-        // Eğer aktif sipariş yoksa haritayı sıfırla ve müşteri konumuna odakla
-        if (!reduxCurrentOrder && userLocation && mapRef.current) {
-          console.log('🗺️ Ana sayfaya dönüldü, harita sıfırlanıyor ve müşteri konumuna odaklanıyor');
-          
-          // Form state'lerini sıfırla
-          setPickupCoords(null);
-          setDestinationCoords(null);
-          setPickupLocation('');
-          setDestinationLocation('');
-          setRouteCoordinates([]);
-          setActiveOrderRouteCoordinates([]);
-          setDistance(null);
-          setRouteDuration(null);
-          setUserInteractedWithMap(false);
-          
-          // Input alanlarını temizle
-          if (pickupLocationRef.current) {
-            pickupLocationRef.current.setAddressText('');
+        // Haritayı müşteri konumuna odakla
+        const screenHeight = Dimensions.get('window').height;
+        const bottomSheetHeight = screenHeight * 0.6;
+        const offsetRatio = (bottomSheetHeight / 2) / screenHeight;
+        const latitudeOffset = 0.008 * offsetRatio * 0.8;
+        
+        setTimeout(() => {
+          if (mapRef.current && userLocation) {
+            mapRef.current.animateToRegion({
+              latitude: userLocation.coords.latitude - latitudeOffset,
+              longitude: userLocation.coords.longitude,
+              latitudeDelta: 0.008,
+              longitudeDelta: 0.006,
+            }, 1500);
           }
-          if (destinationLocationRef.current) {
-            destinationLocationRef.current.setAddressText('');
-          }
-          
-          // Haritayı müşteri konumuna odakla
-          const screenHeight = Dimensions.get('window').height;
-          const bottomSheetHeight = screenHeight * 0.6;
-          const offsetRatio = (bottomSheetHeight / 2) / screenHeight;
-          const latitudeOffset = 0.008 * offsetRatio * 0.8;
-          
-          setTimeout(() => {
-            if (mapRef.current && userLocation) {
-              mapRef.current.animateToRegion({
-                latitude: userLocation.coords.latitude - latitudeOffset,
-                longitude: userLocation.coords.longitude,
-                latitudeDelta: 0.008,
-                longitudeDelta: 0.006,
-              }, 1500);
-            }
-          }, 300);
-        }
+        }, 300);
       }
     }, [token, reduxCurrentOrder, userLocation])
   );
@@ -1711,7 +1599,7 @@ function HomeScreen() {
           duration: duration
         };
       } else {
-        console.error('Directions API error:', data.status);
+        // Directions API error
         // Hata durumunda kuş bakışı rotaya geri dön
         setRouteCoordinates([origin, destination]);
         const fallbackDistance = calculateDistance(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
@@ -1719,7 +1607,7 @@ function HomeScreen() {
         setRouteDuration(null);
       }
     } catch (error) {
-      console.error('Directions API fetch error:', error);
+      // Directions API fetch error
       // Hata durumunda kuş bakışı rotaya geri dön
       setRouteCoordinates([origin, destination]);
       const fallbackDistance = calculateDistance(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
@@ -1731,6 +1619,8 @@ function HomeScreen() {
   // Aktif sipariş için Google Directions API ile gerçek araç yolu rotası alma
   const getActiveOrderDirectionsRoute = useCallback(async (origin: {latitude: number, longitude: number}, destination: {latitude: number, longitude: number}) => {
     try {
+
+      
       const GOOGLE_MAPS_API_KEY = API_CONFIG.GOOGLE_MAPS_API_KEY;
       
       const originStr = `${origin.latitude},${origin.longitude}`;
@@ -1743,6 +1633,7 @@ function HomeScreen() {
       
       if (data.status === 'OK' && data.routes.length > 0) {
         const route = data.routes[0];
+
         
         // Polyline decode etme fonksiyonu
         const decodePolyline = (encoded: string) => {
@@ -1783,17 +1674,18 @@ function HomeScreen() {
         };
         
         const coordinates = decodePolyline(route.overview_polyline.points);
+
         setActiveOrderRouteCoordinates(coordinates);
         
         return coordinates;
       } else {
-        console.error('Active Order Directions API error:', data.status);
+        // Active Order Directions API error
         // Hata durumunda kuş bakışı rotaya geri dön
         setActiveOrderRouteCoordinates([origin, destination]);
         return [origin, destination];
       }
     } catch (error) {
-      console.error('Active Order Directions API fetch error:', error);
+      // Active Order Directions API fetch error
       // Hata durumunda kuş bakışı rotaya geri dön
       setActiveOrderRouteCoordinates([origin, destination]);
       return [origin, destination];
@@ -1828,8 +1720,7 @@ function HomeScreen() {
     } else {
       // Aktif sipariş pending veya inspecting durumundaysa rotayı temizleme
       const hasActiveOrderWithRoute = reduxCurrentOrder && 
-        ['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') &&
-        routeCoordinates.length > 0;
+        ['pending', 'inspecting'].includes(reduxCurrentOrder.status || '');
       
       if (!hasActiveOrderWithRoute) {
         setDistance(null);
@@ -1838,7 +1729,7 @@ function HomeScreen() {
         setUserInteractedWithMap(false); // Reset user interaction when no route
       }
     }
-  }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints, userInteractedWithMap, reduxCurrentOrder, routeCoordinates.length]);
+  }, [pickupCoords, destinationCoords, getDirectionsRoute, animateToShowBothPoints, userInteractedWithMap, reduxCurrentOrder]);
 
   // Aktif sipariş için rota çizimi
   useEffect(() => {
@@ -1855,8 +1746,6 @@ function HomeScreen() {
         latitude: reduxCurrentOrder.destinationLatitude,
         longitude: reduxCurrentOrder.destinationLongitude
       };
-      
-      console.log('🗺️ Aktif sipariş için rota çiziliyor:', { pickupCoords, destinationCoords });
       
       // Aktif sipariş için Google Directions API ile rota al
       getActiveOrderDirectionsRoute(pickupCoords, destinationCoords);
@@ -1895,7 +1784,7 @@ function HomeScreen() {
         return;
       }
     } catch (error) {
-      console.error('Sürücü kontrolü hatası:', error);
+      // Sürücü kontrolü hatası
       showModal('Hata', 'Sürücü kontrolü yapılamadı. Lütfen tekrar deneyiniz.', 'error');
       return;
     }
@@ -1915,17 +1804,7 @@ function HomeScreen() {
         cargoImages: cargoImages,
       };
       
-      console.log('=== FRONTEND REQUEST LOG ===');
-      console.log('Order data:');
-      console.log('- pickupAddress:', pickupLocation);
-      console.log('- destinationAddress:', destinationLocation);
-      console.log('- notes:', notes);
-      console.log('- vehicleTypeId:', selectedVehicleType?.id);
-      console.log('- distance:', distance);
-      console.log('- estimatedTime:', routeDuration);
-      console.log('- cargoImages array length:', cargoImages.length);
-      console.log('- cargoImages array:', cargoImages);
-      console.log('================================');
+
       
       // Redux action ile sipariş oluştur
       const result = await dispatch(createOrder({
@@ -1946,7 +1825,7 @@ function HomeScreen() {
       setRouteDuration(null);
       
     } catch (error) {
-      console.error('Sipariş oluşturma hatası:', error);
+      // Sipariş oluşturma hatası
       showModal('Hata', error instanceof Error ? error.message : 'Sipariş oluşturulurken bir hata oluştu.', 'error');
     }
   }, [pickupCoords, destinationCoords, cargoImages, pickupLocation, destinationLocation, distance, routeDuration, notes, showModal, selectedVehicleType, token, dispatch, refreshAuthToken]);
@@ -2052,19 +1931,12 @@ function HomeScreen() {
   }, [userLocation, pickupCoords, getCurrentLocation, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const handlePickupLocationSelect = useCallback((location: any) => {
-    console.log('=== PICKUP LOCATION SELECT ===');
-    console.log('handlePickupLocationSelect called with:', location);
-    console.log('Coordinates:', location.coordinates);
-    
     const coords = {
       latitude: location.coordinates.latitude,
       longitude: location.coordinates.longitude
     };
     
-    console.log('Setting pickupCoords to:', coords);
     setPickupCoords(coords);
-    
-    console.log('Setting pickupLocation to:', location.address);
     setPickupLocation(location.address);
     
     setSelectedLocationInfo({
@@ -2079,7 +1951,6 @@ function HomeScreen() {
     setLocationModalVisible(true);
     
     if (mapRef.current) {
-      console.log('Animating map to pickup location');
       // Eğer destination da varsa, her iki noktayı göster
       if (destinationCoords) {
         animateToShowBothPoints(mapRef, bottomSheetHeight, coords, destinationCoords);
@@ -2088,23 +1959,15 @@ function HomeScreen() {
         animateToRegionWithOffset(mapRef, bottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
       }
     }
-    console.log('=== END PICKUP LOCATION SELECT ===');
   }, [destinationCoords, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const handleDestinationLocationSelect = useCallback((location: any) => {
-    console.log('=== DESTINATION LOCATION SELECT ===');
-    console.log('handleDestinationLocationSelect called with:', location);
-    console.log('Coordinates:', location.coordinates);
-    
     const coords = {
       latitude: location.coordinates.latitude,
       longitude: location.coordinates.longitude
     };
     
-    console.log('Setting destinationCoords to:', coords);
     setDestinationCoords(coords);
-    
-    console.log('Setting destinationLocation to:', location.address);
     setDestinationLocation(location.address);
     
     setSelectedLocationInfo({
@@ -2119,7 +1982,6 @@ function HomeScreen() {
     setLocationModalVisible(true);
     
     if (mapRef.current) {
-      console.log('Animating map to destination location');
       // Eğer pickup da varsa, her iki noktayı göster
       if (pickupCoords) {
         animateToShowBothPoints(mapRef, bottomSheetHeight, pickupCoords, coords);
@@ -2128,7 +1990,6 @@ function HomeScreen() {
         animateToRegionWithOffset(mapRef, bottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
       }
     }
-    console.log('=== END DESTINATION LOCATION SELECT ===');
   }, [pickupCoords, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const [showImagePickerModal, setShowImagePickerModal] = useState(false);
@@ -2151,6 +2012,23 @@ function HomeScreen() {
       calculatePrice(distance, selectedVehicleType);
     }
   }, [distance, selectedVehicleType, calculatePrice]);
+
+  // Koordinat objelerini optimize et
+  const activeOrderPickupCoords = useMemo(() => {
+    if (!reduxCurrentOrder?.pickupLatitude || !reduxCurrentOrder?.pickupLongitude) return null;
+    return {
+      latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+      longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+    };
+  }, [reduxCurrentOrder?.pickupLatitude, reduxCurrentOrder?.pickupLongitude]);
+
+  const activeOrderDestinationCoords = useMemo(() => {
+    if (!reduxCurrentOrder?.destinationLatitude || !reduxCurrentOrder?.destinationLongitude) return null;
+    return {
+      latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+      longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+    };
+  }, [reduxCurrentOrder?.destinationLatitude, reduxCurrentOrder?.destinationLongitude]);
 
   return (
     <View style={styles.container}>
@@ -2212,30 +2090,20 @@ function HomeScreen() {
                  {reduxCurrentOrder && (
                    <>
                      {/* Pickup marker - reduxCurrentOrder veya pickupCoords'dan al */}
-                     {((reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude) || 
+                     {((activeOrderPickupCoords) || 
                        (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && pickupCoords)) && (
                        <PickupMarker 
-                         coords={
-                           reduxCurrentOrder.pickupLatitude && reduxCurrentOrder.pickupLongitude ? {
-                             latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
-                             longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
-                           } : pickupCoords!
-                         }
+                         coords={activeOrderPickupCoords || pickupCoords!}
                          estimatedPrice={reduxCurrentOrder.estimatedPrice}
                          distance={reduxCurrentOrder.distance}
                        />
                      )}
                      
                      {/* Destination marker - reduxCurrentOrder veya destinationCoords'dan al */}
-                     {((reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude) || 
+                     {((activeOrderDestinationCoords) || 
                        (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && destinationCoords)) && (
                        <DestinationMarker 
-                         coords={
-                           reduxCurrentOrder.destinationLatitude && reduxCurrentOrder.destinationLongitude ? {
-                             latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
-                             longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
-                           } : destinationCoords!
-                         }
+                         coords={activeOrderDestinationCoords || destinationCoords!}
                          estimatedPrice={reduxCurrentOrder.estimatedPrice}
                          distance={reduxCurrentOrder.distance}
                        />
@@ -2245,25 +2113,19 @@ function HomeScreen() {
                  
                  {/* Yeni sipariş oluştururken marker'lar - sadece aktif sipariş yoksa göster */}
                  {!reduxCurrentOrder && pickupCoords && (
-                   <>
-                     {console.log('Rendering new order pickup marker with coords:', pickupCoords)}
-                     <PickupMarker 
-                         coords={pickupCoords} 
-                         estimatedPrice={estimatedPrice || undefined}
-                         distance={distance || undefined}
-                       />
-                   </>
+                   <PickupMarker 
+                       coords={pickupCoords} 
+                       estimatedPrice={estimatedPrice || undefined}
+                       distance={distance || undefined}
+                     />
                  )}
                  
                  {!reduxCurrentOrder && destinationCoords && (
-                   <>
-                     {console.log('Rendering new order destination marker with coords:', destinationCoords)}
-                     <DestinationMarker 
-                         coords={destinationCoords} 
-                         estimatedPrice={estimatedPrice || undefined}
-                         distance={distance || undefined}
-                       />
-                   </>
+                   <DestinationMarker 
+                       coords={destinationCoords} 
+                       estimatedPrice={estimatedPrice || undefined}
+                       distance={distance || undefined}
+                     />
                  )}
                  
                  {/* Aktif sipariş rotası - Google Directions API ile gerçek yol rotası */}
@@ -2341,28 +2203,12 @@ function HomeScreen() {
             </View> */}
 
             {/* Devam eden sipariş varsa güzel kart göster */}
-            {(() => {
-              console.log('🏠 Home Debug - Current Order Check:', {
-                currentOrder: currentOrder,
-                pickupCoords: pickupCoords,
-                destinationCoords: destinationCoords,
-                shouldShowOrderCard: currentOrder && currentOrder.status !== 'completed' && currentOrder.status !== 'cancelled'
-              });
-              return null;
-            })()}
+
             {reduxCurrentOrder && reduxCurrentOrder.status !== 'completed' && reduxCurrentOrder.status !== 'cancelled' ? (
               <>
-                {(() => {
-                  console.log('Home Debug - Rendering OrderCard:', {
-                    currentOrder: reduxCurrentOrder,
-                    vehicleTypeId: reduxCurrentOrder?.vehicleTypeId,
-                    reduxVehicleTypes: reduxVehicleTypes
-                  });
-                  return null;
-                })()}
+
                 <TouchableOpacity
                   onPress={() => {
-                    console.log('ActiveOrderCard tıklandı - sipariş detay sayfasına yönlendiriliyor');
                     router.push('/order-detail');
                   }}
                 >
@@ -2374,9 +2220,17 @@ function HomeScreen() {
               </>
             ) : (
               <NewOrderForm
-                onOrderCreated={() => {
-                  // Sipariş oluşturulduktan sonra aktif siparişleri yeniden yükle
-                  dispatch(fetchActiveOrders());
+                onOrderCreated={async () => {
+                  // Eğer zaten bir fetchActiveOrders çağrısı devam ediyorsa, yeni çağrı yapma
+                  if (!isFetchingActiveOrders) {
+                    // Sipariş oluşturulduktan sonra aktif siparişleri yeniden yükle
+                    await dispatch(fetchActiveOrders());
+                  }
+                  
+                  // Kısa bir gecikme ile harita odaklama işlemini tetikle
+                  setTimeout(() => {
+                    // reduxCurrentOrder useEffect'i otomatik olarak tetiklenecek
+                  }, 1000);
                 }}
                 userLocation={userLocation}
                 distance={distance || undefined}

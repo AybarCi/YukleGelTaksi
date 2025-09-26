@@ -114,7 +114,6 @@ export default function VerifyCodeScreen() {
             
             if (response.ok) {
               const driverData = await response.json();
-              console.log('Driver status response:', driverData);
               
               if (driverData.exists === false) {
                 // Sürücü kaydı yok, user-info ekranına yönlendir
@@ -138,7 +137,6 @@ export default function VerifyCodeScreen() {
               showModal('Hata', `Durum kontrol edilirken hata oluştu (${response.status}).`, 'error');
             }
           } catch (error) {
-            console.error('Error checking driver status:', error);
             if (error instanceof Error && error.name === 'AbortError') {
               showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error');
             } else {
@@ -167,19 +165,12 @@ export default function VerifyCodeScreen() {
             
             if (userResponse.ok) {
               const userData = await userResponse.json();
-              console.log('User profile data received:', userData);
-              console.log('userData.first_name:', userData.first_name);
-              console.log('userData.last_name:', userData.last_name);
-              console.log('userData.full_name:', userData.full_name);
-              console.log('userData.email:', userData.email);
               
               // Sadece full_name kontrolü yap - email opsiyonel
               // full_name boşsa user-info ekranına yönlendir
               if (!userData.full_name || userData.full_name.trim() === '') {
-                console.log('User info incomplete, redirecting to user-info');
                 router.replace('/user-info');
               } else {
-                console.log('User info complete, redirecting to home');
                 router.replace('/home');
               }
             } else if (userResponse.status === 404) {
@@ -200,7 +191,6 @@ export default function VerifyCodeScreen() {
               ]);
             }
           } catch (error) {
-            console.error('Error checking user profile:', error);
             if (error instanceof Error && error.name === 'AbortError') {
               showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error', [
                 {
@@ -249,7 +239,6 @@ export default function VerifyCodeScreen() {
       }
       // SMS gönderme başarısız olursa sendSMS fonksiyonu zaten hata mesajını gösteriyor
     } catch (error) {
-      console.error('Resend SMS error:', error);
       showModal('Hata', 'SMS yeniden gönderilirken beklenmeyen bir hata oluştu.', 'error');
     }
   };

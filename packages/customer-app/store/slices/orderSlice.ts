@@ -482,11 +482,10 @@ const orderSlice = createSlice({
         state.loading = false;
         if (action.payload && action.payload.length > 0) {
           const apiOrder = action.payload[0];
-          console.log('🔍 DEBUG - fetchActiveOrders API response:', apiOrder);
           
-          // API formatını Redux formatına çevir
+          // API formatını Redux formatına çevir - Güvenlik kontrolleri ile
           const reduxOrder: OrderData = {
-            id: apiOrder.id?.toString(),
+            id: apiOrder.id ? apiOrder.id.toString() : `temp_${Date.now()}`,
             pickupAddress: apiOrder.pickup_address || '',
             pickupLatitude: apiOrder.pickup_latitude || 0,
             pickupLongitude: apiOrder.pickup_longitude || 0,
@@ -496,24 +495,23 @@ const orderSlice = createSlice({
             distance: apiOrder.distance_km || 0,
             estimatedTime: 0,
             notes: apiOrder.customer_notes || '',
-            vehicleTypeId: apiOrder.vehicle_type_id?.toString(),
+            vehicleTypeId: apiOrder.vehicle_type_id ? apiOrder.vehicle_type_id.toString() : '1',
             laborRequired: (apiOrder.labor_count || 0) > 0,
             laborCount: apiOrder.labor_count || 0,
             weight_kg: apiOrder.weight_kg || 0,
             cargoImages: apiOrder.cargo_photo_urls ? 
               (typeof apiOrder.cargo_photo_urls === 'string' ? JSON.parse(apiOrder.cargo_photo_urls) : apiOrder.cargo_photo_urls) 
               : [],
-            status: apiOrder.status,
+            status: apiOrder.status || 'pending',
             estimatedPrice: apiOrder.total_price || 0,
             createdAt: apiOrder.created_at,
-            driver_id: apiOrder.driver?.id?.toString(),
-            driver_name: apiOrder.driver?.name,
-            driver_latitude: apiOrder.driver?.latitude,
-            driver_longitude: apiOrder.driver?.longitude,
-            driver_heading: apiOrder.driver?.heading,
+            driver_id: apiOrder.driver?.id ? apiOrder.driver.id.toString() : undefined,
+            driver_name: apiOrder.driver?.name || undefined,
+            driver_latitude: apiOrder.driver?.latitude || undefined,
+            driver_longitude: apiOrder.driver?.longitude || undefined,
+            driver_heading: apiOrder.driver?.heading || undefined,
           };
           
-          console.log('🔍 DEBUG - Converted Redux order:', reduxOrder);
           state.currentOrder = reduxOrder;
         } else {
           state.currentOrder = null;

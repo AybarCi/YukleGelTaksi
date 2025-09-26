@@ -1196,10 +1196,10 @@ class SocketServer extends EventEmitter {
       }
 
       // Müşteri odasındaki sürücülere sipariş iptal edildi bilgisi gönder (oda mantığı kullanarak)
-      this.broadcastToCustomerRoomDrivers(userId, 'order_cancelled', orderId);
+      this.broadcastToCustomerRoomDrivers(userId, 'order_cancelled_by_customer', { orderId, message: 'Müşteri siparişi iptal etti.' });
       
       // Sipariş ile ilgili sürücülere iptal bilgisi gönder (güvenli broadcast)
-      await this.broadcastToOrderRelatedDrivers(orderId, 'order_cancelled', { orderId, reason: 'cancelled_by_customer' });
+      await this.broadcastToOrderRelatedDrivers(orderId, 'order_cancelled_by_customer', { orderId, reason: 'cancelled_by_customer', message: 'Müşteri siparişi iptal etti.' });
 
     } catch (error) {
       console.error('Error in cancelOrderWithCode:', error);
@@ -1346,9 +1346,65 @@ class SocketServer extends EventEmitter {
 
       // Batch query ile tüm yakın sürücülerin bilgilerini tek seferde al
       const driverIds = nearbyDriversWithDistance.map(item => item.driverId);
-      const driverIdsString = driverIds.map(id => `'${id}'`).join(',');
       
-      const driversResult = await pool.request()
+      // Debug: Driver ID'lerini ve tiplerini logla
+      console.log(`🔍 Debug - Driver IDs to query:`, driverIds.map(id => ({
+        value: id,
+        type: typeof id,
+        isString: typeof id === 'string',
+        length: id ? id.toString().length : 0,
+        isEmpty: !id || id.toString().trim() === ''
+      })));
+      
+      // Geçersiz driver ID'leri filtrele ve string'e çevir
+      const validDriverIds = driverIds.filter(id => {
+        // Null, undefined, empty string kontrolü
+        if (!id) {
+          console.log(`❌ Invalid driver ID filtered out (null/undefined):`, { value: id, type: typeof id });
+          return false;
+        }
+        
+        // String'e çevir ve trim yap
+        const stringId = String(id).trim();
+        
+        // Boş string kontrolü
+        if (stringId === '' || stringId === 'null' || stringId === 'undefined') {
+          console.log(`❌ Invalid driver ID filtered out (empty/null string):`, { value: id, stringValue: stringId, type: typeof id });
+          return false;
+        }
+        
+        // Numeric string kontrolü (driver ID'ler genellikle numeric olmalı)
+        if (!/^\d+$/.test(stringId)) {
+          console.log(`❌ Invalid driver ID filtered out (non-numeric):`, { value: id, stringValue: stringId, type: typeof id });
+          return false;
+        }
+        
+        return true;
+      }).map(id => String(id).trim()); // Tüm geçerli ID'leri string'e çevir
+      
+      if (validDriverIds.length === 0) {
+        console.log(`❌ No valid driver IDs found after filtering`);
+        socket.emit('nearbyDriversUpdate', { drivers: [] });
+        return;
+      }
+      
+      // SQL Injection güvenlik açığını kapatmak için parameterized query kullan
+      const driverIdsParams = validDriverIds.map((_, index) => `@driverId${index}`).join(',');
+      const request = pool.request();
+      
+      // Her driver ID'yi ayrı parametre olarak ekle
+      validDriverIds.forEach((driverId, index) => {
+        // Driver ID zaten string olarak filtrelenmiş ve validate edilmiş
+        console.log(`🔍 Adding parameter driverId${index}:`, { 
+          value: driverId, 
+          length: driverId.length,
+          type: typeof driverId,
+          isNumeric: /^\d+$/.test(driverId)
+        });
+        request.input(`driverId${index}`, sql.VarChar, driverId);
+      });
+      
+      const driversResult = await request
         .query(`
           SELECT 
             d.id,
@@ -1360,7 +1416,7 @@ class SocketServer extends EventEmitter {
             d.is_active,
             d.is_available
           FROM drivers d
-          WHERE d.id IN (${driverIdsString}) AND d.is_active = 'true'
+          WHERE d.id IN (${driverIdsParams}) AND d.is_active = 'true'
         `);
 
       // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için)
@@ -1708,34 +1764,89 @@ class SocketServer extends EventEmitter {
         }
       }
 
-      // Eğer uygun sürücü yoksa işlemi sonlandır
+      // Eğer socket'e bağlı uygun sürücü yoksa işlemi sonlandır
       if (eligibleDrivers.length === 0) {
-        console.log(`📍 No eligible drivers found within ${searchRadiusKm}km radius for order ${orderId}`);
+        console.log(`📍 No drivers connected to socket within ${searchRadiusKm}km radius for order ${orderId}`);
         return;
       }
-
-      // Batch query ile tüm uygun sürücülerin araç tiplerini al
-      const driverIds = eligibleDrivers.map(item => item.driverId);
-      const driverIdsString = driverIds.map(id => `'${id}'`).join(',');
       
-      const driversResult = await pool.request()
+      console.log(`🔗 Found ${eligibleDrivers.length} drivers connected to socket within radius, validating with database...`);
+
+      // Batch query ile tüm uygun sürücülerin araç tiplerini ve durumlarını al
+      const driverIds = eligibleDrivers.map(item => item.driverId);
+      
+      // SQL Injection güvenlik açığını kapatmak için parameterized query kullan
+      const driverIdsParams = driverIds.map((_, index) => `@driverId${index}`).join(',');
+      const request = pool.request();
+      
+      // Her driver ID'yi ayrı parametre olarak ekle
+      driverIds.forEach((driverId, index) => {
+        request.input(`driverId${index}`, sql.VarChar, driverId);
+      });
+      
+      // Sistem ayarlarından konum güncelleme aralığını al
+      let locationUpdateInterval = 30; // Varsayılan değer (dakika)
+      try {
+        const locationSettingsResult = await pool.request()
+          .query('SELECT setting_value FROM system_settings WHERE setting_key = \'location_update_interval_minutes\'');
+        
+        if (locationSettingsResult.recordset.length > 0) {
+          locationUpdateInterval = parseInt(locationSettingsResult.recordset[0].setting_value) || 30;
+        }
+      } catch (settingsError) {
+        console.log('⚠️ Location update interval setting not found, using default:', locationUpdateInterval);
+      }
+      
+      const driversResult = await request
+        .input('locationUpdateInterval', locationUpdateInterval)
         .query(`
-          SELECT id, vehicle_type_id 
-          FROM drivers 
-          WHERE id IN (${driverIdsString}) AND is_active = 'true'
+          SELECT d.id, d.vehicle_type_id, d.is_available, d.is_active, d.is_approved,
+                 u.current_latitude, u.current_longitude, u.last_location_update
+          FROM drivers d
+          INNER JOIN users u ON d.user_id = u.id
+          WHERE d.id IN (${driverIdsParams}) 
+            AND d.is_active = 1
+            AND d.is_approved = 1
+            AND d.is_available = 1
+            AND u.current_latitude IS NOT NULL 
+            AND u.current_longitude IS NOT NULL
+            AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= @locationUpdateInterval
         `);
 
-      // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için)
+      // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için) - sadece geçerli sürücüler
       const driversVehicleMap = new Map();
+      const validDriversFromDB = new Set();
+      
       driversResult.recordset.forEach(driver => {
         driversVehicleMap.set(driver.id.toString(), driver.vehicle_type_id);
+        validDriversFromDB.add(driver.id.toString());
       });
+      
+      console.log(`🔍 Database validation: ${driversResult.recordset.length} out of ${driverIds.length} drivers passed all criteria (approved, active, available, recent location)`);
+      
+      // Geçerli olmayan sürücüleri logla
+      const invalidDrivers = driverIds.filter(id => !validDriversFromDB.has(id));
+      if (invalidDrivers.length > 0) {
+        console.log(`❌ Invalid drivers (failed DB validation): ${invalidDrivers.join(', ')}`);
+      }
+      
+      // Eğer veritabanı validasyonundan geçen sürücü yoksa işlemi sonlandır
+      if (driversResult.recordset.length === 0) {
+        console.log(`📍 No drivers passed database validation for order ${orderId} - all connected drivers are either not approved, not active, not available, or have stale location data`);
+        return;
+      }
 
       let matchingDriversCount = 0;
       let driversWithDistance = [];
       
-      // Final kontrol ve sipariş gönderimi
+      // Final kontrol ve sipariş gönderimi - sadece DB'den geçerli sürücülere
       for (const item of eligibleDrivers) {
+        // Önce sürücünün DB validasyonunu geçip geçmediğini kontrol et
+        if (!validDriversFromDB.has(item.driverId)) {
+          console.log(`❌ Driver ${item.driverId} skipped - failed database validation (not approved/active/available or stale location)`);
+          continue;
+        }
+        
         const driverVehicleTypeId = driversVehicleMap.get(item.driverId);
         
         if (driverVehicleTypeId) {
@@ -1755,12 +1866,14 @@ class SocketServer extends EventEmitter {
                 vehicleType: driverVehicleTypeId 
               });
               console.log(`✅ Order ${orderId} sent to driver ${item.driverId} (vehicle_type: ${driverVehicleTypeId}, distance: ${item.distance.toFixed(2)}km)`);
+            } else {
+              console.log(`❌ Driver ${item.driverId} socket not found - connection may have been lost`);
             }
           } else {
             console.log(`❌ Driver ${item.driverId} skipped - vehicle type mismatch (driver: ${driverVehicleTypeId}, order: ${orderData.vehicle_type_id})`);
           }
         } else {
-          console.log(`❌ Driver ${item.driverId} not found or inactive`);
+          console.log(`❌ Driver ${item.driverId} - unexpected error: passed DB validation but not in vehicle map`);
         }
       }
       

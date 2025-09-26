@@ -7,7 +7,7 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 Backoffice uygulaması için `.env` dosyası oluşturun:
 
 ```
-REACT_APP_API_HOST=localhost
+REACT_APP_API_HOST=192.168.1.134
 REACT_APP_API_PORT=3000
 REACT_APP_SOCKET_PORT=3001
 REACT_APP_GOOGLE_MAPS_API_KEY=your_google_maps_api_key

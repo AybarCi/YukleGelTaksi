@@ -1,7 +1,39 @@
 import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '../store';
+import { setCurrentOrder as setReduxCurrentOrder } from '../store/slices/orderSlice';
+import socketService from '../services/socketService';
+
+// OrderData tipini import et
+interface OrderData {
+  id?: string;
+  pickupAddress: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  destinationAddress: string;
+  destinationLatitude: number;
+  destinationLongitude: number;
+  distance: number;
+  estimatedTime: number;
+  notes?: string;
+  vehicleTypeId?: string | number;
+  vehicle_type_id?: string | number;
+  laborRequired?: boolean;
+  laborCount?: number;
+  weight_kg?: number;
+  cargoImages: string[];
+  status?: string;
+  estimatedPrice?: number;
+  createdAt?: string;
+  driver_id?: string;
+  driver_name?: string;
+  driver_latitude?: number;
+  driver_longitude?: number;
+  driver_heading?: number;
+}
 
 interface Order {
   id?: string;
@@ -45,15 +77,66 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
   order, 
   vehicleTypes = []
 }) => {
-  console.log('🔴 ActiveOrderCard render başladı:', {
-    order,
-    vehicleTypes,
-    orderKeys: order ? Object.keys(order) : 'order null',
-    vehicleTypesLength: vehicleTypes?.length
-  });
+  // Redux store'dan currentOrder'ı al ve dispatch hook'unu kullan
+  const currentOrder = useSelector((state: RootState) => state.order.currentOrder);
+  const dispatch = useDispatch();
+  
+  // Güncel order'ı kullan (Redux store'dan gelen currentOrder öncelikli)
+  const activeOrder = currentOrder || order;
+
+  // Null/undefined order kontrolü
+  if (!activeOrder) {
+    return null;
+  }
 
   // Animasyonlu progress bar için
   const progressAnimation = useRef(new Animated.Value(0)).current;
+
+  // Socket event listener'ı ekle
+  useEffect(() => {
+    const handleOrderStatusUpdate = (data: any) => {
+      // Eğer güncellenen sipariş bu componentteki siparişse, durumu güncelle
+      if (activeOrder && data.orderId && data.orderId.toString() === activeOrder.id?.toString()) {
+        
+        const updatedOrder: OrderData = {
+          id: activeOrder.id || '',
+          pickupAddress: activeOrder.pickupAddress || '',
+          pickupLatitude: activeOrder.pickupLatitude || 0,
+          pickupLongitude: activeOrder.pickupLongitude || 0,
+          destinationAddress: activeOrder.destinationAddress || '',
+          destinationLatitude: activeOrder.destinationLatitude || 0,
+          destinationLongitude: activeOrder.destinationLongitude || 0,
+          distance: activeOrder.distance || 0,
+          estimatedTime: activeOrder.estimatedTime || 0,
+          notes: activeOrder.notes || '',
+          vehicleTypeId: activeOrder.vehicleTypeId || '',
+          laborRequired: activeOrder.laborRequired || false,
+          laborCount: activeOrder.laborCount || 0,
+          weight_kg: activeOrder.weight_kg || 0,
+          cargoImages: activeOrder.cargoImages || [],
+          status: data.status, // Gelen status'u kullan
+          estimatedPrice: activeOrder.estimatedPrice || 0,
+          createdAt: activeOrder.createdAt || '',
+          driver_id: activeOrder.driver_id,
+          driver_name: activeOrder.driver_name,
+          driver_latitude: activeOrder.driver_latitude,
+          driver_longitude: activeOrder.driver_longitude,
+          driver_heading: activeOrder.driver_heading,
+        };
+        
+        // Redux store'u güncelle
+        dispatch(setReduxCurrentOrder(updatedOrder));
+      }
+    };
+
+    // Socket event listener'ını ekle
+    socketService.on('order_status_update', handleOrderStatusUpdate);
+
+    // Cleanup function
+    return () => {
+      socketService.off('order_status_update', handleOrderStatusUpdate);
+    };
+  }, [activeOrder, dispatch]);
 
   // Progress bar animasyonunu başlat
   useEffect(() => {
@@ -83,48 +166,56 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
       return 'Araç Tipi Belirtilmemiş';
     }
     
-    const id = typeof vehicleTypeId === 'string' ? parseInt(vehicleTypeId) : vehicleTypeId;
+    let id: number;
+    if (typeof vehicleTypeId === 'string') {
+      id = parseInt(vehicleTypeId);
+      if (isNaN(id)) {
+        return 'Geçersiz Araç Tipi';
+      }
+    } else {
+      id = vehicleTypeId;
+    }
+    
     const vehicleType = vehicleTypes.find(type => type.id === id);
     
     return vehicleType ? vehicleType.name : 'Bilinmeyen Araç Tipi';
   }, [vehicleTypes]);
 
-  // Durum metnini al
-  const getStatusText = (status?: string) => {
-    switch (status) {
-      case 'pending': return 'Bekliyor';
-      case 'inspecting': return 'İnceleniyor';
-      case 'accepted':
-      case 'confirmed': return 'Onaylandı';
-      case 'in_progress': return 'Sürücü yolda';
-      case 'started': return 'Yük alındı';
-      case 'transporting': return 'Taşıma durumunda';
-      case 'completed': return 'Teslimat tamamlandı';
-      default: return 'Bilinmeyen durum';
-    }
+  // Sipariş durumuna göre metin ve renk
+  const getStatusText = (status?: string): string => {
+    const statusMap: { [key: string]: string } = {
+      'pending': 'Sipariş Bekliyor',
+      'inspecting': 'İnceleniyor',
+      'accepted': 'Kabul Edildi',
+      'confirmed': 'Onaylandı',
+      'in_progress': 'Devam Ediyor',
+      'started': 'Başladı',
+      'completed': 'Tamamlandı',
+      'cancelled': 'İptal Edildi'
+    };
+    return statusMap[status || ''] || status || 'Bilinmeyen Durum';
   };
 
-  // Durum rengini al
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'pending': return '#F59E0B';
-      case 'inspecting': return '#3B82F6';
-      case 'accepted':
-      case 'confirmed': return '#10B981';
-      case 'in_progress':
-      case 'started':
-      case 'transporting': return '#8B5CF6';
-      case 'completed': return '#059669';
-      default: return '#6B7280';
-    }
+  const getStatusColor = (status?: string): string => {
+    const colorMap: { [key: string]: string } = {
+      'pending': '#FFA500',
+      'inspecting': '#FF6B35',
+      'accepted': '#4CAF50',
+      'confirmed': '#2196F3',
+      'in_progress': '#9C27B0',
+      'started': '#FF9800',
+      'completed': '#4CAF50',
+      'cancelled': '#F44336'
+    };
+    return colorMap[status || ''] || '#666';
   };
 
   const vehicleTypeName = useMemo(() => {
-    return getVehicleTypeName(order.vehicleTypeId || order.vehicle_type_id);
-  }, [getVehicleTypeName, order.vehicleTypeId, order.vehicle_type_id]);
+    return getVehicleTypeName(activeOrder?.vehicleTypeId || activeOrder?.vehicle_type_id);
+  }, [getVehicleTypeName, activeOrder?.vehicleTypeId, activeOrder?.vehicle_type_id]);
   
-  const statusText = getStatusText(order.status);
-  const statusColor = getStatusColor(order.status);
+  const statusText = getStatusText(activeOrder?.status);
+  const statusColor = getStatusColor(activeOrder?.status);
 
   const handlePress = () => {
     router.push('/order-detail');
@@ -152,38 +243,32 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
             <MaterialIcons name="local-shipping" size={24} color="#F59E0B" />
             <View style={styles.orderDetails}>
               <Text style={styles.orderTitle}>Aktif Siparişiniz</Text>
-              <Text style={styles.orderSubtitle}>
-                <Text style={{fontWeight: '600', color: '#059669'}}>Yükleme: </Text>
-                {(() => {
-                  const pickupAddr = order.pickupAddress || order.pickup_address;
-                  return pickupAddr && pickupAddr.length > 40 
-                    ? `${pickupAddr.substring(0, 40)}...` 
-                    : pickupAddr || 'Yükleme adresi belirtilmemiş';
-                })()}
-              </Text>
-              {(() => {
-                const destAddr = order.destinationAddress || order.destination_address;
-                return destAddr && (
-                  <Text style={styles.orderSubtitle}>
-                    <Text style={{fontWeight: '600', color: '#DC2626'}}>Varış: </Text>
-                    {destAddr.length > 40 
-                      ? `${destAddr.substring(0, 40)}...` 
-                      : destAddr}
-                  </Text>
-                );
-              })()}
+              <View style={styles.addressContainer}>
+                <View style={styles.addressRow}>
+                   <Ionicons name="location-outline" size={16} color="#666" />
+                   <Text style={styles.addressText} numberOfLines={2}>
+                     {activeOrder?.pickupAddress || 'Yükleme adresi belirtilmemiş'}
+                   </Text>
+                 </View>
+                 <View style={styles.addressRow}>
+                   <Ionicons name="flag-outline" size={16} color="#666" />
+                   <Text style={styles.addressText} numberOfLines={2}>
+                     {activeOrder?.destinationAddress || 'Varış adresi belirtilmemiş'}
+                   </Text>
+                 </View>
+              </View>
               <View style={styles.orderMeta}>
                 <Text style={styles.orderMetaText}>
-                  Sipariş #{order.id}
+                  Sipariş #{activeOrder?.id || 'N/A'}
                 </Text>
                 {vehicleTypeName && (
                   <Text style={styles.orderMetaText}>
                     • {vehicleTypeName}
                   </Text>
                 )}
-                {order.estimatedPrice && (
+                {activeOrder?.estimatedPrice && typeof activeOrder?.estimatedPrice === 'number' && !isNaN(activeOrder?.estimatedPrice) && (
                   <Text style={styles.orderMetaText}>
-                    • ₺{order.estimatedPrice.toFixed(2)}
+                    • ₺{activeOrder?.estimatedPrice.toFixed(2)}
                   </Text>
                 )}
               </View>
@@ -196,35 +281,35 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
           <View style={styles.phaseStep}>
             <View style={[
               styles.phaseCircle,
-              ['pending', 'inspecting'].includes(order.status || '') ? styles.phaseActive :
-              ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order.status || '') ? styles.phaseCompleted : styles.phaseInactive
+              ['pending', 'inspecting'].includes(order?.status || '') ? styles.phaseActive :
+              ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseCompleted : styles.phaseInactive
             ]}>
               <MaterialIcons 
-                name={order.status === 'inspecting' ? 'search' : 'schedule'} 
+                name={(order?.status === 'inspecting') ? 'search' : 'schedule'} 
                 size={12} 
-                color={['pending', 'inspecting'].includes(order.status || '') ? '#F59E0B' : 
-                       ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order.status || '') ? '#FFFFFF' : '#9CA3AF'} 
+                color={['pending', 'inspecting'].includes(order?.status || '') ? '#F59E0B' : 
+                       ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
               />
             </View>
-            <Text style={styles.phaseLabel}>{order.status === 'inspecting' ? 'İnceleniyor' : 'Bekliyor'}</Text>
+            <Text style={styles.phaseLabel}>{(order?.status === 'inspecting') ? 'İnceleniyor' : 'Bekliyor'}</Text>
           </View>
           
           <View style={[
             styles.phaseLine,
-            ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
+            ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
           ]} />
           
           <View style={styles.phaseStep}>
             <View style={[
               styles.phaseCircle,
-              ['accepted', 'confirmed'].includes(order.status || '') ? styles.phaseActive :
-              ['in_progress', 'started', 'transporting', 'completed'].includes(order.status || '') ? styles.phaseCompleted : styles.phaseInactive
+              ['accepted', 'confirmed'].includes(order?.status || '') ? styles.phaseActive :
+              ['in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseCompleted : styles.phaseInactive
             ]}>
               <MaterialIcons 
                 name="local-shipping" 
                 size={12} 
-                color={['accepted', 'confirmed'].includes(order.status || '') ? '#F59E0B' : 
-                       ['in_progress', 'started', 'transporting', 'completed'].includes(order.status || '') ? '#FFFFFF' : '#9CA3AF'} 
+                color={['accepted', 'confirmed'].includes(order?.status || '') ? '#F59E0B' : 
+                       ['in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
               />
             </View>
             <Text style={styles.phaseLabel}>Yolda</Text>
@@ -232,20 +317,20 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
           
           <View style={[
             styles.phaseLine,
-            ['in_progress', 'started', 'transporting', 'completed'].includes(order.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
+            ['in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
           ]} />
           
           <View style={styles.phaseStep}>
             <View style={[
               styles.phaseCircle,
-              order.status === 'in_progress' ? styles.phaseActive :
-              ['started', 'transporting', 'completed'].includes(order.status || '') ? styles.phaseCompleted : styles.phaseInactive
+              (order?.status === 'in_progress') ? styles.phaseActive :
+              ['started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseCompleted : styles.phaseInactive
             ]}>
               <MaterialIcons 
                 name="inventory" 
                 size={12} 
-                color={order.status === 'in_progress' ? '#F59E0B' : 
-                       ['started', 'transporting', 'completed'].includes(order.status || '') ? '#FFFFFF' : '#9CA3AF'} 
+                color={(order?.status === 'in_progress') ? '#F59E0B' : 
+                       ['started', 'transporting', 'completed'].includes(order?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
               />
             </View>
             <Text style={styles.phaseLabel}>Alındı</Text>
@@ -253,20 +338,20 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
           
           <View style={[
             styles.phaseLine,
-            ['transporting', 'completed'].includes(order.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
+            ['transporting', 'completed'].includes(order?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
           ]} />
           
           <View style={styles.phaseStep}>
             <View style={[
               styles.phaseCircle,
-              order.status === 'transporting' ? styles.phaseActive :
-              order.status === 'completed' ? styles.phaseCompleted : styles.phaseInactive
+              (order?.status === 'transporting') ? styles.phaseActive :
+              (order?.status === 'completed') ? styles.phaseCompleted : styles.phaseInactive
             ]}>
               <MaterialIcons 
                 name="check" 
                 size={12} 
-                color={order.status === 'transporting' ? '#F59E0B' : 
-                       order.status === 'completed' ? '#FFFFFF' : '#9CA3AF'} 
+                color={(order?.status === 'transporting') ? '#F59E0B' : 
+                       (order?.status === 'completed') ? '#FFFFFF' : '#9CA3AF'} 
               />
             </View>
             <Text style={styles.phaseLabel}>Teslim</Text>
@@ -457,6 +542,20 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  addressContainer: {
+    marginBottom: 8,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  addressText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 8,
+    flex: 1,
   },
 });
 

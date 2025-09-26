@@ -103,28 +103,15 @@ export default function ShipmentsScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('API Response:', data);
         if (data.success && data.data && data.data.orders) {
-          console.log('Orders received:', data.data.orders);
-          console.log('Orders count:', data.data.orders.length);
-          data.data.orders.forEach((order: any, index: number) => {
-            console.log(`Order ${index + 1}:`, {
-              id: order.id,
-              status: order.status,
-              pickup_address: order.pickup_address
-            });
-          });
           setShipments(data.data.orders);
         } else {
-          console.log('No orders in response or success=false');
           setShipments([]);
         }
       } else {
-        console.log('API response not ok:', response.status);
         setShipments([]);
       }
     } catch (error) {
-      console.error('Shipments load error:', error);
       setShipments([]);
     } finally {
       setIsLoading(false);
@@ -185,15 +172,12 @@ export default function ShipmentsScreen() {
   };
 
   const filteredShipments = shipments && Array.isArray(shipments) ? shipments.filter(shipment => {
-    console.log('Filtering shipment:', { id: shipment.id, status: shipment.status, filter });
     if (filter === 'all') return true;
     if (filter === 'active') return ['pending', 'inspecting', 'driver_accepted_awaiting_customer', 'confirmed', 'driver_going_to_pickup', 'pickup_completed', 'in_transit'].includes(shipment.status);
     if (filter === 'completed') return shipment.status === 'payment_completed';
     if (filter === 'cancelled') return shipment.status === 'cancelled';
     return true;
   }) : [];
-
-  console.log('Filtered shipments:', filteredShipments.length, 'Current filter:', filter);
 
   const openDetailModal = (shipment: Shipment) => {
     setSelectedShipment(shipment);
@@ -480,7 +464,6 @@ export default function ShipmentsScreen() {
                           </TouchableOpacity>
                         ));
                       } catch (error) {
-                        console.error('Fotoğraf URL\'leri parse edilemedi:', error);
                         return null;
                       }
                     })()}
@@ -538,7 +521,6 @@ export default function ShipmentsScreen() {
                     />
                   ) : null;
                 } catch (error) {
-                  console.error('Fotoğraf URL parse edilemedi:', error);
                   return null;
                 }
               })()}

@@ -65,15 +65,6 @@ const VarisNoktasiInput = forwardRef<VarisNoktasiInputRef, VarisNoktasiInputProp
       setSearchText(text);
     };
 
-    useEffect(() => {
-      console.log('VarisNoktasi Debug:', { 
-        onCurrentLocationPress: !!onCurrentLocationPress, 
-        searchTextLength: searchText.length, 
-        searchText,
-        modalVisible 
-      });
-    }, [onCurrentLocationPress, searchText, modalVisible]);
-
     const handleCurrentLocationPress = () => {
       setInputText('Mevcut Konumum');
       setModalVisible(false);

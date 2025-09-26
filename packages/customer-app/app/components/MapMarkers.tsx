@@ -41,12 +41,9 @@ export const PickupMarker = memo(({ coords, estimatedPrice, distance }: {
   estimatedPrice?: number;
   distance?: number;
 }) => {
-  console.log('Rendering pickup marker with coords:', coords);
-  
   // Koordinatların geçerli olup olmadığını kontrol et
   if (!coords || typeof coords.latitude !== 'number' || typeof coords.longitude !== 'number' ||
       isNaN(coords.latitude) || isNaN(coords.longitude)) {
-    console.log('Invalid pickup coordinates, not rendering marker');
     return null;
   }
   
@@ -83,12 +80,9 @@ export const DestinationMarker = memo(({ coords, estimatedPrice, distance }: {
   estimatedPrice?: number;
   distance?: number;
 }) => {
-  console.log('Rendering destination marker with coords:', coords);
-  
   // Koordinatların geçerli olup olmadığını kontrol et
   if (!coords || typeof coords.latitude !== 'number' || typeof coords.longitude !== 'number' ||
       isNaN(coords.latitude) || isNaN(coords.longitude)) {
-    console.log('Invalid destination coordinates, not rendering marker');
     return null;
   }
   

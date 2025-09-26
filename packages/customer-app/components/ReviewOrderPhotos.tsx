@@ -76,8 +76,7 @@ const ReviewOrderPhotos: React.FC<ReviewOrderPhotosProps> = ({
     }
   };
 
-  console.log('ReviewOrderPhotos - cargoImages:', cargoImages);
-  console.log('ReviewOrderPhotos - API_CONFIG.BASE_URL:', API_CONFIG.BASE_URL);
+
 
   return (
     <View style={styles.container}>
@@ -96,7 +95,6 @@ const ReviewOrderPhotos: React.FC<ReviewOrderPhotosProps> = ({
           >
             {cargoImages.map((imageUri, index) => {
               const fullImageUrl = getFullImageUrl(imageUri);
-              console.log(`Image ${index}: ${imageUri} -> ${fullImageUrl}`);
               
               return (
                 <View key={index} style={styles.imageWrapper}>
@@ -104,12 +102,7 @@ const ReviewOrderPhotos: React.FC<ReviewOrderPhotosProps> = ({
                     <Image 
                       source={{ uri: fullImageUrl }} 
                       style={styles.image}
-                      onError={(error) => {
-                        console.log(`Image load error for ${fullImageUrl}:`, error.nativeEvent.error);
-                      }}
-                      onLoad={() => {
-                        console.log(`Image loaded successfully: ${fullImageUrl}`);
-                      }}
+
                     />
                   </TouchableOpacity>
                   {isEditable && onImageRemove && (

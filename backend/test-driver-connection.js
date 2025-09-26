@@ -10,7 +10,7 @@ const driverToken = jwt.sign(
 
 console.log('Connecting driver (user_id: 32) to socket server...');
 
-const socket = io('http://localhost:3001', {
+const socket = io('http://192.168.1.134:3001', {
   auth: {
     token: driverToken
   },

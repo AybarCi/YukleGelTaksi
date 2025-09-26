@@ -61,21 +61,12 @@ const LocationInput = forwardRef<LocationInputRef, LocationInputProps>(
 
           textInputProps={{
             onFocus: () => {
-              console.log('🎯 LocationInput onFocus triggered');
-              Alert.alert('Focus', 'Input focus oldu!');
               onFocus();
-            },
-            onChangeText: (text) => {
-              console.log('📝 LocationInput onChangeText:', text);
             },
             returnKeyType: 'search',
             returnKeyLabel: 'Ara',
           }}
           onPress={(data, details = null) => {
-            console.log('🔍 GooglePlacesAutocomplete onPress triggered - RAW DATA:', data);
-            console.log('🔍 GooglePlacesAutocomplete onPress triggered - RAW DETAILS:', details);
-            Alert.alert('TEST', 'LocationInput onPress çalıştı! Details: ' + (details ? 'VAR' : 'YOK'));
-            
             let location;
             
             if (details && details.geometry && details.geometry.location) {
@@ -87,7 +78,6 @@ const LocationInput = forwardRef<LocationInputRef, LocationInputProps>(
                   longitude: details.geometry.location.lng,
                 },
               };
-              console.log('📍 Location with details:', location);
             } else {
               // API key geçersiz veya details yok, sadece data kullan
               location = {
@@ -97,7 +87,6 @@ const LocationInput = forwardRef<LocationInputRef, LocationInputProps>(
                   longitude: 0,
                 },
               };
-              console.log('📍 Location without details (API key issue?):', location);
             }
             
             onLocationSelect?.(location);
@@ -109,7 +98,6 @@ const LocationInput = forwardRef<LocationInputRef, LocationInputProps>(
                  googlePlacesRef.current.setAddressText(location.address);
                }
              } else {
-               console.log('⚠️ Details is null, using data only');
                const location = {
                  address: data.description,
                  coordinates: {
@@ -134,12 +122,10 @@ const LocationInput = forwardRef<LocationInputRef, LocationInputProps>(
           disableScroll={true}
           minLength={2}
           onFail={(error) => {
-            console.log('❌ GooglePlacesAutocomplete onFail:', error);
-            Alert.alert('Hata', 'Google Places API hatası: ' + JSON.stringify(error));
+            // API hatası sessizce işlenir
           }}
           onNotFound={() => {
-            console.log('🔍 GooglePlacesAutocomplete onNotFound');
-            Alert.alert('Bulunamadı', 'Konum bulunamadı');
+            // Konum bulunamadığında sessizce işlenir
           }}
           requestUrl={{
             url: 'https://maps.googleapis.com/maps/api/place/autocomplete/json',
