@@ -52,4 +52,4 @@ backoffice/node_modules/
 # Database
 *.db
 *.sqlite
-*.sqlite3
+*.sqlite3backend/public/uploads/cargo-photos/

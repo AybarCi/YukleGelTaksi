@@ -8,7 +8,9 @@ import { router } from 'expo-router';
 interface User {
   id: number;
   phone: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
+  full_name?: string; // Backward compatibility için opsiyonel
   email?: string;
   user_type: 'passenger' | 'driver';
   is_verified: boolean;
@@ -117,8 +119,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           userData = JSON.parse(storedUser);
           
-          // Parsed data validation
-          if (!userData || typeof userData !== 'object' || !userData.id || !userData.phone) {
+          // Parsed data validation - phone alanı undefined olabilir
+          if (!userData || typeof userData !== 'object' || !userData.id) {
             throw new Error('Invalid user data structure');
           }
         } catch (parseError) {
@@ -132,6 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Test if current token is valid by making a simple API call
         try {
+          console.log('LOAD STORED AUTH - Testing token validity for user:', userData.id);
           // Timeout controller ekle - daha uzun timeout
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 saniye timeout
@@ -147,6 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           clearTimeout(timeoutId);
           
           if (testResponse.status === 401) {
+            console.log('LOAD STORED AUTH - Token expired, attempting refresh');
             // Token expired, try to refresh
             const refreshController = new AbortController();
             const refreshTimeoutId = setTimeout(() => refreshController.abort(), 30000); // 30 saniye timeout
@@ -165,6 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const refreshData = await refreshResponse.json();
             
             if (refreshData.success) {
+              console.log('LOAD STORED AUTH - Token refreshed successfully');
               const { token: newToken } = refreshData.data;
               setToken(newToken);
               try {
@@ -173,6 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 console.error('Error storing new token:', storageError);
               }
             } else {
+              console.log('LOAD STORED AUTH - Refresh token expired, clearing auth data');
               // Refresh token also expired, logout user
               await clearAuthData();
               setUser(null);
@@ -180,10 +186,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setRefreshToken(null);
               return;
             }
+          } else if (testResponse.ok) {
+            console.log('LOAD STORED AUTH - Token is valid');
+          } else {
+            console.log('LOAD STORED AUTH - Token validation failed with status:', testResponse.status);
+            // Token geçersiz ama 401 değil - kullanıcıyı logout yapma, sadece log
+            // Kullanıcı verilerini koru
           }
           
           // Token is valid, start auto-refresh timer
           startTokenRefreshTimer();
+          
+          // Refresh user profile to get latest data including first_name and last_name
+          await refreshProfile();
           
           // Redirect based on user type
           if (userData.user_type === 'driver') {
@@ -225,15 +240,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               
               // AbortError durumunda kullanıcıyı logout yapma
               if (driverError instanceof Error && driverError.name === 'AbortError') {
+                console.log('LOAD STORED AUTH - Driver status check timed out, keeping user logged in');
                 // Driver status check timed out
                 return;
               }
               
-              // Network error - logout user
-              await clearAuthData();
-              setUser(null);
-              setToken(null);
-              setRefreshToken(null);
+              // Network error - sadece log, kullanıcıyı logout yapma
+              console.log('LOAD STORED AUTH - Network error during driver status check, keeping user logged in');
+              // Network error - keeping user logged in to prevent unnecessary logouts
             }
           } else {
             // Regular user - navigation will be handled by index.tsx
@@ -245,15 +259,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           // AbortError durumunda kullanıcıyı logout yapma, sadece loading'i durdur
           if (tokenTestError instanceof Error && tokenTestError.name === 'AbortError') {
+            console.log('LOAD STORED AUTH - Token validation timed out, keeping user logged in');
             // Token validation timed out, keeping user logged in
             return;
           }
           
-          // Network error - logout user
-          await clearAuthData();
-          setUser(null);
-          setToken(null);
-          setRefreshToken(null);
+          // Network error - sadece log, kullanıcıyı logout yapma
+          console.log('LOAD STORED AUTH - Network error during token validation, keeping user logged in');
+          // Network error - keeping user logged in to prevent unnecessary logouts
         }
       }
     } catch (error) {
@@ -546,15 +559,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // SMS doğrulama sonrası kullanıcı tipine göre yönlendirme
         // SMS verification successful
-        setTimeout(() => {
+        setTimeout(async () => {
           if (userData.user_type === 'driver') {
             // Redirecting driver to status check
             // Sürücü için durum kontrolü yap
             checkDriverStatusAndRedirect(authToken);
           } else {
-          // Redirecting customer to info check
-            // Normal kullanıcı için bilgi kontrolü yap
-            checkCustomerInfoAndRedirect(userData);
+            // Redirecting customer to info check
+            // Normal kullanıcı için önce profil bilgilerini güncelle
+            try {
+              await refreshProfile();
+              // refreshProfile sonrası güncel user state'ini kontrol et
+              // Biraz bekle ki state güncellensin
+              setTimeout(async () => {
+                const currentUser = user;
+                console.log('VERIFY SMS - Current user after refreshProfile:', currentUser);
+                
+                // Güncel user verisini AsyncStorage'a kaydet
+                if (currentUser) {
+                  try {
+                    await AsyncStorage.setItem('user_data', JSON.stringify(currentUser));
+                    console.log('VERIFY SMS - Updated user data saved to AsyncStorage');
+                  } catch (storageError) {
+                    console.error('VERIFY SMS - Error saving user data to AsyncStorage:', storageError);
+                  }
+                }
+                
+                if (currentUser && currentUser.first_name && currentUser.last_name) {
+                  checkCustomerInfoAndRedirect(currentUser);
+                } else {
+                  // Kullanıcı giriş yapmış, direkt home'a yönlendir
+                  console.log('VERIFY SMS - User authenticated, redirecting to home');
+                  router.replace('/home');
+                }
+              }, 200);
+            } catch (error) {
+              console.error('VERIFY SMS - refreshProfile error:', error);
+              // Hata durumunda userData ile devam et
+              checkCustomerInfoAndRedirect(userData);
+            }
           }
         }, 100);
         
@@ -619,16 +662,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Müşteri bilgi kontrolü yap ve yönlendir
   const checkCustomerInfoAndRedirect = (userData: User) => {
-    // Checking customer info for redirect
-    // Ad/soyad eksikse user-info ekranına yönlendir
-    if (!userData.full_name || userData.full_name.trim().length === 0) {
-      // User info incomplete - redirecting to user-info
-      router.replace('/user-info');
-    } else {
-      // User info complete - redirecting to home
-      // Bilgiler tamamsa ana ekrana yönlendir
-      router.replace('/home');
-    }
+    console.log('AUTH CONTEXT - checkCustomerInfoAndRedirect called with:', userData);
+    
+    // Kullanıcı giriş yapmış, direkt home'a yönlendir
+    console.log('AUTH CONTEXT - User authenticated - redirecting to home');
+    router.replace('/home');
   };
 
   const logout = async (): Promise<void> => {
@@ -748,8 +786,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await response.json();
 
       if (data.success) {
+        console.log('REFRESH PROFILE - Setting user data:', data.data);
         setUser(data.data);
         await AsyncStorage.setItem('user_data', JSON.stringify(data.data));
+        console.log('REFRESH PROFILE - User data saved to AsyncStorage');
       }
     } catch (error) {
       console.error('Refresh profile error:', error);

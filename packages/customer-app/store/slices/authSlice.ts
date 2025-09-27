@@ -7,7 +7,9 @@ import { router } from 'expo-router';
 interface User {
   id: number;
   phone: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
+  full_name?: string; // Backward compatibility için opsiyonel
   email?: string;
   user_type: 'passenger' | 'driver';
   is_verified: boolean;

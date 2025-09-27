@@ -1,54 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server';
 import DatabaseConnection from '../../../../config/database';
-import { authenticateToken } from '../../../../middleware/auth';
-import SystemSettingsService from '../../../../services/systemSettingsService';
+import SocketServer from '../../../../socket/socketServer';
 
-interface CheckAvailabilityRequest {
-  pickupLatitude: number;
-  pickupLongitude: number;
-  vehicleTypeId?: number;
-}
-
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(request: NextRequest) {
   try {
-    // Authenticate user
-    const authResult = await authenticateToken(request);
-    if (!authResult.success || !authResult.user) {
-      return NextResponse.json(
-        { success: false, error: 'Yetkisiz erişim' },
-        { status: 401 }
-      );
-    }
+    const { pickupLatitude, pickupLongitude, vehicleTypeId } = await request.json();
 
-    const body = await request.json();
-    const { pickupLatitude, pickupLongitude, vehicleTypeId } = body as CheckAvailabilityRequest;
-
-    // Validate required fields
+    // Validate required parameters
     if (!pickupLatitude || !pickupLongitude) {
       return NextResponse.json(
-        { success: false, error: 'Konum bilgileri gerekli' },
+        { error: 'Pickup latitude and longitude are required' },
         { status: 400 }
       );
     }
 
-    if (isNaN(pickupLatitude) || isNaN(pickupLongitude)) {
+    // Validate coordinates
+    if (
+      isNaN(pickupLatitude) || isNaN(pickupLongitude) ||
+      pickupLatitude < -90 || pickupLatitude > 90 ||
+      pickupLongitude < -180 || pickupLongitude > 180
+    ) {
       return NextResponse.json(
-        { success: false, error: 'Geçersiz konum bilgisi' },
+        { error: 'Invalid coordinates' },
         { status: 400 }
       );
     }
 
-    // Get system settings
-    const systemSettings = SystemSettingsService.getInstance();
-    const searchRadius = await systemSettings.getSetting('driver_search_radius_km', 15);
-    const locationUpdateInterval = await systemSettings.getSetting('driver_location_update_interval_minutes', 10);
+    console.log(`🔍 Check availability request: lat=${pickupLatitude}, lng=${pickupLongitude}, vehicleType=${vehicleTypeId || 'any'}`);
 
-    // Connect to database
+    // HYBRID APPROACH: Try socket memory first, fallback to database
+    // const socketServer = null; // Socket server instance will be available from global state
+    let result;
+
+    // For now, always use database approach
+    console.log('⚠️ Using database approach');
+    result = await checkAvailabilityFromDatabase(pickupLatitude, pickupLongitude, vehicleTypeId);
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error || 'Failed to check driver availability' },
+        { status: 500 }
+      );
+    }
+
+    console.log(`✅ Availability check result: ${result.driverCount} drivers available (source: ${result.source})`);
+
+    return NextResponse.json({
+      available: result.available,
+      driverCount: result.driverCount,
+      searchRadius: result.searchRadius,
+      source: result.source,
+      timestamp: result.timestamp
+    });
+
+  } catch (error) {
+    console.error('❌ Error checking driver availability:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// Fallback database function for when socket server is not available
+async function checkAvailabilityFromDatabase(pickupLatitude: number, pickupLongitude: number, vehicleTypeId?: number) {
+  try {
     const db = DatabaseConnection.getInstance();
     const pool = await db.connect();
 
-    // Check for nearby available drivers
-    const query = `
+    // Get system settings for search radius and location update interval
+    const settingsResult = await pool.request().query(`
+      SELECT setting_key, setting_value 
+      FROM system_settings 
+      WHERE setting_key IN ('driver_search_radius_km', 'driver_location_update_interval_minutes')
+    `);
+
+    const settings: { [key: string]: number } = {};
+    settingsResult.recordset.forEach((row: any) => {
+      settings[row.setting_key] = parseFloat(row.setting_value);
+    });
+
+    const searchRadiusKm = settings['driver_search_radius_km'] || 5;
+    const locationUpdateIntervalMinutes = settings['driver_location_update_interval_minutes'] || 10;
+
+    console.log(`🔧 Database settings: radius=${searchRadiusKm}km, locationInterval=${locationUpdateIntervalMinutes}min`);
+
+    // Build the query
+    let query = `
       SELECT COUNT(*) as driverCount
       FROM drivers d
       INNER JOIN users u ON d.user_id = u.id
@@ -64,44 +102,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             sin(radians(@latitude)) * sin(radians(u.current_latitude))
           )
         ) <= @radius
-        AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= @locationUpdateInterval
-        ${vehicleTypeId ? 'AND d.vehicle_type_id = @vehicleTypeId' : ''}
+        AND ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) <= @locationInterval
     `;
 
-    const dbRequest = pool.request()
+    const request = pool.request()
       .input('latitude', pickupLatitude)
       .input('longitude', pickupLongitude)
-      .input('radius', searchRadius)
-      .input('locationUpdateInterval', locationUpdateInterval);
-    
+      .input('radius', searchRadiusKm)
+      .input('locationInterval', locationUpdateIntervalMinutes);
+
+    // Add vehicle type filter if specified
     if (vehicleTypeId) {
-      dbRequest.input('vehicleTypeId', vehicleTypeId);
+      query += ' AND d.vehicle_type_id = @vehicleTypeId';
+      request.input('vehicleTypeId', vehicleTypeId);
     }
 
-    const result = await dbRequest.query(query);
-
+    const result = await request.query(query);
     const driverCount = result.recordset[0]?.driverCount || 0;
-    const hasAvailableDrivers = driverCount > 0;
 
-    return NextResponse.json({
+    return {
       success: true,
-      available: hasAvailableDrivers,
-      hasAvailableDrivers,
-      nearbyDriversCount: driverCount,
-      driverCount,
-      estimatedWaitTime: hasAvailableDrivers ? 5 : 0, // 5 dakika tahmini bekleme süresi
-      searchRadius,
-      message: hasAvailableDrivers 
-        ? `${driverCount} sürücü bulundu (${searchRadius}km yarıçapında)`
-        : `${searchRadius}km yarıçapında müsait sürücü bulunamadı`
-    });
+      source: 'database_only',
+      available: driverCount > 0,
+      driverCount: driverCount,
+      searchRadius: searchRadiusKm,
+      timestamp: new Date()
+    };
 
-  } catch (error) {
-    console.error('Check driver availability error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Sürücü kontrolü yapılırken hata oluştu' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error('❌ Database availability check failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 

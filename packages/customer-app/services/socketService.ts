@@ -150,20 +150,7 @@ class SocketService {
     this.socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
       this.isConnected = false;
-      
-      // Sadece birkaç deneme sonrasında ve daha önce gösterilmemişse modal göster
-      if (this.reconnectAttempts >= 3 && !this.hasShownConnectionError) {
-        this.hasShownConnectionError = true;
-        // Timeout hatası özel olarak handle et
-        if (error.message.includes('timeout')) {
-          // Connection timeout, will retry with different transport
-          this.emit('connection_error', { error: 'Bağlantı zaman aşımı. Yeniden deneniyor...' });
-        } else {
-          this.emit('connection_error', { error: error.message });
-        }
-      }
-      
-      // handleReconnection() çağrısını kaldırdık - disconnect event'inde zaten var
+      this.emit('connection_error', { error: error.message });
     });
 
     // Order related events

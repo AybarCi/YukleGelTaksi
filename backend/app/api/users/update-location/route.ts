@@ -64,8 +64,8 @@ export async function PUT(request: NextRequest) {
         UPDATE users 
         SET current_latitude = @latitude,
             current_longitude = @longitude,
-            last_location_update = GETDATE(),
-            updated_at = GETDATE()
+            last_location_update = DATEADD(hour, 3, GETDATE()),
+          updated_at = DATEADD(hour, 3, GETDATE())
         WHERE id = @user_id
       `);
 

@@ -7,28 +7,23 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
-  Image,
   TextInput,
-  Switch,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
   Dimensions,
   ActivityIndicator,
   Animated,
-  PanResponder,
-  Alert,
-  Linking,
+  PanResponder
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 
 // Lazy loaded map component for better performance
 
-import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useCameraPermissions } from 'expo-image-picker';
@@ -2220,18 +2215,6 @@ function HomeScreen() {
               </>
             ) : (
               <NewOrderForm
-                onOrderCreated={async () => {
-                  // Eğer zaten bir fetchActiveOrders çağrısı devam ediyorsa, yeni çağrı yapma
-                  if (!isFetchingActiveOrders) {
-                    // Sipariş oluşturulduktan sonra aktif siparişleri yeniden yükle
-                    await dispatch(fetchActiveOrders());
-                  }
-                  
-                  // Kısa bir gecikme ile harita odaklama işlemini tetikle
-                  setTimeout(() => {
-                    // reduxCurrentOrder useEffect'i otomatik olarak tetiklenecek
-                  }, 1000);
-                }}
                 userLocation={userLocation}
                 distance={distance || undefined}
                 estimatedPrice={estimatedPrice || undefined}

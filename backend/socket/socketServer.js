@@ -142,21 +142,129 @@ class SocketServer extends EventEmitter {
     }
   }
 
-  addAllDriversToCustomerRoom(customerId) {
-    const customerRoom = roomUtils.getCustomerRoomId(customerId);
-    const connectedDriverIds = Array.from(this.connectedDrivers.keys());
-    console.log(`👥 Adding ${connectedDriverIds.length} drivers to customer ${customerId} room`);
-    
-    connectedDriverIds.forEach(driverId => {
-      const driverData = this.connectedDrivers.get(driverId);
-      if (driverData) {
-        const driverSocket = this.io.sockets.sockets.get(driverData.socketId);
-        if (driverSocket) {
-          driverSocket.join(customerRoom);
-          console.log(`✅ Driver ${driverId} joined customer room: ${customerRoom}`);
-        }
+  async addAllDriversToCustomerRoom(customerId) {
+    try {
+      const customerRoom = roomUtils.getCustomerRoomId(customerId);
+      const connectedDriverIds = Array.from(this.connectedDrivers.keys());
+      console.log(`👥 Checking ${connectedDriverIds.length} drivers for customer ${customerId} room with radius control`);
+      
+      // Müşterinin konum bilgisini al
+      const customerData = this.connectedCustomers.get(customerId);
+      if (!customerData || !customerData.location) {
+        console.log(`⚠️ Customer ${customerId} has no location, cannot add drivers to room`);
+        return;
       }
-    });
+
+      // Sistem ayarlarından arama yarıçapını ve konum güncellik süresini al
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      const settingsResult = await pool.request()
+        .query(`SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('driver_search_radius_km', 'driver_location_update_interval_minutes') AND is_active = 'true'`);
+      
+      const settings = {};
+      settingsResult.recordset.forEach(row => {
+        settings[row.setting_key] = parseFloat(row.setting_value);
+      });
+      
+      const searchRadiusKm = settings['driver_search_radius_km'] || 5; // varsayılan 5km
+      const locationUpdateIntervalMinutes = settings['driver_location_update_interval_minutes'] || 10; // varsayılan 10 dakika
+      
+      console.log(`🎯 Search radius for customer room assignment: ${searchRadiusKm} km`);
+      console.log(`⏰ Location update interval: ${locationUpdateIntervalMinutes} minutes`);
+
+      // Bağlı sürücülerin veritabanı durumlarını kontrol et
+      if (connectedDriverIds.length === 0) {
+        console.log(`⚠️ No connected drivers to check for customer ${customerId}`);
+        return;
+      }
+
+      const driverIds = connectedDriverIds.map(id => parseInt(id)).filter(id => !isNaN(id));
+      if (driverIds.length === 0) {
+        console.log(`⚠️ No valid driver IDs found for customer ${customerId}`);
+        return;
+      }
+
+      // Veritabanından sürücü durumlarını kontrol et (is_approved, is_active, is_available ve konum güncellik)
+      const driverValidationResult = await pool.request()
+        .query(`
+          SELECT 
+            d.id,
+            d.is_approved,
+            d.is_active,
+            d.is_available,
+            u.current_latitude,
+            u.current_longitude,
+            u.last_location_update,
+            ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) as minutes_since_update
+          FROM drivers d
+          INNER JOIN users u ON d.user_id = u.id
+          WHERE d.id IN (${driverIds.join(',')})
+            AND d.is_approved = 1
+            AND d.is_active = 1
+            AND d.is_available = 1
+            AND u.current_latitude IS NOT NULL 
+            AND u.current_longitude IS NOT NULL
+            AND ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) <= ${locationUpdateIntervalMinutes}
+        `);
+
+      const validDriversFromDB = new Set();
+      const driverLocationsFromDB = new Map();
+      
+      driverValidationResult.recordset.forEach(driver => {
+        validDriversFromDB.add(driver.id.toString());
+        driverLocationsFromDB.set(driver.id.toString(), {
+          latitude: driver.current_latitude,
+          longitude: driver.current_longitude,
+          lastUpdate: driver.last_location_update,
+          minutesSinceUpdate: driver.minutes_since_update
+        });
+      });
+
+      console.log(`🔍 Database validation: ${driverValidationResult.recordset.length} out of ${connectedDriverIds.length} drivers passed all criteria (approved, active, available, recent location)`);
+
+      let joinedDrivers = 0;
+      
+      connectedDriverIds.forEach(driverId => {
+        const driverData = this.connectedDrivers.get(driverId);
+        
+        // Önce veritabanı validasyonunu kontrol et
+        if (!validDriversFromDB.has(driverId)) {
+          console.log(`❌ Driver ${driverId} skipped - failed database validation (not approved/active/available or stale location)`);
+          return;
+        }
+        
+        if (driverData && driverData.location && driverData.isAvailable) {
+          const driverSocket = this.io.sockets.sockets.get(driverData.socketId);
+          if (driverSocket) {
+            // Mesafe kontrolü yap (memory'deki konum ile)
+            const distance = this.calculateDistance(
+              customerData.location.latitude,
+              customerData.location.longitude,
+              driverData.location.latitude,
+              driverData.location.longitude
+            );
+            
+            // Yarıçap içindeyse room'a ekle
+            if (distance <= searchRadiusKm) {
+              driverSocket.join(customerRoom);
+              joinedDrivers++;
+              const dbLocation = driverLocationsFromDB.get(driverId);
+              console.log(`✅ Driver ${driverId} joined customer room: ${customerRoom} (${distance.toFixed(2)}km) - DB location updated ${dbLocation?.minutesSinceUpdate || 'N/A'} minutes ago`);
+            } else {
+              console.log(`❌ Driver ${driverId} too far for customer ${customerId} (${distance.toFixed(2)}km > ${searchRadiusKm}km)`);
+            }
+          }
+        } else {
+          console.log(`⚠️ Driver ${driverId} skipped - no location in memory or not available in memory`);
+        }
+      });
+      
+      console.log(`🏠 Added ${joinedDrivers} drivers to customer ${customerId} room out of ${connectedDriverIds.length} total drivers`);
+      
+    } catch (error) {
+      console.error(`❌ Error adding drivers to customer ${customerId} room:`, error);
+    }
   }
 
   setupSocketHandlers() {
@@ -506,7 +614,7 @@ class SocketServer extends EventEmitter {
     });
   }
 
-  handleCustomerConnection(socket) {
+  async handleCustomerConnection(socket) {
     const customerId = socket.userId;
     
     // Eğer bu müşteri zaten bağlıysa, eski bağlantıyı temizle
@@ -532,8 +640,8 @@ class SocketServer extends EventEmitter {
     socket.join(customerRoom);
     console.log(`🏠 Customer ${customerId} joined private room: ${customerRoom} (Socket: ${socket.id})`);
     
-    // Tüm bağlı sürücüleri bu müşterinin odasına ekle
-    this.addAllDriversToCustomerRoom(customerId);
+    // Tüm bağlı sürücüleri bu müşterinin odasına ekle (yarıçap kontrolü ile)
+    await this.addAllDriversToCustomerRoom(customerId);
     
     console.log(`👤 Customer ${customerId} connected`);
 
@@ -707,24 +815,58 @@ class SocketServer extends EventEmitter {
 
   async updateDriverLocation(driverId, location) {
     try {
+      console.log(`🔍 DEBUG: updateDriverLocation called for driver ${driverId} with location:`, location);
+      
       // Önce memory'deki bilgiyi güncelle (anlık takip için)
       const driverInfo = this.connectedDrivers.get(driverId);
       if (driverInfo) {
         driverInfo.location = location;
         console.log(`📍 Driver ${driverId} location updated in memory:`, location);
+      } else {
+        console.log(`⚠️ WARNING: Driver ${driverId} not found in connectedDrivers map`);
       }
 
       // Sonra veritabanını güncelle (persistence için)
+      console.log(`💾 DEBUG: Attempting to update database for driver ${driverId}`);
       const db = DatabaseConnection.getInstance();
-      await db.query(
-        'UPDATE users SET current_latitude = @latitude, current_longitude = @longitude, last_location_update = GETDATE() WHERE id = (SELECT user_id FROM drivers WHERE id = @driverId)',
-        { latitude: location.latitude, longitude: location.longitude, driverId: driverId }
-      );
       
-      await db.query(
-        'UPDATE drivers SET last_location_update = GETDATE() WHERE id = @driverId',
-        { driverId: driverId }
-      );
+      // Users tablosunu güncelle
+      console.log(`📝 DEBUG: Updating users table for driver ${driverId}`);
+      try {
+        const usersResult = await db.query(
+          'UPDATE users SET current_latitude = @latitude, current_longitude = @longitude, last_location_update = DATEADD(hour, 3, GETDATE()) WHERE id = (SELECT user_id FROM drivers WHERE id = @driverId)',
+          { latitude: location.latitude, longitude: location.longitude, driverId: driverId }
+        );
+        console.log(`✅ DEBUG: Users table update result:`, usersResult);
+        // UPDATE sorguları için rowsAffected bilgisini kontrol et
+        if (usersResult && usersResult.rowsAffected !== undefined) {
+          console.log(`📊 DEBUG: Users table rows affected:`, usersResult.rowsAffected);
+        } else {
+          console.log(`⚠️ DEBUG: Users table - rowsAffected bilgisi alınamadı:`, usersResult);
+        }
+      } catch (usersError) {
+        console.error(`❌ DEBUG: Users table update error:`, usersError.message);
+        console.error(`🔍 DEBUG: Users table error stack:`, usersError.stack);
+      }
+      
+      // Drivers tablosunu güncelle
+      console.log(`📝 DEBUG: Updating drivers table for driver ${driverId}`);
+      try {
+        const driversResult = await db.query(
+          'UPDATE drivers SET current_latitude = @latitude, current_longitude = @longitude, last_location_update = DATEADD(hour, 3, GETDATE()) WHERE id = @driverId',
+          { latitude: location.latitude, longitude: location.longitude, driverId: driverId }
+        );
+        console.log(`✅ DEBUG: Drivers table update result:`, driversResult);
+        // UPDATE sorguları için rowsAffected bilgisini kontrol et
+        if (driversResult && driversResult.rowsAffected !== undefined) {
+          console.log(`📊 DEBUG: Drivers table rows affected:`, driversResult.rowsAffected);
+        } else {
+          console.log(`⚠️ DEBUG: Drivers table - rowsAffected bilgisi alınamadı:`, driversResult);
+        }
+      } catch (driversError) {
+        console.error(`❌ DEBUG: Drivers table update error:`, driversError.message);
+        console.error(`🔍 DEBUG: Drivers table error stack:`, driversError.stack);
+      }
 
       // 🚀 OPTIMIZASYON: Konum güncellemesi sonrası oda üyeliklerini yeniden düzenle
       const driverSocket = this.getDriverSocket(driverId);
@@ -747,6 +889,7 @@ class SocketServer extends EventEmitter {
       console.log(`✅ Driver ${driverId} location updated in both memory and database`);
     } catch (error) {
       console.error('❌ Error updating driver location:', error);
+      console.error('❌ Error stack:', error.stack);
     }
   }
 
@@ -1092,7 +1235,7 @@ class SocketServer extends EventEmitter {
           UPDATE orders 
           SET cancellation_confirm_code = @confirmCode,
               cancellation_fee = @cancellationFee,
-              updated_at = GETDATE()
+              updated_at = DATEADD(hour, 3, GETDATE())
           WHERE id = @orderId
         `);
       
@@ -1165,7 +1308,7 @@ class SocketServer extends EventEmitter {
         .query(`
           UPDATE orders 
           SET order_status = 'cancelled',
-              updated_at = GETDATE()
+              updated_at = DATEADD(hour, 3, GETDATE())
           WHERE id = @orderId
         `);
 
@@ -1218,7 +1361,7 @@ class SocketServer extends EventEmitter {
       
       const db = DatabaseConnection.getInstance();
       await db.query(
-        'UPDATE users SET current_latitude = @latitude, current_longitude = @longitude, last_location_update = GETDATE(), updated_at = GETDATE() WHERE id = @userId',
+        'UPDATE users SET current_latitude = @latitude, current_longitude = @longitude, last_location_update = DATEADD(hour, 3, GETDATE()), updated_at = DATEADD(hour, 3, GETDATE()) WHERE id = @userId',
         { 
           latitude: location.latitude, 
           longitude: location.longitude, 
@@ -1287,18 +1430,23 @@ class SocketServer extends EventEmitter {
       const customerLocation = customerData.location;
       console.log(`📍 Customer location:`, customerLocation);
 
-      // Sistem ayarlarından arama yarıçapını al
+      // Sistem ayarlarından arama yarıçapını ve konum güncellik süresini al
       const db = DatabaseConnection.getInstance();
       const pool = await db.connect();
       
       const settingsResult = await pool.request()
-        .query(`SELECT setting_value FROM system_settings WHERE setting_key = 'driver_search_radius_km' AND is_active = 1`);
+        .query(`SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('driver_search_radius_km', 'driver_location_update_interval_minutes') AND is_active = 1`);
       
-      const searchRadiusKm = settingsResult.recordset.length > 0 
-        ? parseFloat(settingsResult.recordset[0].setting_value) 
-        : 5; // varsayılan 5km
+      const settings = {};
+      settingsResult.recordset.forEach(row => {
+        settings[row.setting_key] = parseFloat(row.setting_value);
+      });
+      
+      const searchRadiusKm = settings['driver_search_radius_km'] || 5; // varsayılan 5km
+      const locationUpdateIntervalMinutes = settings['driver_location_update_interval_minutes'] || 10; // varsayılan 10 dakika
       
       console.log(`🎯 Search radius: ${searchRadiusKm} km`);
+      console.log(`⏰ Location update interval: ${locationUpdateIntervalMinutes} minutes`);
       
       // Önce mesafe kontrolü yap ve yakın sürücüleri belirle
       const nearbyDriversWithDistance = [];
@@ -1310,7 +1458,7 @@ class SocketServer extends EventEmitter {
           location: driverData.location
         });
         
-        // Konum ve müsaitlik kontrolü
+        // Konum ve müsaitlik kontrolü (memory'de)
         if (driverData.location && (driverData.isAvailable !== false)) {
           // Mesafe hesapla
           const distance = this.calculateDistance(
@@ -1333,7 +1481,7 @@ class SocketServer extends EventEmitter {
             console.log(`❌ Driver ${driverId} skipped - outside radius (${distance.toFixed(2)}km > ${searchRadiusKm}km)`);
           }
         } else {
-          console.log(`❌ Driver ${driverId} skipped - no location or not available`);
+          console.log(`❌ Driver ${driverId} skipped - no location or not available in memory`);
         }
       }
 
@@ -1344,7 +1492,7 @@ class SocketServer extends EventEmitter {
         return;
       }
 
-      // Batch query ile tüm yakın sürücülerin bilgilerini tek seferde al
+      // Batch query ile tüm yakın sürücülerin bilgilerini tek seferde al ve veritabanı validasyonu yap
       const driverIds = nearbyDriversWithDistance.map(item => item.driverId);
       
       // Debug: Driver ID'lerini ve tiplerini logla
@@ -1404,6 +1552,7 @@ class SocketServer extends EventEmitter {
         request.input(`driverId${index}`, sql.VarChar, driverId);
       });
       
+      // Veritabanı validasyonu: is_approved, is_active, is_available ve konum güncellik kontrolü
       const driversResult = await request
         .query(`
           SELECT 
@@ -1414,10 +1563,24 @@ class SocketServer extends EventEmitter {
             d.vehicle_model,
             d.vehicle_color,
             d.is_active,
-            d.is_available
+            d.is_available,
+            d.is_approved,
+            u.current_latitude,
+            u.current_longitude,
+            u.last_location_update,
+            ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) as minutes_since_update
           FROM drivers d
-          WHERE d.id IN (${driverIdsParams}) AND d.is_active = 'true'
+          INNER JOIN users u ON d.user_id = u.id
+          WHERE d.id IN (${driverIdsParams}) 
+            AND d.is_active = 1
+            AND d.is_available = 1
+            AND d.is_approved = 1
+            AND u.current_latitude IS NOT NULL 
+            AND u.current_longitude IS NOT NULL
+            AND ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) <= ${locationUpdateIntervalMinutes}
         `);
+
+      console.log(`🔍 Database validation: ${driversResult.recordset.length} out of ${validDriverIds.length} drivers passed all criteria (approved, active, available, recent location)`);
 
       // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için)
       const driversMap = new Map();
@@ -1425,7 +1588,7 @@ class SocketServer extends EventEmitter {
         driversMap.set(driver.id.toString(), driver);
       });
 
-      // Final liste oluştur
+      // Final liste oluştur - sadece veritabanı validasyonunu geçen sürücüler
       const connectedDriversWithLocation = [];
       
       for (const item of nearbyDriversWithDistance) {
@@ -1441,10 +1604,12 @@ class SocketServer extends EventEmitter {
             name: driver.first_name,
             vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
             plate: driver.vehicle_plate,
-            distance: item.distance
+            distance: item.distance,
+            dbLocationUpdateMinutes: driver.minutes_since_update
           });
+          console.log(`✅ Driver ${driver.id} included - DB location updated ${driver.minutes_since_update} minutes ago`);
         } else {
-          console.log(`❌ Driver ${item.driverId} not found in database or not active`);
+          console.log(`❌ Driver ${item.driverId} excluded - failed database validation (not approved/active/available or stale location)`);
         }
       }
       
@@ -1453,7 +1618,7 @@ class SocketServer extends EventEmitter {
       
       const drivers = connectedDriversWithLocation;
       
-      console.log(`🚗 Available drivers within ${searchRadiusKm}km radius: ${drivers.length}`);
+      console.log(`🚗 Available drivers within ${searchRadiusKm}km radius after all validations: ${drivers.length}`);
       if (drivers.length > 0) {
         console.log(`📍 Driver locations:`, drivers.map(d => ({ 
           id: d.id, 
@@ -1461,7 +1626,8 @@ class SocketServer extends EventEmitter {
           lng: d.longitude,
           heading: d.heading,
           name: d.name,
-          distance: `${d.distance.toFixed(2)}km`
+          distance: `${d.distance.toFixed(2)}km`,
+          dbUpdateMinutes: d.dbLocationUpdateMinutes
         })));
       }
 
@@ -1775,13 +1941,19 @@ class SocketServer extends EventEmitter {
       // Batch query ile tüm uygun sürücülerin araç tiplerini ve durumlarını al
       const driverIds = eligibleDrivers.map(item => item.driverId);
       
+      // Eğer hiç uygun sürücü yoksa SQL query'sini çalıştırmaya gerek yok
+      if (driverIds.length === 0) {
+        console.log(`📍 No eligible drivers found for order ${orderId} - skipping database validation`);
+        return;
+      }
+      
       // SQL Injection güvenlik açığını kapatmak için parameterized query kullan
       const driverIdsParams = driverIds.map((_, index) => `@driverId${index}`).join(',');
       const request = pool.request();
       
       // Her driver ID'yi ayrı parametre olarak ekle
       driverIds.forEach((driverId, index) => {
-        request.input(`driverId${index}`, sql.VarChar, driverId);
+        request.input(`driverId${index}`, sql.Int, parseInt(driverId));
       });
       
       // Sistem ayarlarından konum güncelleme aralığını al
@@ -1810,7 +1982,7 @@ class SocketServer extends EventEmitter {
             AND d.is_available = 1
             AND u.current_latitude IS NOT NULL 
             AND u.current_longitude IS NOT NULL
-            AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= @locationUpdateInterval
+            AND ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) <= @locationUpdateInterval
         `);
 
       // Veritabanı sonuçlarını Map'e çevir (hızlı erişim için) - sadece geçerli sürücüler
@@ -2096,6 +2268,145 @@ class SocketServer extends EventEmitter {
       
     } catch (error) {
       console.error('❌ Error during room membership validation:', error);
+    }
+  }
+
+  /**
+   * Hybrid approach: Check driver availability from socket memory first
+   * Falls back to database if socket data is insufficient
+   */
+  async checkDriverAvailabilityFromMemory(pickupLatitude, pickupLongitude, searchRadiusKm = 5, vehicleTypeId = null) {
+    try {
+      console.log(`🔍 Hybrid check: Looking for drivers near ${pickupLatitude}, ${pickupLongitude} within ${searchRadiusKm}km`);
+      
+      const availableDrivers = [];
+      const currentTime = new Date();
+      const maxLocationAge = 10 * 60 * 1000; // 10 dakika (milliseconds)
+      
+      // Socket memory'den kontrol et
+      for (const [driverId, driverData] of this.connectedDrivers) {
+        // Temel kontroller
+        if (!driverData.location || 
+            driverData.isAvailable === false || 
+            driverData.isActive === false ||
+            driverData.isApproved === false) {
+          continue;
+        }
+        
+        // Araç tipi kontrolü
+        if (vehicleTypeId && driverData.vehicleTypeId !== vehicleTypeId) {
+          continue;
+        }
+        
+        // Konum güncellik kontrolü
+        const locationAge = currentTime - new Date(driverData.lastLocationUpdate);
+        if (locationAge > maxLocationAge) {
+          console.log(`⚠️ Driver ${driverId} location too old: ${Math.round(locationAge/1000/60)} minutes`);
+          continue;
+        }
+        
+        // Mesafe kontrolü
+        const distance = this.calculateDistance(
+          pickupLatitude,
+          pickupLongitude,
+          driverData.location.latitude,
+          driverData.location.longitude
+        );
+        
+        if (distance <= searchRadiusKm) {
+          availableDrivers.push({
+            driverId: parseInt(driverId),
+            distance: distance,
+            location: driverData.location,
+            vehicleTypeId: driverData.vehicleTypeId,
+            lastUpdate: driverData.lastLocationUpdate
+          });
+        }
+      }
+      
+      // Mesafeye göre sırala
+      availableDrivers.sort((a, b) => a.distance - b.distance);
+      
+      console.log(`✅ Hybrid check result: ${availableDrivers.length} available drivers found in socket memory`);
+      
+      return {
+        success: true,
+        source: 'socket_memory',
+        available: availableDrivers.length > 0,
+        driverCount: availableDrivers.length,
+        drivers: availableDrivers.slice(0, 10), // İlk 10 sürücü
+        searchRadius: searchRadiusKm,
+        timestamp: currentTime
+      };
+      
+    } catch (error) {
+      console.error('❌ Socket memory check failed:', error);
+      
+      // Fallback to database
+      return await this.checkDriverAvailabilityFromDatabase(pickupLatitude, pickupLongitude, searchRadiusKm, vehicleTypeId);
+    }
+  }
+  
+  /**
+   * Fallback: Database check when socket memory fails
+   */
+  async checkDriverAvailabilityFromDatabase(pickupLatitude, pickupLongitude, searchRadiusKm = 5, vehicleTypeId = null) {
+    try {
+      console.log(`🗄️ Fallback: Checking database for driver availability`);
+      
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      const query = `
+        SELECT COUNT(*) as driverCount
+        FROM drivers d
+        INNER JOIN users u ON d.user_id = u.id
+        WHERE d.is_available = 1 
+          AND d.is_active = 1
+          AND d.is_approved = 1
+          AND u.current_latitude IS NOT NULL 
+          AND u.current_longitude IS NOT NULL
+          AND (
+            6371 * acos(
+              cos(radians(@latitude)) * cos(radians(u.current_latitude)) *
+              cos(radians(u.current_longitude) - radians(@longitude)) +
+              sin(radians(@latitude)) * sin(radians(u.current_latitude))
+            )
+          ) <= @radius
+          AND ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) <= 10
+          ${vehicleTypeId ? 'AND d.vehicle_type_id = @vehicleTypeId' : ''}
+      `;
+      
+      const request = pool.request()
+        .input('latitude', pickupLatitude)
+        .input('longitude', pickupLongitude)
+        .input('radius', searchRadiusKm);
+      
+      if (vehicleTypeId) {
+        request.input('vehicleTypeId', vehicleTypeId);
+      }
+      
+      const result = await request.query(query);
+      const driverCount = result.recordset[0]?.driverCount || 0;
+      
+      console.log(`✅ Database fallback result: ${driverCount} drivers found`);
+      
+      return {
+        success: true,
+        source: 'database_fallback',
+        available: driverCount > 0,
+        driverCount: driverCount,
+        searchRadius: searchRadiusKm,
+        timestamp: new Date()
+      };
+      
+    } catch (error) {
+      console.error('❌ Database fallback also failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        source: 'failed'
+      };
     }
   }
 }

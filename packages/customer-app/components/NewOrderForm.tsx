@@ -541,13 +541,15 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         
         // All other modals closed, showing success modal
         
-        // Modal state'ini hemen güncelle - DISABLED to prevent modal conflict
-        // setNewOrderCreatedModalVisible(true);
-        // NewOrderCreatedModal visibility set to true - DISABLED
+        // Modal state'ini hemen güncelle
+        setNewOrderCreatedModalVisible(true);
+        // NewOrderCreatedModal visibility set to true
         
-        // Callback'i çağır
-        onOrderCreated?.();
-        // onOrderCreated callback called
+        // Callback'i çağır - delay it to show modal first
+        setTimeout(() => {
+          onOrderCreated?.();
+        }, 2000); // Show modal for 2 seconds before calling callback
+        // onOrderCreated callback called with delay
         
       } else {
         console.error('❌ Invalid order creation result:', result);

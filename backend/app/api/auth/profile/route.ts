@@ -57,17 +57,31 @@ export async function GET(request: NextRequest) {
     const userData = {
       id: user.id,
       phone: user.phone,
-      full_name: user.full_name,
+      full_name: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.full_name,
+      first_name: user.first_name,
+      last_name: user.last_name,
       email: user.email,
       user_type: user.user_type,
       is_verified: user.is_verified,
-      profile_image: user.profile_image,
+      profile_image: user.profile_image_url,
       date_of_birth: user.date_of_birth,
       gender: user.gender,
       wallet_balance: user.wallet_balance || 0,
       created_at: user.created_at,
       updated_at: user.updated_at
     };
+
+    console.log('🔍 PROFILE API - Kullanıcı veritabanından alınan ham veri:', {
+      id: user.id,
+      phone: user.phone,
+      full_name: user.full_name,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      email: user.email,
+      user_type: user.user_type
+    });
+
+    console.log('📤 PROFILE API - Frontend\'e gönderilen userData:', userData);
 
     return NextResponse.json({
       success: true,

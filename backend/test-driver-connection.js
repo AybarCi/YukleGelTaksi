@@ -4,13 +4,13 @@ const jwt = require('jsonwebtoken');
 // Gerçek bir sürücü ID'si kullan (user_id: 32, driver_id: 28)
 const driverToken = jwt.sign(
   { userId: 32, userType: 'driver' },
-  'your-secret-key',
+  process.env.JWT_SECRET || 'yuklegel_taksi_super_secret_key_2024',
   { expiresIn: '24h' }
 );
 
 console.log('Connecting driver (user_id: 32) to socket server...');
 
-const socket = io('http://192.168.1.134:3001', {
+const socket = io('http://localhost:3000', {
   auth: {
     token: driverToken
   },

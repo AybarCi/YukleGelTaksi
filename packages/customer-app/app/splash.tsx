@@ -45,20 +45,16 @@ export default function SplashScreen() {
   useEffect(() => {
     if (!isLoading) {
       const timer = setTimeout(() => {
+        console.log('SPLASH - User data:', user);
+        console.log('SPLASH - Token:', token);
+        
         if (user && token) {
-          // Kullanıcı giriş yapmış
-          if (user.user_type === 'driver') {
-            router.replace('/home');
-          } else {
-            // Müşteri için profil kontrolü
-            if (!user.full_name || user.full_name.trim().length === 0) {
-              router.replace('/user-info');
-            } else {
-              router.replace('/home');
-            }
-          }
+          // Kullanıcı giriş yapmış, direkt home'a yönlendir
+          console.log('SPLASH - User authenticated, redirecting to home');
+          router.replace('/home');
         } else {
           // Kullanıcı giriş yapmamış
+          console.log('SPLASH - No user or token, redirecting to phone-auth');
           router.replace('/phone-auth');
         }
       }, 2000); // 2 saniye splash screen göster

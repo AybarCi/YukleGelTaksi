@@ -98,7 +98,7 @@ export async function POST(request: Request): Promise<Response> {
           WHERE d.is_available = 1 
             AND u.current_latitude IS NOT NULL 
             AND u.current_longitude IS NOT NULL
-            AND DATEDIFF(minute, u.last_location_update, GETDATE()) <= @locationUpdateInterval
+            AND ABS(DATEDIFF(minute, u.last_location_update, DATEADD(hour, 3, GETDATE()))) <= @locationUpdateInterval
         `);
 
       const allDrivers = driversResult.recordset;

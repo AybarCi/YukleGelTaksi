@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -81,6 +81,8 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
   const currentOrder = useSelector((state: RootState) => state.order.currentOrder);
   const dispatch = useDispatch();
   
+  // Modal state kaldırıldı
+  
   // Güncel order'ı kullan (Redux store'dan gelen currentOrder öncelikli)
   const activeOrder = currentOrder || order;
 
@@ -126,6 +128,8 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
         
         // Redux store'u güncelle
         dispatch(setReduxCurrentOrder(updatedOrder));
+        
+        // Modal mantığı kaldırıldı
       }
     };
 
@@ -137,6 +141,8 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
       socketService.off('order_status_update', handleOrderStatusUpdate);
     };
   }, [activeOrder, dispatch]);
+
+  // İnceleme durumu kontrolü kaldırıldı
 
   // Progress bar animasyonunu başlat
   useEffect(() => {
@@ -220,6 +226,8 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
   const handlePress = () => {
     router.push('/order-detail');
   };
+
+  // Modal kapatma fonksiyonu kaldırıldı
 
   return (
     <View style={styles.container}>

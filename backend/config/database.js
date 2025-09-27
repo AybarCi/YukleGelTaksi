@@ -6,7 +6,7 @@ class DatabaseConnection {
   constructor() {
     this.pool = null;
     this.config = {
-      server: process.env.DB_SERVER || 'localhost',
+      server: process.env.DB_SERVER || '192.168.1.6',
       user: process.env.DB_USER || 'sa',
       password: process.env.DB_PASSWORD || 'Ca090353--',
       database: process.env.DB_NAME || 'yuklegeltaksidb',
@@ -94,6 +94,17 @@ class DatabaseConnection {
       });
       
       const result = await request.query(sqlQuery);
+      
+      // UPDATE, INSERT, DELETE sorguları için rowsAffected döndür
+      // SELECT sorguları için recordset döndür
+      const sqlType = sqlQuery.trim().toUpperCase().split(' ')[0];
+      if (['UPDATE', 'INSERT', 'DELETE'].includes(sqlType)) {
+        return {
+          rowsAffected: result.rowsAffected,
+          recordset: result.recordset
+        };
+      }
+      
       return result.recordset;
     } catch (error) {
       console.error('Query error:', error);

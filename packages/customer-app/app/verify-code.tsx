@@ -166,43 +166,38 @@ export default function VerifyCodeScreen() {
             if (userResponse.ok) {
               const userData = await userResponse.json();
               
-              // Sadece full_name kontrolü yap - email opsiyonel
-              // full_name boşsa user-info ekranına yönlendir
-              if (!userData.full_name || userData.full_name.trim() === '') {
-                router.replace('/user-info');
-              } else {
-                router.replace('/home');
-              }
+              // Kullanıcı doğrulandı, direkt home'a yönlendir
+              router.replace('/home');
             } else if (userResponse.status === 404) {
-              // Kullanıcı profili bulunamadı, modal ile bilgilendir ve user-info ekranına yönlendir
-              showModal('Bilgi', 'Profil bilgileriniz bulunamadı. Lütfen bilgilerinizi tamamlayın.', 'info', [
+              // Kullanıcı profili bulunamadı, modal ile bilgilendir ve home'a yönlendir
+              showModal('Bilgi', 'Profil bilgileriniz bulunamadı. Ana sayfaya yönlendiriliyorsunuz.', 'info', [
                 {
                   text: 'Tamam',
-                  onPress: () => router.replace('/user-info')
+                  onPress: () => router.replace('/home')
                 }
               ]);
             } else {
-              // Diğer hatalar için modal göster ve user-info ekranına yönlendir
-              showModal('Hata', `Profil bilgileri alınırken hata oluştu (${userResponse.status}).`, 'error', [
+              // Diğer hatalar için modal göster ve home'a yönlendir
+              showModal('Hata', `Profil bilgileri alınırken hata oluştu (${userResponse.status}). Ana sayfaya yönlendiriliyorsunuz.`, 'error', [
                 {
                   text: 'Tamam',
-                  onPress: () => router.replace('/user-info')
+                  onPress: () => router.replace('/home')
                 }
               ]);
             }
           } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
-              showModal('Hata', 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.', 'error', [
+              showModal('Hata', 'Bağlantı zaman aşımına uğradı. Ana sayfaya yönlendiriliyorsunuz.', 'error', [
                 {
                   text: 'Tamam',
-                  onPress: () => router.replace('/user-info')
+                  onPress: () => router.replace('/home')
                 }
               ]);
             } else {
-              showModal('Hata', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.', 'error', [
+              showModal('Hata', 'Ağ bağlantısı hatası. Ana sayfaya yönlendiriliyorsunuz.', 'error', [
                 {
                   text: 'Tamam',
-                  onPress: () => router.replace('/user-info')
+                  onPress: () => router.replace('/home')
                 }
               ]);
             }
