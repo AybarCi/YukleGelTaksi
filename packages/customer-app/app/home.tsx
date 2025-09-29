@@ -31,7 +31,7 @@ import { useAuth } from '../contexts/AuthContext';
 import socketService from '../services/socketService';
 import { API_CONFIG } from '../config/api';
 import { useAppDispatch, useAppSelector } from '../store';
-import { fetchActiveOrders, fetchCancellationFee, createOrder, setCurrentOrder as setReduxCurrentOrder, clearCurrentOrder } from '../store/slices/orderSlice';
+import { fetchActiveOrders, fetchCancellationFee, createOrder, setCurrentOrder as setReduxCurrentOrder, clearCurrentOrder, setNewOrderCreated } from '../store/slices/orderSlice';
 import { loadVehicleTypes } from '../store/slices/vehicleSlice';
 import { checkDriverAvailability } from '../store/slices/driverSlice';
 import YukKonumuInput, { YukKonumuInputRef } from '../components/YukKonumuInput';
@@ -46,10 +46,12 @@ import PaymentModal from '../components/PaymentModal';
 import ActiveOrderCard from '../components/ActiveOrderCard';
 import NewOrderForm from '../components/NewOrderForm';
 import DriverNotFoundModal from '../components/DriverNotFoundModal';
+import NewOrderCreatedModal from '../components/NewOrderCreatedModal';
 import { DriverMarker, PickupMarker, DestinationMarker } from './components/MapMarkers';
 import { calculateZoomLevel, animateToRegionWithOffset, animateToShowBothPoints } from './utils/mapUtils';
 import { useImagePicker } from './utils/imageUtils';
 import { usePriceCalculation } from './utils/priceUtils';
+import { useSocketEvents } from './hooks/useSocketEvents';
 import { styles } from './styles';
 
 
@@ -74,7 +76,7 @@ interface VehicleType {
 
 function HomeScreen() {
   const dispatch = useAppDispatch();
-  const { currentOrder: reduxCurrentOrder, loading: orderLoading, error: orderError } = useAppSelector(state => state.order);
+  const { currentOrder: reduxCurrentOrder, loading: orderLoading, error: orderError, isNewOrderCreated } = useAppSelector(state => state.order);
   const { vehicleTypes: reduxVehicleTypes, selectedVehicleType: reduxSelectedVehicleType, loading: vehicleLoading } = useAppSelector(state => state.vehicle);
   const { availability: driverAvailability, loading: driverLoading } = useAppSelector(state => state.driver);
   
@@ -97,11 +99,33 @@ function HomeScreen() {
       
       // Aktif sipariş için gerçek yol rotası çiz
       getActiveOrderDirectionsRoute(origin, destination);
+      
+      // Yeni sipariş oluşturulduğunda başarı modalını göster
+      // Sadece yeni oluşturulan siparişlerde göster, sürücü incelemesi sonrası pending durumunda gösterme
+      // Debug: Modal açılma koşullarını kontrol et
+      console.log('🔍 Modal Debug:', {
+        isNewOrderCreated,
+        hasReduxCurrentOrder: !!reduxCurrentOrder,
+        orderStatus: reduxCurrentOrder?.status,
+        hasDriverId: !!reduxCurrentOrder?.driver_id,
+        modalVisible: newOrderCreatedModalVisible
+      });
+
+      // Debug: Marker ve rota durumunu kontrol et
+      console.log('🗺️ Map Debug:', {
+        pickupCoords,
+        destinationCoords,
+        routeCoordinates: routeCoordinates.length,
+        reduxCurrentOrder: !!reduxCurrentOrder,
+        activeOrderPickupCoords,
+        activeOrderDestinationCoords,
+        activeOrderRouteCoordinates: activeOrderRouteCoordinates.length
+      });
     } else {
       // Aktif sipariş yoksa rota koordinatlarını temizle
       setActiveOrderRouteCoordinates([]);
     }
-  }, [reduxCurrentOrder, orderLoading, orderError]);
+  }, [reduxCurrentOrder, orderLoading, orderError, isNewOrderCreated]);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -248,6 +272,34 @@ function HomeScreen() {
   const [userInteractedWithMap, setUserInteractedWithMap] = useState(false);
   const [lastRouteUpdate, setLastRouteUpdate] = useState<number>(0);
   
+  // Socket events hook'unu çağır
+  useSocketEvents(
+    token,
+    setDrivers,
+    setCurrentOrder,
+    currentOrderRef,
+    setAssignedDriver,
+    setIsTrackingDriver,
+    setEstimatedArrival,
+    isTrackingDriver,
+    assignedDriver,
+    mapRef,
+    userInteractedWithMap,
+    currentOrder,
+    setCargoImages,
+    pickupLocationRef,
+    destinationLocationRef,
+    setPickupLocation,
+    setDestinationLocation,
+    setPickupCoords,
+    setDestinationCoords,
+    setSelectedVehicleType,
+    setNotes,
+    setDistance,
+    setRouteDuration,
+    setRouteCoordinates
+  );
+  
   // PanResponder for BottomSheet dragging
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (evt, gestureState) => {
@@ -292,6 +344,58 @@ function HomeScreen() {
   // Cancel order modal için state
   const [cancelOrderModalVisible, setCancelOrderModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  
+  // NewOrderCreated modal için state
+  const [newOrderCreatedModalVisible, setNewOrderCreatedModalVisible] = useState(false);
+  const [createdOrderData, setCreatedOrderData] = useState<any>(null);
+
+  // Modal açılma koşullarını kontrol eden ayrı useEffect
+  useEffect(() => {
+    console.log('🔍 Modal Debug - Separate useEffect:', {
+      isNewOrderCreated,
+      hasReduxCurrentOrder: !!reduxCurrentOrder,
+      orderStatus: reduxCurrentOrder?.status,
+      hasDriverId: !!reduxCurrentOrder?.driver_id,
+      modalVisible: newOrderCreatedModalVisible
+    });
+
+    // isNewOrderCreated flag'i true ise ve modal açık değilse modalı göster
+    if (isNewOrderCreated && 
+        reduxCurrentOrder && 
+        reduxCurrentOrder.status === 'pending' && 
+        !reduxCurrentOrder.driver_id && 
+        !newOrderCreatedModalVisible) {
+      
+      console.log('✅ Modal açılıyor!', reduxCurrentOrder);
+      
+      const orderData = {
+        id: reduxCurrentOrder.id,
+        pickupAddress: reduxCurrentOrder.pickupAddress,
+        destinationAddress: reduxCurrentOrder.destinationAddress,
+        estimatedPrice: reduxCurrentOrder.estimatedPrice || 0,
+        distance: reduxCurrentOrder.distance || 0
+      };
+      
+      setCreatedOrderData(orderData);
+      setNewOrderCreatedModalVisible(true);
+      
+      // Modal açıldıktan sonra flag'i sıfırla
+      dispatch(setNewOrderCreated(false));
+    } else if (isNewOrderCreated) {
+      console.log('❌ Modal açılmadı - koşullar sağlanmadı:', {
+        isNewOrderCreated,
+        hasReduxCurrentOrder: !!reduxCurrentOrder,
+        orderStatus: reduxCurrentOrder?.status,
+        hasDriverId: !!reduxCurrentOrder?.driver_id,
+        modalVisible: newOrderCreatedModalVisible,
+        allConditionsMet: isNewOrderCreated && 
+                         reduxCurrentOrder && 
+                         reduxCurrentOrder.status === 'pending' && 
+                         !reduxCurrentOrder.driver_id && 
+                         !newOrderCreatedModalVisible
+      });
+    }
+  }, [isNewOrderCreated, reduxCurrentOrder, newOrderCreatedModalVisible, dispatch]);
 
   // Aktif sipariş rotası çizildikten sonra haritayı rotaya odakla
   useEffect(() => {
@@ -1299,6 +1403,23 @@ function HomeScreen() {
       showModal('İnceleme Başladı', 'Sürücü siparişinizi inceliyor.', 'info');
     });
 
+    socketService.on('order_inspection_stopped', (data: any) => {
+      // Mevcut siparişi güncelle
+      if (currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+        const updatedOrder = { ...currentOrderRef.current, status: 'in_progress' };
+        setCurrentOrder(updatedOrder);
+        currentOrderRef.current = updatedOrder;
+        AsyncStorage.setItem('currentOrder', JSON.stringify(updatedOrder));
+        
+        // Redux store'u da güncelle
+        dispatch(setReduxCurrentOrder(updatedOrder));
+      }
+      
+      showModal('İnceleme Tamamlandı', 'Sürücü incelemeyi tamamladı, siparişiniz bekleme durumuna geçti.', 'success');
+    });
+
+
+
 
     
     socketService.on('driver_offline', (data: any) => {
@@ -1361,7 +1482,6 @@ function HomeScreen() {
       socketService.off('order_already_taken');
       socketService.off('order_acceptance_confirmed');
       socketService.off('order_phase_update');
-      socketService.off('order_inspection_started');
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
@@ -1802,11 +1922,14 @@ function HomeScreen() {
 
       
       // Redux action ile sipariş oluştur
+      console.log('🚀 Sipariş oluşturuluyor...', orderData);
       const result = await dispatch(createOrder({
         orderData,
         token: token!,
         refreshAuthToken
       })).unwrap();
+      
+      console.log('✅ Sipariş başarıyla oluşturuldu:', result);
       
       // Form alanlarını temizle
       setNotes('');
@@ -2584,6 +2707,16 @@ function HomeScreen() {
         visible={driverNotFoundModalVisible}
         onClose={() => setDriverNotFoundModalVisible(false)}
         message={driverNotFoundMessage}
+      />
+
+      <NewOrderCreatedModal
+        visible={newOrderCreatedModalVisible}
+        onClose={() => {
+          setNewOrderCreatedModalVisible(false);
+          setCreatedOrderData(null);
+          dispatch(setNewOrderCreated(false));
+        }}
+        orderData={createdOrderData}
       />
 
       {/* Loading Splash Screen */}

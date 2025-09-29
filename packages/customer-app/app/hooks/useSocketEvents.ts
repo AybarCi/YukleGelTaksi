@@ -1,16 +1,7 @@
 import React, { useEffect } from 'react';
-import { Alert } from 'react-native';
+import socketService from '../../services/socketService';
 
-const showModal = (title: string, message: string, type: string) => {
-  Alert.alert(title, message);
-};
-
-// Mock socketService for now
-const socketService = {
-  connect: (token: string) => {},
-  on: (event: string, callback: Function) => {},
-  off: (event: string) => {},
-};
+// showModal fonksiyonu kaldırıldı - projede alert kullanılmıyor
 
 export const useSocketEvents = (
   token: string | null,
@@ -39,19 +30,23 @@ export const useSocketEvents = (
   setRouteCoordinates: (coords: any[]) => void
 ) => {
   useEffect(() => {
-    if (token) {
-      socketService.connect(token);
+    if (!token) {
+      console.log('❌ Token yok, socket event listener kurulmuyor');
+      return;
     }
-  }, [token]);
 
-  useEffect(() => {
-    // Socket event listeners
+    console.log('🔌 Socket event listener kuruluyor...');
+
+    // Socket'i token ile bağla
+    socketService.connectWithToken(token);
+
+    // Socket bağlantı event'leri
     socketService.on('connect', () => {
-      console.log('✅ Socket bağlantısı kuruldu');
+      console.log('✅ Socket sunucuya bağlandı');
     });
 
-    socketService.on('disconnect', () => {
-      console.log('❌ Socket bağlantısı kesildi');
+    socketService.on('disconnect', (reason: string) => {
+      console.log('❌ Socket bağlantısı kesildi:', reason);
     });
 
     socketService.on('reconnect', (attemptNumber: number) => {
@@ -66,119 +61,84 @@ export const useSocketEvents = (
       console.log('❌ Socket yeniden bağlanma hatası:', error);
     });
 
-    socketService.on('reconnect_failed', () => {
-      console.log('❌ Socket yeniden bağlanma başarısız');
-    });
-
     socketService.on('max_reconnect_attempts_reached', () => {
       console.log('❌ Maksimum yeniden bağlanma denemesi aşıldı');
-      showModal('Bağlantı Hatası', 'Sunucuya bağlanılamıyor. Lütfen internet bağlantınızı kontrol edin.', 'error');
     });
 
-    // Driver location updates
+    // Authentication event'leri
+    socketService.on('authenticated', (data: any) => {
+      console.log('✅ Socket kimlik doğrulaması başarılı:', data);
+    });
+
+    socketService.on('authentication_error', (error: any) => {
+      console.error('❌ Socket kimlik doğrulama hatası:', error);
+    });
+
+    // Driver location update
     socketService.on('driver_location_update', (data: any) => {
-      if (!data || !data.driverId || typeof data.latitude !== 'number' || typeof data.longitude !== 'number') {
-        return;
-      }
-
-      setDrivers((prevDrivers: any[]) => {
-        if (!Array.isArray(prevDrivers)) {
-          return [{
-            id: data.driverId,
-            latitude: data.latitude,
-            longitude: data.longitude,
-            heading: data.heading || 0
-          }];
-        }
-
-        const existingDriverIndex = prevDrivers.findIndex(d => d && d.id === data.driverId);
-        if (existingDriverIndex >= 0) {
-          const updatedDrivers = [...prevDrivers];
-          updatedDrivers[existingDriverIndex] = {
-            ...updatedDrivers[existingDriverIndex],
-            latitude: data.latitude,
-            longitude: data.longitude,
-            heading: data.heading || updatedDrivers[existingDriverIndex].heading || 0
-          };
-          return updatedDrivers;
-        } else {
-          return [...prevDrivers, {
-            id: data.driverId,
-            latitude: data.latitude,
-            longitude: data.longitude,
-            heading: data.heading || 0
-          }];
-        }
-      });
-
-      // Driver tracking logic
-      if (isTrackingDriver && assignedDriver && assignedDriver.id === data.driverId) {
-        setAssignedDriver((prev: any) => prev ? {
-          ...prev,
-          latitude: data.latitude,
-          longitude: data.longitude,
-          heading: data.heading || prev.heading || 0
-        } : null);
-
-        if (data.estimatedArrival) {
-          setEstimatedArrival(data.estimatedArrival);
-        }
-
-        if (!userInteractedWithMap && mapRef.current && currentOrder) {
-          if (currentOrder.status === 'confirmed' || currentOrder.status === 'in_progress') {
-            mapRef.current.animateToRegion({
+      if (data && data.driverId && data.latitude && data.longitude) {
+        setDrivers(prevDrivers => {
+          const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
+          const existingDriverIndex = currentDrivers.findIndex(driver => driver && driver.id === data.driverId);
+          
+          if (existingDriverIndex !== -1) {
+            const updatedDrivers = [...currentDrivers];
+            updatedDrivers[existingDriverIndex] = {
+              ...updatedDrivers[existingDriverIndex],
               latitude: data.latitude,
               longitude: data.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }, 1000);
-          } else if (currentOrder.status === 'started') {
-            mapRef.current.animateToRegion({
+              heading: data.heading || 0
+            };
+            return updatedDrivers;
+          } else {
+            return [...currentDrivers, {
+              id: data.driverId,
               latitude: data.latitude,
               longitude: data.longitude,
-              latitudeDelta: 0.015,
-              longitudeDelta: 0.015,
-            }, 1000);
+              heading: data.heading || 0,
+              name: data.name || 'Sürücü'
+            }];
           }
+        });
+      }
+    });
+
+    // Driver availability update
+    socketService.on('driver_availability_update', (data: any) => {
+      if (data && data.driverId) {
+        if (data.isAvailable) {
+          // Sürücü müsait oldu
+          setDrivers(prevDrivers => {
+            const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
+            const existingDriver = currentDrivers.find(driver => driver && driver.id === data.driverId);
+            
+            if (!existingDriver && data.latitude && data.longitude) {
+              return [...currentDrivers, {
+                id: data.driverId,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                heading: data.heading || 0,
+                name: data.name || 'Sürücü'
+              }];
+            }
+            return currentDrivers;
+          });
+        } else {
+          // Sürücü müsait değil
+          setDrivers(prevDrivers => {
+            const currentDrivers = Array.isArray(prevDrivers) ? prevDrivers : [];
+            return currentDrivers.filter(driver => driver && driver.id !== data.driverId);
+          });
         }
       }
     });
 
-    // Other socket events
-    socketService.on('nearbyDriversUpdate', (data: any) => {
-      if (data && Array.isArray(data.drivers)) {
-        setDrivers(data.drivers.filter((driver: any) => 
-          driver && 
-          typeof driver === 'object' && 
-          driver.id && 
-          typeof driver.latitude === 'number' && 
-          typeof driver.longitude === 'number'
-        ));
-      }
-    });
-
-    socketService.on('driver_disconnected', (data: any) => {
-      if (data && data.driverId) {
-        setDrivers((prevDrivers: any[]) => 
-          Array.isArray(prevDrivers) 
-            ? prevDrivers.filter(driver => driver && driver.id !== data.driverId)
-            : []
-        );
-      }
-    });
-
-    // Order events
+    // Order accepted event
     socketService.on('order_accepted', (data: any) => {
       console.log('✅ Sipariş kabul edildi:', data);
       
       try {
-        // Güvenlik kontrolleri
-        if (!data) {
-          console.error('❌ order_accepted: data boş');
-          return;
-        }
-        
-        if (data.order) {
+        if (data && data.order) {
           // Order bilgilerini güvenli şekilde güncelle
           if (typeof setCurrentOrder === 'function') {
             setCurrentOrder(data.order);
@@ -188,26 +148,19 @@ export const useSocketEvents = (
             currentOrderRef.current = data.order;
           }
           
-          // Driver bilgilerini kontrol et ve güncelle
-          if (data.driver && data.driver.id) {
-            if (typeof setAssignedDriver === 'function') {
-              setAssignedDriver({
-                ...data.driver,
-                name: data.driver.name || 'Bilinmeyen Sürücü',
-                latitude: data.driver.latitude || 0,
-                longitude: data.driver.longitude || 0
-              });
-            }
-            
+          // Assigned driver bilgilerini güncelle
+          if (data.order.driver && typeof setAssignedDriver === 'function') {
+            setAssignedDriver(data.order.driver);
+          }
+          
+          // Tracking'i başlat
+          if (data.order.driver) {
             if (typeof setIsTrackingDriver === 'function') {
               setIsTrackingDriver(true);
             }
           }
           
-          // Modal göster
-          if (typeof showModal === 'function') {
-            showModal('Sipariş Kabul Edildi', 'Siparişiniz bir sürücü tarafından kabul edildi!', 'success');
-          }
+          console.log('✅ Sipariş kabul edildi - bildirim gösterilmedi (alert yasak)');
         } else {
           console.error('❌ order_accepted: order bilgisi eksik');
         }
@@ -226,8 +179,34 @@ export const useSocketEvents = (
           return;
         }
         
-        if (data.order && data.order.status) {
-          // Order bilgilerini güvenli şekilde güncelle
+        // Yeni format: data.status ve data.orderId
+        if (data.status && data.orderId) {
+          // Mevcut siparişi güncelle
+          if (currentOrderRef && currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+            const updatedOrder = { ...currentOrderRef.current, status: data.status };
+            
+            if (typeof setCurrentOrder === 'function') {
+              setCurrentOrder(updatedOrder);
+            }
+            
+            currentOrderRef.current = updatedOrder;
+          }
+          
+          // Status mesajları
+          const statusMessages: { [key: string]: string } = {
+            'confirmed': 'Sipariş onaylandı, sürücü yola çıkıyor',
+            'in_progress': 'Sürücü yük alma noktasına gidiyor',
+            'started': 'Yük alındı, varış noktasına gidiliyor',
+            'completed': 'Sipariş tamamlandı',
+            'inspecting': 'Siparişiniz inceleniyor'
+          };
+          
+          const status = data.status || 'unknown';
+          const message = data.message || statusMessages[status] || `Sipariş durumu: ${status}`;
+          
+          console.log(`📦 Sipariş durumu güncellendi: ${message} - bildirim gösterilmedi (alert yasak)`);
+        } else if (data.order && data.order.status) {
+          // Eski format desteği
           if (typeof setCurrentOrder === 'function') {
             setCurrentOrder(data.order);
           }
@@ -236,26 +215,68 @@ export const useSocketEvents = (
             currentOrderRef.current = data.order;
           }
           
-          // Status mesajları
           const statusMessages: { [key: string]: string } = {
             'confirmed': 'Sipariş onaylandı, sürücü yola çıkıyor',
             'in_progress': 'Sürücü yük alma noktasına gidiyor',
             'started': 'Yük alındı, varış noktasına gidiliyor',
-            'completed': 'Sipariş tamamlandı'
+            'completed': 'Sipariş tamamlandı',
+            'inspecting': 'Siparişiniz inceleniyor'
           };
           
           const status = data.order.status || 'unknown';
           const message = statusMessages[status] || `Sipariş durumu: ${status}`;
           
-          // Modal göster
-          if (typeof showModal === 'function') {
-            showModal('Sipariş Güncellendi', message, 'info');
-          }
+          console.log(`📦 Sipariş durumu güncellendi: ${message} - bildirim gösterilmedi (alert yasak)`);
         } else {
           console.error('❌ order_status_update: order veya status bilgisi eksik', data);
         }
       } catch (error) {
         console.error('❌ order_status_update event hatası:', error);
+      }
+    });
+
+    // Order inspection stopped event - sürücü incelemeyi bitirdiğinde
+    socketService.on('order_inspection_stopped', (data: any) => {
+      console.log('🔍 Sürücü incelemeyi bitirdi:', data);
+      
+      try {
+        // Güvenlik kontrolleri
+        if (!data) {
+          console.error('❌ order_inspection_stopped: data boş');
+          return;
+        }
+        
+        // Yeni format: data.orderId ve data.status
+        if (data.orderId) {
+          // Mevcut siparişi güncelle
+          if (currentOrderRef && currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+            const updatedOrder = { ...currentOrderRef.current, status: 'in_progress' };
+            
+            if (typeof setCurrentOrder === 'function') {
+              setCurrentOrder(updatedOrder);
+            }
+            
+            currentOrderRef.current = updatedOrder;
+          }
+          
+          const message = data.message || 'Sürücü yük incelemesini tamamladı. Sipariş durumu güncellendi.';
+          console.log(`🔍 İnceleme tamamlandı: ${message} - bildirim gösterilmedi (alert yasak)`);
+        } else if (data.order) {
+          // Eski format desteği
+          if (typeof setCurrentOrder === 'function') {
+            setCurrentOrder(data.order);
+          }
+          
+          if (currentOrderRef && currentOrderRef.current !== undefined) {
+            currentOrderRef.current = data.order;
+          }
+          
+          console.log('🔍 İnceleme tamamlandı - bildirim gösterilmedi (alert yasak)');
+        } else {
+          console.error('❌ order_inspection_stopped: order veya orderId bilgisi eksik', data);
+        }
+      } catch (error) {
+        console.error('❌ order_inspection_stopped event hatası:', error);
       }
     });
 
@@ -273,6 +294,7 @@ export const useSocketEvents = (
       socketService.off('driver_disconnected');
       socketService.off('order_accepted');
       socketService.off('order_status_update');
+      socketService.off('order_inspection_stopped');
     };
   }, []);
 };

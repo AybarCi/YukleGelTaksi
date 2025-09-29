@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { API_CONFIG } from '../config/api';
+import { formatTurkishLira } from './utils/currencyUtils';
 
 interface Shipment {
   id: number;
@@ -263,7 +264,7 @@ export default function ShipmentsScreen() {
         <View style={styles.detailItem}>
           <Ionicons name="cash" size={16} color="#6B7280" />
           <Text style={styles.detailText}>
-            {shipment.total_price} ₺
+            {formatTurkishLira(shipment.total_price)}
           </Text>
         </View>
       </View>
@@ -398,7 +399,7 @@ export default function ShipmentsScreen() {
                 </View>
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Toplam Tutar:</Text>
-                  <Text style={styles.infoValue}>{selectedShipment.total_price} TL</Text>
+                  <Text style={styles.infoValue}>{formatTurkishLira(selectedShipment.total_price)}</Text>
                 </View>
               </View>
 

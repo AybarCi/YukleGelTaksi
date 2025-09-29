@@ -37,6 +37,7 @@ interface OrderState {
   createOrderLoading: boolean;
   checkOrderLoading: boolean;
   cancelOrderLoading: boolean;
+  isNewOrderCreated: boolean; // Yeni sipariş oluşturulduğunu belirten flag
 }
 
 const initialState: OrderState = {
@@ -46,6 +47,7 @@ const initialState: OrderState = {
   createOrderLoading: false,
   checkOrderLoading: false,
   cancelOrderLoading: false,
+  isNewOrderCreated: false,
 };
 
 // Sipariş oluşturma async thunk
@@ -414,6 +416,9 @@ const orderSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    setNewOrderCreated: (state, action: PayloadAction<boolean>) => {
+      state.isNewOrderCreated = action.payload;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -426,6 +431,11 @@ const orderSlice = createSlice({
         state.createOrderLoading = false;
         state.currentOrder = action.payload;
         state.error = null;
+        state.isNewOrderCreated = true; // Yeni sipariş oluşturuldu flag'ini set et
+        console.log('🎯 Redux: isNewOrderCreated set to TRUE', { 
+          currentOrder: action.payload,
+          isNewOrderCreated: state.isNewOrderCreated 
+        });
       })
       .addCase(createOrder.rejected, (state, action) => {
         state.createOrderLoading = false;
@@ -544,6 +554,7 @@ export const {
   updateOrderStatus,
   setDriverInfo,
   clearError,
+  setNewOrderCreated,
 } = orderSlice.actions;
 
 export default orderSlice.reducer;

@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 import { Marker, Callout } from 'react-native-maps';
 import { MaterialIcons } from '@expo/vector-icons';
 import { styles } from '../styles';
+import { formatTurkishLira } from '../utils/currencyUtils';
 
 interface Driver {
   id: string;
@@ -66,7 +67,7 @@ export const PickupMarker = memo(({ coords, estimatedPrice, distance }: {
               <Text style={styles.calloutText}>Mesafe: {distance.toFixed(1)} km</Text>
             )}
             {estimatedPrice && (
-              <Text style={styles.calloutPrice}>Tahmini Ücret: ₺{estimatedPrice.toFixed(2)}</Text>
+              <Text style={styles.calloutPrice}>Tahmini Ücret: {formatTurkishLira(estimatedPrice)}</Text>
             )}
           </View>
         </Callout>
@@ -105,7 +106,7 @@ export const DestinationMarker = memo(({ coords, estimatedPrice, distance }: {
               <Text style={styles.calloutText}>Toplam Mesafe: {distance.toFixed(1)} km</Text>
             )}
             {estimatedPrice && (
-              <Text style={styles.calloutPrice}>Tahmini Ücret: ₺{estimatedPrice.toFixed(2)}</Text>
+              <Text style={styles.calloutPrice}>Tahmini Ücret: {formatTurkishLira(estimatedPrice)}</Text>
             )}
           </View>
         </Callout>

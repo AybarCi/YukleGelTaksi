@@ -8,6 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { formatTurkishLira } from '../../app/utils/currencyUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -112,7 +113,7 @@ const CustomerList: React.FC<CustomerListProps> = ({
         
         <View style={styles.fareInfo}>
           <Text style={styles.distanceText}>{safeDistance}</Text>
-          <Text style={styles.fareText}>₺{safeEstimatedFare}</Text>
+          <Text style={styles.fareText}>{formatTurkishLira(safeEstimatedFare)}</Text>
         </View>
       
         {(safeStatus === 'pending') && (

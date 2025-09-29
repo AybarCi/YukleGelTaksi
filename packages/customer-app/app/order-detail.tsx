@@ -24,6 +24,7 @@ import PaymentModal from '../components/PaymentModal';
 import CancelOrderModal from '../components/CancelOrderModal';
 import SuccessModal from '../components/SuccessModal';
 import { useAuth } from '../contexts/AuthContext';
+import { formatTurkishLira } from './utils/currencyUtils';
 
 interface Order {
   id?: string;
@@ -441,13 +442,13 @@ export default function OrderDetailScreen() {
             {order.total_price && (
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Toplam Tutar:</Text>
-                <Text style={styles.infoValue}>{order.total_price} TL</Text>
+                <Text style={styles.infoValue}>{formatTurkishLira(order.total_price)}</Text>
               </View>
             )}
             {order.estimatedPrice && (
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Tahmini Tutar:</Text>
-                <Text style={styles.infoValue}>{order.estimatedPrice} TL</Text>
+                <Text style={styles.infoValue}>{formatTurkishLira(order.estimatedPrice)}</Text>
               </View>
             )}
             <View style={styles.infoRow}>

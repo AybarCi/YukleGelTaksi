@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_CONFIG } from '../config/api';
+import { formatTurkishLira } from '../app/utils/currencyUtils';
 
 interface Customer {
   id: number;
@@ -215,18 +216,18 @@ const OrderInspectionModal: React.FC<OrderInspectionModalProps> = ({
                   <Text style={styles.sectionTitle}>Fiyat Bilgileri</Text>
                   <View style={styles.priceRow}>
                     <Text style={styles.priceLabel}>Tahmini Ücret:</Text>
-                    <Text style={styles.priceValue}>₺{selectedOrder.estimated_fare.toFixed(2)}</Text>
+                    <Text style={styles.priceValue}>{formatTurkishLira(selectedOrder.estimated_fare)}</Text>
                   </View>
                   {laborCount && parseInt(laborCount) > 0 && (
                     <View style={styles.priceRow}>
                       <Text style={styles.priceLabel}>Hammaliye:</Text>
-                      <Text style={styles.priceValue}>₺{parseInt(laborCount) * laborPrice}</Text>
+                      <Text style={styles.priceValue}>{formatTurkishLira(parseInt(laborCount) * laborPrice)}</Text>
                     </View>
                   )}
                   <View style={[styles.priceRow, styles.totalPriceRow]}>
                     <Text style={styles.totalPriceLabel}>Toplam:</Text>
                     <Text style={styles.totalPriceValue}>
-                      ₺{(selectedOrder.estimated_fare + (laborCount && parseInt(laborCount) > 0 ? parseInt(laborCount) * laborPrice : 0)).toFixed(2)}
+                      {formatTurkishLira(selectedOrder.estimated_fare + (laborCount && parseInt(laborCount) > 0 ? parseInt(laborCount) * laborPrice : 0))}
                     </Text>
                   </View>
                 </View>

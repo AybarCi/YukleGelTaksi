@@ -199,7 +199,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           @destination_address, @destination_latitude, @destination_longitude,
           @cargo_photo_urls, @customer_notes, @distance_km, @weight_kg,
           @vehicle_type_id, @labor_count, @base_price, @distance_price,
-          @labor_price, @total_price, 'pending', GETDATE()
+          @labor_price, @total_price, 'pending', DATEADD(hour, 3, GETDATE())
         )
       `);
 
@@ -216,7 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             order_id, old_status, new_status, changed_by_user_id, created_at
           )
           VALUES (
-            @order_id, NULL, @new_status, @changed_by_user_id, GETDATE()
+            @order_id, NULL, @new_status, @changed_by_user_id, DATEADD(hour, 3, GETDATE())
           )
         `);
     } catch (historyError) {

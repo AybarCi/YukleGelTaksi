@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       .input('phone_number', phone)
       .input('code', code)
       .query(`SELECT TOP 1 * FROM sms_verification_codes 
-              WHERE phone_number = @phone_number AND code = @code AND is_used = 0 AND expires_at > GETDATE()
+              WHERE phone_number = @phone_number AND code = @code AND is_used = 0 AND expires_at > DATEADD(hour, 3, GETDATE())
               ORDER BY created_at DESC`);
 
     const verification = verificationResult.recordset[0];
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         .input('is_active', 1)
         .query(`INSERT INTO users (phone_number, first_name, last_name, email, user_type, is_active, created_at, updated_at)
                 OUTPUT INSERTED.id
-                VALUES (@phone_number, @first_name, @last_name, @email, @user_type, @is_active, GETDATE(), GETDATE())`);
+                VALUES (@phone_number, @first_name, @last_name, @email, @user_type, @is_active, DATEADD(hour, 3, GETDATE()), DATEADD(hour, 3, GETDATE()))`);
 
       const userId = insertResult.recordset[0].id;
 

@@ -8,6 +8,7 @@ import {
   Vibration,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { formatTurkishLira } from '../app/utils/currencyUtils';
 
 interface NewOrderCreatedModalProps {
   visible: boolean;
@@ -87,7 +88,7 @@ const NewOrderCreatedModal: React.FC<NewOrderCreatedModalProps> = ({
 
               <View style={styles.priceContainer}>
                 <Text style={styles.priceLabel}>Tahmini Ücret</Text>
-                <Text style={styles.priceValue}>₺{orderData.estimatedPrice || 0}</Text>
+                <Text style={styles.priceValue}>{formatTurkishLira(orderData.estimatedPrice || 0)}</Text>
               </View>
             </View>
           ) : (

@@ -26,7 +26,8 @@ import VehicleTypeModal from './VehicleTypeModal';
 import ImagePickerModal from './ImagePickerModal';
 import PhotoSuccessModal from './PhotoSuccessModal';
 import DriverNotFoundModal from './DriverNotFoundModal';
-import NewOrderCreatedModal from './NewOrderCreatedModal';
+import { formatTurkishLira } from '../app/utils/currencyUtils';
+
 import { usePriceCalculation } from '../app/utils/priceUtils';
 
 interface LocationCoords {
@@ -101,8 +102,6 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   const [addedPhotoCount, setAddedPhotoCount] = useState(0);
   const [driverNotFoundModalVisible, setDriverNotFoundModalVisible] = useState(false);
   const [driverNotFoundMessage, setDriverNotFoundMessage] = useState('');
-  const [newOrderCreatedModalVisible, setNewOrderCreatedModalVisible] = useState(false);
-  const [createdOrderData, setCreatedOrderData] = useState<any>(null);
 
   // Refs
   const pickupLocationRef = useRef<YukKonumuInputRef>(null);
@@ -472,7 +471,6 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
     // Önce tüm modalları kapat
     setErrorModalVisible(false);
     setDriverNotFoundModalVisible(false);
-    setNewOrderCreatedModalVisible(false);
     
     if (!isFormValid()) {
       showLocalErrorModal('Eksik Bilgi', 'Lütfen tüm gerekli alanları doldurun.');
@@ -515,22 +513,10 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
       
       // Order creation result received
       
-      // Success - Show NewOrderCreatedModal
-      // API'den gelen response yapısını kontrol et
+      // Success - Call onOrderCreated callback
       if (result) {
         const orderId = result.id || result.order_id || result.orderId;
         // Order ID extracted
-        
-        const orderData = {
-          id: orderId || Date.now(), // Fallback ID
-          pickupAddress: pickupAddress,
-          destinationAddress: destinationAddress,
-          estimatedPrice: localEstimatedPrice || estimatedPrice || 0,
-          distance: localDistance || distance || 0
-        };
-        
-        // Setting order data
-        setCreatedOrderData(orderData);
         
         // Önce tüm diğer modalları kapat
         setShowVehicleTypeModal(false);
@@ -539,17 +525,11 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         setDriverNotFoundModalVisible(false);
         setErrorModalVisible(false);
         
-        // All other modals closed, showing success modal
+        // All other modals closed
         
-        // Modal state'ini hemen güncelle
-        setNewOrderCreatedModalVisible(true);
-        // NewOrderCreatedModal visibility set to true
-        
-        // Callback'i çağır - delay it to show modal first
-        setTimeout(() => {
-          onOrderCreated?.();
-        }, 2000); // Show modal for 2 seconds before calling callback
-        // onOrderCreated callback called with delay
+        // Callback'i çağır (artık sadece form temizleme için kullanılıyor)
+        onOrderCreated?.();
+        // onOrderCreated callback called
         
       } else {
         console.error('❌ Invalid order creation result:', result);
@@ -638,7 +618,7 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
               {(localPriceLoading || priceLoading) ? (
                 '(Ücret hesaplanıyor...)'
               ) : (localEstimatedPrice || estimatedPrice) ? (
-                `(Tahmini Ücret: ₺${(localEstimatedPrice || estimatedPrice)?.toFixed(2)})`
+                `(Tahmini Ücret: ${formatTurkishLira(localEstimatedPrice || estimatedPrice || 0)})`
               ) : (
                 '(Ücret hesaplanamadı)'
               )}
@@ -744,33 +724,6 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         visible={driverNotFoundModalVisible}
         onClose={() => setDriverNotFoundModalVisible(false)}
         message={driverNotFoundMessage}
-      />
-
-      <NewOrderCreatedModal
-        visible={newOrderCreatedModalVisible}
-        onClose={() => {
-          // NewOrderCreatedModal closing
-          setNewOrderCreatedModalVisible(false);
-          setCreatedOrderData(null);
-          
-          // Reset form after modal is closed - setTimeout ile async yap
-          setTimeout(() => {
-            setSelectedVehicleType(null);
-            setPickupCoords(null);
-            setDestinationCoords(null);
-            setPickupAddress('');
-            setDestinationAddress('');
-            setCargoImages([]);
-            setNotes('');
-            
-            // Clear inputs
-            pickupLocationRef.current?.clear();
-            destinationLocationRef.current?.clear();
-            
-            // Form reset completed
-          }, 100);
-        }}
-        orderData={createdOrderData}
       />
 
       {/* Yerel Error Modal */}

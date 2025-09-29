@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { formatTurkishLira } from '../app/utils/currencyUtils';
 
 interface BookingModalProps {
   visible: boolean;
@@ -120,7 +121,7 @@ export default function BookingModal({ visible, onClose, bookingDetails }: Booki
           <View style={styles.priceSection}>
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Toplam Tutar</Text>
-              <Text style={styles.priceValue}>₺{bookingDetails.estimatedPrice}</Text>
+              <Text style={styles.priceValue}>{formatTurkishLira(bookingDetails.estimatedPrice)}</Text>
             </View>
             <Text style={styles.priceNote}>
               * Ödeme iş tamamlandıktan sonra otomatik olarak çekilecektir

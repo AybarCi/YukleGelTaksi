@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -6,6 +6,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
 import { setCurrentOrder as setReduxCurrentOrder } from '../store/slices/orderSlice';
 import socketService from '../services/socketService';
+import { formatTurkishLira } from '../app/utils/currencyUtils';
 
 // OrderData tipini import et
 interface OrderData {
@@ -80,8 +81,6 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
   // Redux store'dan currentOrder'ı al ve dispatch hook'unu kullan
   const currentOrder = useSelector((state: RootState) => state.order.currentOrder);
   const dispatch = useDispatch();
-  
-  // Modal state kaldırıldı
   
   // Güncel order'ı kullan (Redux store'dan gelen currentOrder öncelikli)
   const activeOrder = currentOrder || order;
@@ -276,7 +275,7 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
                 )}
                 {activeOrder?.estimatedPrice && typeof activeOrder?.estimatedPrice === 'number' && !isNaN(activeOrder?.estimatedPrice) && (
                   <Text style={styles.orderMetaText}>
-                    • ₺{activeOrder?.estimatedPrice.toFixed(2)}
+                    • {formatTurkishLira(activeOrder?.estimatedPrice || 0)}
                   </Text>
                 )}
               </View>

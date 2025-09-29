@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SplashLoader from '../components/SplashLoader';
 import { API_CONFIG } from '../config/api';
+import { formatTurkishLira } from './utils/currencyUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -125,7 +126,7 @@ export default function DriverEarningsScreen() {
   };
 
   const formatCurrency = (amount: number) => {
-    return `₺${amount.toFixed(2)}`;
+    return formatTurkishLira(amount);
   };
 
   const formatDate = (dateString: string) => {

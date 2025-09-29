@@ -110,7 +110,7 @@ export async function PUT(request: Request): Promise<Response> {
             email = @email,
             date_of_birth = @date_of_birth,
             gender = @gender,
-            updated_at = GETDATE()
+            updated_at = DATEADD(hour, 3, GETDATE())
           OUTPUT INSERTED.*
           WHERE id = @user_id AND is_active = 1
         `);
