@@ -62,7 +62,7 @@ export async function POST(request: Request): Promise<Response> {
           WHERE phone_number = @phone_number 
             AND code = @code 
             AND is_used = 0 
-            AND expires_at > DATEADD(hour, 3, GETDATE())
+            AND expires_at > GETDATE()
         `);
 
       if (codeResult.recordset.length === 0) {

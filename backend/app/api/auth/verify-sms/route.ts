@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       .input('phone_number', phone)
       .input('code', code)
       .query(`SELECT TOP 1 * FROM sms_verification_codes 
-              WHERE phone_number = @phone_number AND code = @code AND is_used = 0 AND expires_at > DATEADD(hour, 3, GETDATE())
+              WHERE phone_number = @phone_number AND code = @code AND is_used = 0 AND expires_at > GETDATE()
               ORDER BY created_at DESC`);
 
     const verification = verificationResult.recordset[0];
