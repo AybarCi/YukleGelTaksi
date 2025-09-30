@@ -73,11 +73,13 @@ export async function POST(
     // Siparişi iptal et
     await pool.request()
       .input('orderId', sql.Int, parseInt(orderId))
+      .input('cancelReason', sql.NVarChar, 'Müşteri tarafından iptal edildi')
       .query(`
         UPDATE orders 
         SET order_status = 'cancelled',
-            cancelled_at = GETDATE(),
-            updated_at = GETDATE()
+            cancelled_at = DATEADD(hour, 3, GETDATE()),
+            updated_at = DATEADD(hour, 3, GETDATE()),
+            cancel_reason = @cancelReason
         WHERE id = @orderId
       `);
 

@@ -103,7 +103,7 @@ export async function POST(request: Request): Promise<Response> {
           UPDATE trips 
           SET 
             trip_status = 'cancelled',
-            cancelled_at = GETDATE(),
+            cancelled_at = DATEADD(hour, 3, GETDATE()),
             cancel_reason = @cancel_reason
           OUTPUT INSERTED.*
           WHERE id = @trip_id
