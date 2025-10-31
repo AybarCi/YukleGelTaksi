@@ -1,7 +1,7 @@
 const sql = require('mssql');
 
 const config = {
-  server: process.env.DB_SERVER || '192.168.1.137',
+  server: process.env.DB_SERVER || 'localhost',
   database: process.env.DB_NAME || 'yuklegeltaksidb',
   user: process.env.DB_USER || 'sa',
   password: process.env.DB_PASSWORD || 'Ca090353--',

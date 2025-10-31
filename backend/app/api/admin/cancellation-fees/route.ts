@@ -58,13 +58,15 @@ export async function GET(request: NextRequest) {
       ORDER BY 
         CASE order_status
           WHEN 'pending' THEN 1
-          WHEN 'driver_accepted_awaiting_customer' THEN 2
-          WHEN 'confirmed' THEN 3
-          WHEN 'driver_going_to_pickup' THEN 4
-          WHEN 'pickup_completed' THEN 5
-          WHEN 'in_transit' THEN 6
-          WHEN 'delivered' THEN 7
-          ELSE 8
+          WHEN 'inspecting' THEN 2
+          WHEN 'driver_accepted_awaiting_customer' THEN 3
+          WHEN 'confirmed' THEN 4
+          WHEN 'driver_going_to_pickup' THEN 5
+          WHEN 'pickup_completed' THEN 6
+          WHEN 'in_transit' THEN 7
+          WHEN 'delivered' THEN 8
+          WHEN 'payment_completed' THEN 9
+          ELSE 10
         END
     `);
 
@@ -74,12 +76,14 @@ export async function GET(request: NextRequest) {
     if (cancellationFees.length === 0) {
       const defaultStatuses = [
         { status: 'pending', percentage: 0, description: 'Beklemede olan siparişler için cezai şart yok' },
+        { status: 'inspecting', percentage: 0, description: 'İnceleme aşamasındaki siparişler için cezai şart yok' },
         { status: 'driver_accepted_awaiting_customer', percentage: 0, description: 'Sürücü kabul etti, müşteri onayı bekleniyor - cezai şart yok' },
         { status: 'confirmed', percentage: 10, description: 'Onaylanmış siparişler için %10 cezai şart' },
         { status: 'driver_going_to_pickup', percentage: 15, description: 'Sürücü yola çıktı - %15 cezai şart' },
         { status: 'pickup_completed', percentage: 25, description: 'Yük alındı - %25 cezai şart' },
         { status: 'in_transit', percentage: 50, description: 'Yolda olan siparişler - %50 cezai şart' },
-        { status: 'delivered', percentage: 75, description: 'Teslim edilmiş siparişler - %75 cezai şart' }
+        { status: 'delivered', percentage: 100, description: 'Teslim edilmiş siparişler - iptal edilemez, %100 cezai şart' },
+        { status: 'payment_completed', percentage: 100, description: 'Ödemesi tamamlanmış siparişler - iptal edilemez, %100 cezai şart' }
       ];
 
       for (const defaultStatus of defaultStatuses) {
@@ -101,13 +105,15 @@ export async function GET(request: NextRequest) {
         ORDER BY 
           CASE order_status
             WHEN 'pending' THEN 1
-            WHEN 'driver_accepted_awaiting_customer' THEN 2
-            WHEN 'confirmed' THEN 3
-            WHEN 'driver_going_to_pickup' THEN 4
-            WHEN 'pickup_completed' THEN 5
-            WHEN 'in_transit' THEN 6
-            WHEN 'delivered' THEN 7
-            ELSE 8
+            WHEN 'inspecting' THEN 2
+            WHEN 'driver_accepted_awaiting_customer' THEN 3
+            WHEN 'confirmed' THEN 4
+            WHEN 'driver_going_to_pickup' THEN 5
+            WHEN 'pickup_completed' THEN 6
+            WHEN 'in_transit' THEN 7
+            WHEN 'delivered' THEN 8
+            WHEN 'payment_completed' THEN 9
+            ELSE 10
           END
       `);
 

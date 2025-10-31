@@ -74,21 +74,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Yeni araç tipi oluştur
-    const result = await pool.request()
+    await pool.request()
       .input('name', name.trim())
       .input('description', description || null)
       .input('is_active', is_active)
       .input('image_url', image_url || null)
       .query(`
         INSERT INTO vehicle_types (name, description, is_active, image_url)
-        OUTPUT INSERTED.*
         VALUES (@name, @description, @is_active, @image_url)
+      `);
+
+    // Son eklenen kaydı getir
+    const newRecord = await pool.request()
+      .input('name', name.trim())
+      .query(`
+        SELECT id, name, description, is_active, image_url, created_at, updated_at
+        FROM vehicle_types 
+        WHERE name = @name
       `);
 
     return NextResponse.json({
       success: true,
       message: 'Araç tipi başarıyla oluşturuldu',
-      data: result.recordset[0]
+      data: newRecord.recordset[0]
     });
   } catch (error) {
     console.error('Vehicle type creation error:', error);
@@ -149,7 +157,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Araç tipini güncelle
-    const result = await pool.request()
+    await pool.request()
       .input('id', id)
       .input('name', name.trim())
       .input('description', description || null)
@@ -158,14 +166,22 @@ export async function PUT(request: NextRequest) {
       .query(`
         UPDATE vehicle_types 
         SET name = @name, description = @description, is_active = @is_active, image_url = @image_url, updated_at = GETDATE()
-        OUTPUT INSERTED.*
+        WHERE id = @id
+      `);
+
+    // Güncellenen kaydı getir
+    const updatedRecord = await pool.request()
+      .input('id', id)
+      .query(`
+        SELECT id, name, description, is_active, image_url, created_at, updated_at
+        FROM vehicle_types 
         WHERE id = @id
       `);
 
     return NextResponse.json({
       success: true,
       message: 'Araç tipi başarıyla güncellendi',
-      data: result.recordset[0]
+      data: updatedRecord.recordset[0]
     });
   } catch (error) {
     console.error('Vehicle type update error:', error);

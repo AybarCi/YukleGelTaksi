@@ -7,7 +7,11 @@ interface OrderDetailsResponse {
   order?: {
     id: number;
     pickup_address: string;
+    pickup_latitude: number;
+    pickup_longitude: number;
     destination_address: string;
+    destination_latitude: number;
+    destination_longitude: number;
     weight_kg: number;
     labor_count: number;
     estimated_price: number;
@@ -96,7 +100,11 @@ export async function GET(
       order: {
         id: order.id,
         pickup_address: order.pickup_address,
+        pickup_latitude: order.pickup_latitude,
+        pickup_longitude: order.pickup_longitude,
         destination_address: order.destination_address,
+        destination_latitude: order.destination_latitude,
+        destination_longitude: order.destination_longitude,
         weight_kg: order.weight_kg,
         labor_count: order.labor_count,
         estimated_price: order.estimated_price,

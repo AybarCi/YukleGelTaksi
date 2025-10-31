@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       let searchCondition = '';
 
       if (status !== 'all') {
-        statusCondition = `AND o.status = '${status}'`;
+        statusCondition = `AND o.order_status = '${status}'`;
       }
 
       if (search) {
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
             o.labor_price,
             o.total_price,
             o.payment_method,
-            o.status,
+            o.order_status,
             o.customer_notes,
             o.driver_notes,
             o.cancel_reason,
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
             o.labor_price,
             o.total_price,
             o.payment_method,
-            o.status,
+            o.order_status,
             o.customer_notes,
             o.driver_notes,
             o.cancel_reason,
@@ -252,7 +252,7 @@ export async function GET(request: NextRequest) {
         labor_price: order.labor_price,
         total_price: order.total_price,
         payment_method: order.payment_method,
-        status: order.status,
+        status: order.order_status,
         customer_notes: order.customer_notes,
         driver_notes: order.driver_notes,
         cancel_reason: order.cancel_reason,

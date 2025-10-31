@@ -17,6 +17,7 @@ interface CreateOrderRequest {
   estimatedTime: number;
   notes?: string;
   vehicle_type_id: number;
+  cargo_type_id: number;
   laborRequired?: boolean;
   laborCount?: number;
 }
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const weight_kg = parseFloat((formData as any).get('weight_kg')?.toString() || '0');
     const laborRequired = ((formData as any).get('laborRequired') as FormDataEntryValue)?.toString() === 'true';
     const laborCount = parseInt(((formData as any).get('laborCount') as FormDataEntryValue)?.toString() || '0');
+    const cargo_type_id = parseInt(((formData as any).get('cargo_type_id') as FormDataEntryValue)?.toString() || '0');
     // Handle multiple cargo photos
     const cargoPhotos: File[] = [];
     let photoIndex = 0;
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Validate required fields
-    if (!pickupAddress || !destinationAddress || cargoPhotos.length === 0 || !vehicle_type_id) {
+    if (!pickupAddress || !destinationAddress || cargoPhotos.length === 0 || !vehicle_type_id || !cargo_type_id) {
       return NextResponse.json(
         { success: false, error: 'Gerekli alanlar eksik' },
         { status: 400 }
@@ -166,6 +168,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const db = DatabaseConnection.getInstance();
     const pool = await db.connect();
 
+    // Get base labor count from cargo type
+    let base_labor_count = 0;
+    try {
+      const cargoTypeResult = await pool.request()
+        .input('cargo_type_id', cargo_type_id)
+        .query('SELECT labor_count FROM cargo_types WHERE id = @cargo_type_id');
+      
+      if (cargoTypeResult.recordset.length > 0) {
+        base_labor_count = cargoTypeResult.recordset[0].labor_count;
+      }
+    } catch (cargoError) {
+      console.error('Cargo type lookup error:', cargoError);
+      // Continue with default base_labor_count = 0
+    }
+
     // Create order
     const result = await pool.request()
       .input('user_id', authResult.user.id)
@@ -180,6 +197,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .input('distance_km', distance)
       .input('weight_kg', weight_kg)
       .input('vehicle_type_id', vehicle_type_id)
+      .input('cargo_type_id', cargo_type_id)
+      .input('base_labor_count', base_labor_count)
       .input('labor_count', laborCount)
       .input('base_price', priceCalculation.base_price)
       .input('distance_price', priceCalculation.distance_price)
@@ -190,16 +209,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           user_id, pickup_address, pickup_latitude, pickup_longitude,
           destination_address, destination_latitude, destination_longitude,
           cargo_photo_urls, customer_notes, distance_km, weight_kg,
-          vehicle_type_id, labor_count, base_price, distance_price,
-          labor_price, total_price, status, created_at
+          vehicle_type_id, cargo_type_id, base_labor_count, labor_count, 
+          base_price, distance_price, labor_price, total_price, status, created_at
         )
         OUTPUT INSERTED.id, INSERTED.created_at
         VALUES (
           @user_id, @pickup_address, @pickup_latitude, @pickup_longitude,
           @destination_address, @destination_latitude, @destination_longitude,
           @cargo_photo_urls, @customer_notes, @distance_km, @weight_kg,
-          @vehicle_type_id, @labor_count, @base_price, @distance_price,
-          @labor_price, @total_price, 'pending', DATEADD(hour, 3, GETDATE())
+          @vehicle_type_id, @cargo_type_id, @base_labor_count, @labor_count,
+          @base_price, @distance_price, @labor_price, @total_price, 
+          'pending', DATEADD(hour, 3, GETDATE())
         )
       `);
 
@@ -237,6 +257,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           destinationLongitude,
           vehicle_type_id: vehicle_type_id,
           vehicleTypeId: vehicle_type_id, // Backward compatibility
+          cargo_type_id: cargo_type_id,
+          base_labor_count: base_labor_count,
           laborCount: laborCount || 0,
           estimatedPrice: priceCalculation.total_price,
           distance,

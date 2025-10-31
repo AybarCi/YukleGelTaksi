@@ -10,7 +10,8 @@ const driverToken = jwt.sign(
 
 console.log('Connecting driver (user_id: 32) to socket server...');
 
-const socket = io('http://localhost:3000', {
+// Connection handled above with localhost-safe fallback; removed duplicate block to avoid confusion.
+const socket = io(process.env.SOCKET_URL || 'http://localhost:3000', {
   auth: {
     token: driverToken
   },

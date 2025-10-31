@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
           o.distance_km,
           o.weight_kg,
           o.labor_count,
+          o.base_labor_count,
+          o.cargo_type_id,
           o.cargo_photo_urls,
           o.base_price,
           o.distance_price,
@@ -87,10 +89,13 @@ export async function GET(request: NextRequest) {
           d.vehicle_plate,
           d.vehicle_model,
           d.vehicle_color,
-          d.rating as driver_rating
+          d.rating as driver_rating,
+          ct.name as cargo_type_name,
+          ct.labor_count as cargo_type_labor_count
         FROM orders o
         LEFT JOIN drivers d ON o.driver_id = d.id
         LEFT JOIN users u ON d.user_id = u.id
+        LEFT JOIN cargo_types ct ON o.cargo_type_id = ct.id
         WHERE o.user_id = @userId ${statusCondition}
         ORDER BY o.created_at DESC
       `);
@@ -108,6 +113,10 @@ export async function GET(request: NextRequest) {
         distance_km: order.distance_km,
         weight_kg: order.weight_kg,
         labor_count: order.labor_count,
+        base_labor_count: order.base_labor_count,
+        cargo_type_id: order.cargo_type_id,
+        cargo_type_name: order.cargo_type_name,
+        cargo_type_labor_count: order.cargo_type_labor_count,
         cargo_photo_urls: order.cargo_photo_urls,
         base_price: order.base_price,
         distance_price: order.distance_price,

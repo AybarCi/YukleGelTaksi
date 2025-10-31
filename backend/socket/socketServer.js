@@ -31,6 +31,8 @@ class SocketServer extends EventEmitter {
     this.connectedCustomers = new Map(); // userId -> { socketId, location }
     this.activeOrders = new Map(); // orderId -> orderData
     this.inspectingOrders = new Map(); // orderId -> { driverId, startTime }
+    this.orderCountdownTimers = new Map(); // orderId -> timeout timer
+    this.orderCountdownIntervals = new Map(); // orderId -> countdown interval
 
     // Memory management
     this.memoryManager = new MemoryManager();
@@ -470,14 +472,18 @@ class SocketServer extends EventEmitter {
         }
       }
       
-      // Veritabanından sadece sürücünün müsaitlik durumunu çek
+      // Sürücü bağlandığında otomatik olarak available yap
       const db = DatabaseConnection.getInstance();
-      const result = await db.query(
-        'SELECT is_available FROM drivers WHERE id = @driverId',
+      
+      // Önce is_available'ı true yap
+      await db.query(
+        'UPDATE drivers SET is_available = 1 WHERE id = @driverId',
         { driverId: driverId }
       );
       
-      const isAvailable = result && result.recordset && result.recordset.length > 0 ? result.recordset[0].is_available : true;
+      console.log(`✅ Driver ${driverId} is_available set to true on connection`);
+      
+      const isAvailable = true; // Artık her zaman true olacak
       
       // Sürücüyü bağlı sürücüler listesine ekle (konum null olarak başlat)
       this.connectedDrivers.set(driverId, {
@@ -591,8 +597,20 @@ class SocketServer extends EventEmitter {
       this.updateDriverAvailability(driverId, isAvailable);
     });
 
-    socket.on('accept_order', (orderId) => {
-      this.handleOrderAcceptance(driverId, orderId);
+    socket.on('accept_order_with_labor', ({ orderId, laborCount }) => {
+      console.log(`🚛 SOCKET: accept_order_with_labor received - Driver ${driverId}, Order ${orderId}, Labor: ${laborCount}`);
+      console.log(`📍 Socket ID: ${socket.id}`);
+      console.log(`📍 Socket rooms:`, Array.from(socket.rooms));
+      console.log(`📍 Driver authenticated:`, !!socket.driverId);
+      this.handleOrderAcceptanceWithLabor(driverId, orderId, laborCount);
+    });
+
+    socket.on('confirm_price_with_customer', async ({ orderId, finalPrice, laborCost }) => {
+      await this.handlePriceConfirmation(driverId, orderId, finalPrice, laborCost);
+    });
+
+    socket.on('driver_started_navigation', async ({ orderId }) => {
+      await this.handleDriverStartedNavigation(driverId, orderId);
     });
 
     socket.on('update_order_status', ({ orderId, status }) => {
@@ -661,6 +679,8 @@ class SocketServer extends EventEmitter {
   async handleCustomerConnection(socket) {
     const customerId = socket.userId;
     
+    console.log(`👤 Customer ${customerId} connection started - Socket: ${socket.id}`);
+    
     // Eğer bu müşteri zaten bağlıysa, eski bağlantıyı temizle
     const existingCustomer = this.connectedCustomers.get(customerId);
     if (existingCustomer && existingCustomer.socketId !== socket.id) {
@@ -679,10 +699,14 @@ class SocketServer extends EventEmitter {
       userId: customerId
     });
     
+    console.log(`📊 Customer connection stats: Total customers: ${this.connectedCustomers.size}`);
+    
     // Müşteriyi kendi özel odasına ekle
     const customerRoom = roomUtils.getCustomerRoomId(customerId);
+    console.log(`🏠 Customer ${customerId} getting room ID: ${customerRoom}`);
     socket.join(customerRoom);
     console.log(`🏠 Customer ${customerId} joined private room: ${customerRoom} (Socket: ${socket.id})`);
+    console.log(`🏠 Customer ${customerId} socket rooms after join:`, Array.from(socket.rooms));
     
     // Tüm bağlı sürücüleri bu müşterinin odasına ekle (yarıçap kontrolü ile)
     await this.addAllDriversToCustomerRoom(customerId);
@@ -792,6 +816,32 @@ class SocketServer extends EventEmitter {
         } else {
           console.log(`📍 Minor location change, skipping driver list update for customer ${customerId}`);
         }
+      },
+      
+      'customer_price_response': (socket, { orderId, accepted }) => {
+        // Data validation
+        if (!orderId || typeof accepted !== 'boolean') {
+          socket.emit('validation_error', { 
+            eventType: 'customer_price_response',
+            message: 'Order ID and acceptance status are required' 
+          });
+          return;
+        }
+        
+        this.handleCustomerPriceResponse(customerId, orderId, accepted);
+      },
+      
+      'price_confirmation_response': (socket, { orderId, isAccepted }) => {
+        // Data validation
+        if (!orderId || typeof isAccepted !== 'boolean') {
+          socket.emit('validation_error', { 
+            eventType: 'price_confirmation_response',
+            message: 'Order ID and acceptance status are required' 
+          });
+          return;
+        }
+        
+        this.handleCustomerPriceResponse(customerId, orderId, isAccepted);
       }
     };
     
@@ -1217,6 +1267,19 @@ class SocketServer extends EventEmitter {
       }
 
       const order = orderResult.recordset[0];
+      
+      // 🔒 DELIVERED ve PAYMENT_COMPLETED statülerinde iptal engelleme (ilk kontrol)
+      if (order.order_status === 'delivered' || order.order_status === 'payment_completed') {
+        console.log('🚫 Order cancellation blocked for delivered/payment_completed status. Order:', orderId, 'Status:', order.order_status);
+        const customerData = this.connectedCustomers.get(userId);
+        if (customerData && customerData.socketId) {
+          this.io.to(customerData.socketId).emit('cancel_order_error', { 
+            message: 'Teslim edilmiş veya ödemesi tamamlanmış siparişler iptal edilemez.' 
+          });
+        }
+        return;
+      }
+      
       let cancellationFee = 0;
 
       // Cezai tutar hesaplama - backoffice'ten tanımlanan yüzdeleri kullan
@@ -1320,6 +1383,19 @@ class SocketServer extends EventEmitter {
       }
 
       const order = orderResult.recordset[0];
+      
+      // 🔒 DELIVERED ve PAYMENT_COMPLETED statülerinde iptal engelleme
+      if (order.order_status === 'delivered' || order.order_status === 'payment_completed') {
+        console.log('🚫 Order cancellation blocked for delivered/payment_completed status. Order:', orderId, 'Status:', order.order_status);
+        const customerSocketId = this.connectedCustomers.get(userId);
+        if (customerSocketId) {
+          this.io.to(customerSocketId).emit('cancel_order_error', { 
+            message: 'Teslim edilmiş veya ödemesi tamamlanmış siparişler iptal edilemez.' 
+          });
+        }
+        return;
+      }
+      
       console.log('✅ Confirm code verified, proceeding with cancellation for Order', orderId);
 
       // Siparişi gerçekten iptal et
@@ -1424,12 +1500,461 @@ class SocketServer extends EventEmitter {
     console.log(`📡 Nearby drivers list broadcasted to all ${this.connectedCustomers.size} customers`);
   }
 
-  async handleOrderAcceptance(driverId, orderId) {
-    console.log('Handle order acceptance called:', driverId, orderId);
+  async handleOrderAcceptanceWithLabor(driverId, orderId, laborCount) {
+    console.log(`🚛 Handle order acceptance with labor called: Driver ${driverId}, Order ${orderId}, Labor: ${laborCount}`);
+    
+    // Debug: Tüm bağlı müşterileri göster
+    console.log(`📊 Connected customers:`, Array.from(this.connectedCustomers.keys()));
+    
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      // Siparişi ve sürücüyü kontrol et
+      const orderResult = await pool.request()
+        .input('orderId', sql.Int, orderId)
+        .query('SELECT * FROM orders WHERE id = @orderId');
+        
+      if (orderResult.recordset.length === 0) {
+        console.error(`❌ Order ${orderId} not found`);
+        return;
+      }
+      
+      const order = orderResult.recordset[0];
+      console.log(`📋 Order ${orderId} status: ${order.status}`);
+      
+      // Sipariş durumu kontrolü - zaten kabul edilmişse engelle
+      if (order.status === 'driver_accepted_awaiting_customer') {
+        console.log(`⚠️ Order ${orderId} already waiting for customer approval, rejecting duplicate acceptance`);
+        
+        // Sürücüyü bilgilendir
+        const driverData = this.connectedDrivers.get(driverId);
+        if (driverData) {
+          const driverSocket = this.io.sockets.sockets.get(driverData.socketId);
+          if (driverSocket) {
+            driverSocket.emit('order_accept_error', {
+              message: 'Bu sipariş zaten kabul edilmiş ve müşteri onayı bekleniyor'
+            });
+          }
+        }
+        return;
+      }
+      
+      // Sürücüyü kontrol et
+      const driverResult = await pool.request()
+        .input('driverId', sql.Int, driverId)
+        .query('SELECT * FROM drivers WHERE id = @driverId AND is_active = 1 AND is_available = 1');
+        
+      if (driverResult.recordset.length === 0) {
+        console.error(`❌ Driver ${driverId} not found or not available`);
+        return;
+      }
+      
+      // Sadece işçi sayısını geçici olarak kaydet, driver_id ve durum güncellemesi yapma
+      // Bu bilgiyi memory'de saklayacağız ve müşteri onayı geldikten sonra kullanacağız
+      const tempOrderData = {
+        driverId: driverId,
+        laborCount: laborCount,
+        estimatedPrice: order.estimated_price || 0,
+        timestamp: new Date()
+      };
+      
+      // Memory'de geçici sipariş verisini sakla
+      if (!this.pendingOrderApprovals) {
+        this.pendingOrderApprovals = new Map();
+      }
+      this.pendingOrderApprovals.set(orderId, tempOrderData);
+      
+      console.log(`✅ Order ${orderId} temporary data stored - awaiting customer approval for driver ${driverId} with ${laborCount} labor workers`);
+      
+      // Müşteriye siparişin kabul edildiğini ve fiyat onayı gerektiğini bildir
+      console.log(`🔍 DEBUG: Getting customer room for customer ID: ${order.customer_id}`);
+      const customerRoom = roomUtils.getCustomerRoomId(order.customer_id);
+      console.log(`🔍 DEBUG: Customer room ID: ${customerRoom}`);
+      
+      // Debug: Müşterinin bağlı olup olmadığını kontrol et
+      const customerData = this.connectedCustomers.get(order.customer_id);
+      console.log(`🔍 DEBUG: Customer ${order.customer_id} connection status:`, customerData ? 'Connected' : 'Not connected');
+      
+      if (customerData) {
+        console.log(`🔍 DEBUG: Customer socket ID: ${customerData.socketId}`);
+        console.log(`🔍 DEBUG: Customer room: ${customerRoom}`);
+        
+        // Socket'in odaya katılıp katılmadığını kontrol et
+        const customerSocket = this.io.sockets.sockets.get(customerData.socketId);
+        if (customerSocket) {
+          const rooms = Array.from(customerSocket.rooms);
+          console.log(`🔍 DEBUG: Customer rooms:`, rooms);
+          console.log(`🔍 DEBUG: Is customer in target room? ${rooms.includes(customerRoom)}`);
+        } else {
+          console.log(`🔍 DEBUG: Customer socket not found`);
+        }
+      }
+      
+      // Önce sipariş durumunu güncelle (driver_id henüz atanmadı, sadece orderId ile)
+      await this.updateOrderStatusBeforeAssignment(orderId, 'driver_accepted_awaiting_customer', driverId);
+      
+      // Müşteriye sipariş durumu güncellemesini gönder (arka planda)
+      this.io.to(customerRoom).emit('order_status_update', {
+        orderId,
+        status: 'driver_accepted_awaiting_customer',
+        message: 'Sürücü siparişinizi kabul etti, onayınız bekleniyor'
+      });
+      
+      // NOT: order_status_update eventi tekrar eklendi - müşteri hem sipariş durumunu hem de fiyat onay modalını görecek
+      
+      // Fiyat onayı için müşteriye bildirim gönder
+      const finalPrice = order.estimated_price || 0;
+      const laborCost = laborCount * (order.labor_price || 50); // Varsayılan hammaliye fiyatı 50 TL
+      const totalPrice = finalPrice + laborCost;
+      
+      // Sürücü bilgilerini al
+      const driver = driverResult.recordset[0];
+      
+      console.log(`🔍 DEBUG: Emitting price_confirmation_requested to room: ${customerRoom}`);
+      console.log(`🔍 DEBUG: Event data:`, {
+        orderId: orderId,
+        finalPrice: totalPrice,
+        laborCount: laborCount,
+        customerId: order.customer_id
+      });
+      
+      this.io.to(customerRoom).emit('price_confirmation_requested', {
+        orderId: orderId,
+        finalPrice: totalPrice,
+        laborCount: laborCount,
+        estimatedPrice: order.estimated_price || 0,
+        priceDifference: laborCost,
+        driverInfo: {
+          id: driverId,
+          name: `${driver.first_name} ${driver.last_name}`,
+          vehicle: `${driver.vehicle_color} ${driver.vehicle_model}`,
+          plate: driver.vehicle_plate
+        },
+        timeout: 60000 // 60 saniye - 1 dakika
+      });
+      
+      console.log(`💰 Price confirmation requested sent to customer ${order.customer_id} for order ${orderId}`);
+      
+      // Set timeout for customer response - 1 dakika
+      const countdownTimer = setTimeout(async () => {
+        // Check if customer already responded
+        if (!this.pendingOrderApprovals || !this.pendingOrderApprovals.has(orderId)) {
+          console.log(`✅ Order ${orderId} already processed, timeout cancelled`);
+          return;
+        }
+        
+        console.log(`⏰ Price confirmation timeout for order ${orderId} - returning to pending status`);
+        // Check if customer already responded
+        if (!this.pendingOrderApprovals || !this.pendingOrderApprovals.has(orderId)) {
+          console.log(`✅ Order ${orderId} already processed, timeout cancelled`);
+          return;
+        }
+        
+        console.log(`⏰ Price confirmation timeout for order ${orderId} - returning to pending status`);
+        
+        try {
+          // Get the pending approval data before cleaning up
+          const pendingApproval = this.pendingOrderApprovals.get(orderId);
+          const timeoutDriverId = pendingApproval.driverId;
+          
+          // Clean up pending approval
+          this.pendingOrderApprovals.delete(orderId);
+          
+          // Return order to pending status
+          await this.updateOrderStatusBeforeAssignment(orderId, 'pending', null, 'driver_accepted_awaiting_customer');
+          
+          // Notify customer about timeout
+          this.io.to(customerRoom).emit('order_status_update', {
+            orderId: orderId,
+            status: 'pending',
+            message: 'Sipariş onay süresi doldu, yeni sürücü aranıyor'
+          });
+          
+          // Notify driver about timeout
+          const driverSocket = this.getDriverSocket(timeoutDriverId);
+          if (driverSocket) {
+            driverSocket.emit('price_confirmation_timeout', {
+              orderId: orderId,
+              message: 'Müşteri onay süresi doldu, sipariş tekrar müsait duruma döndü'
+            });
+          }
+          
+          // Remove driver from customer room
+          const customerRoom = roomUtils.getUserRoomId('customer', order.customer_id);
+          const room = this.io.sockets.adapter.rooms.get(customerRoom);
+          if (room) {
+            room.forEach(socketId => {
+              const socket = this.io.sockets.sockets.get(socketId);
+              if (socket && socket.userType === 'driver' && socket.userId === timeoutDriverId) {
+                socket.leave(customerRoom);
+                console.log(`🚪 Removed driver ${timeoutDriverId} from customer ${order.customer_id} room due to timeout`);
+              }
+            });
+          }
+          
+          // Broadcast updated driver list to all customers
+          this.broadcastNearbyDriversToAllCustomers();
+          
+          console.log(`✅ Order ${orderId} returned to pending status due to customer timeout`);
+          
+        } catch (timeoutError) {
+          console.error(`❌ Error handling price confirmation timeout for order ${orderId}:`, timeoutError);
+        }
+      }, 60000); // 60 saniye - 1 dakika
+      
+      // Store the timer reference so we can cancel it if customer responds
+      if (!this.orderCountdownTimers) {
+        this.orderCountdownTimers = new Map();
+      }
+      this.orderCountdownTimers.set(orderId, countdownTimer);
+      
+      // Store pending approval with start time for countdown tracking
+      if (!this.pendingOrderApprovals) {
+        this.pendingOrderApprovals = new Map();
+      }
+      this.pendingOrderApprovals.set(orderId, {
+        driverId: driverId,
+        customerId: order.customer_id,
+        startTime: Date.now()
+      });
+      
+      // Sürücüye periyodik geri sayım güncellemeleri gönder
+      const countdownInterval = setInterval(() => {
+        const driverData = this.connectedDrivers.get(driverId);
+        if (!driverData) {
+          clearInterval(countdownInterval);
+          return;
+        }
+        
+        const driverSocket = this.io.sockets.sockets.get(driverData.socketId);
+        if (driverSocket && this.pendingOrderApprovals && this.pendingOrderApprovals.has(orderId)) {
+          const approvalData = this.pendingOrderApprovals.get(orderId);
+          const elapsed = Date.now() - (approvalData.startTime || Date.now());
+          const remaining = Math.max(0, 60000 - elapsed);
+          
+          driverSocket.emit('price_confirmation_countdown_update', {
+            orderId: orderId,
+            remainingTime: remaining,
+            totalTime: 60000
+          });
+          
+          if (remaining <= 0) {
+            clearInterval(countdownInterval);
+          }
+        } else {
+          clearInterval(countdownInterval);
+        }
+      }, 1000); // Her saniye güncelle
+      
+      // Interval'ı da sakla ki iptal edebilelim
+      if (!this.orderCountdownIntervals) {
+        this.orderCountdownIntervals = new Map();
+      }
+      this.orderCountdownIntervals.set(orderId, countdownInterval);
+      
+      // Sürücüye başarılı kabul bildirimi ve geri sayım bilgisi gönder
+      const driverSocket = this.io.sockets.sockets.get(this.connectedDrivers.get(driverId).socketId);
+      if (driverSocket) {
+        driverSocket.emit('order_accepted_success', {
+          orderId: orderId,
+          message: 'Sipariş başarıyla kabul edildi'
+        });
+        
+        // Sürücüye fiyat onayı için geri sayım başladığını bildir
+        driverSocket.emit('price_confirmation_countdown_started', {
+          orderId: orderId,
+          timeout: 60000, // 60 saniye
+          message: 'Müşteri fiyat onayı bekleniyor (60 saniye)',
+          countdownStartTime: Date.now()
+        });
+      }
+      
+      // Tüm müşterilere güncellenmiş sürücü listesini gönder
+      this.broadcastNearbyDriversToAllCustomers();
+      
+    } catch (error) {
+      console.error(`❌ Error in handleOrderAcceptanceWithLabor:`, error);
+      
+      // Hata durumunda sürücüyü bilgilendir
+      const driverData = this.connectedDrivers.get(driverId);
+      if (driverData) {
+        const driverSocket = this.io.sockets.sockets.get(driverData.socketId);
+        if (driverSocket) {
+          driverSocket.emit('order_accept_error', {
+            message: 'Sipariş kabul edilirken hata oluştu'
+          });
+        }
+      }
+    }
   }
 
-  async updateOrderStatus(orderId, status, driverId) {
-    console.log('Update order status called:', orderId, status, driverId);
+  async updateOrderStatusBeforeAssignment(orderId, status, driverId, oldStatus = null) {
+    console.log('Update order status before assignment called:', orderId, status, driverId, oldStatus);
+    
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      // Önce orders tablosunu güncelle - driver_id kontrolü yok çünkü henüz atanmadı
+      const result = await pool.request()
+        .input('orderId', sql.Int, orderId)
+        .input('orderStatus', sql.VarChar, status)
+        .query(`
+          UPDATE orders 
+          SET order_status = @orderStatus,
+              updated_at = DATEADD(hour, 3, GETDATE())
+          WHERE id = @orderId
+        `);
+      
+      if (result.rowsAffected[0] === 0) {
+        console.warn(`⚠️ Order ${orderId} not found`);
+        return false;
+      }
+      
+      // Ardından order_status_history tablosuna yeni kayıt ekle
+      try {
+        await pool.request()
+          .input('orderId', sql.Int, orderId)
+          .input('oldStatus', sql.VarChar, oldStatus)
+          .input('newStatus', sql.VarChar, status)
+          .input('driverId', sql.Int, driverId)
+          .query(`
+            INSERT INTO order_status_history (order_id, old_status, new_status, changed_by_driver_id, created_at)
+            VALUES (@orderId, @oldStatus, @newStatus, @driverId, DATEADD(hour, 3, GETDATE()))
+          `);
+        
+        console.log(`📋 Order status history recorded for order ${orderId}: ${oldStatus} -> ${status}`);
+      } catch (historyError) {
+        console.error(`❌ Error inserting order status history:`, historyError);
+        // History kaydı eklenemese bile ana işlem devam etmeli
+      }
+      
+      console.log(`✅ Order ${orderId} status updated to '${status}' for driver ${driverId}`);
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ Error updating order status:`, error);
+      return false;
+    }
+  }
+
+  async updateOrderStatus(orderId, status, driverId, oldStatus = null) {
+    console.log('Update order status called:', orderId, status, driverId, oldStatus);
+
+    // Map incoming statuses to DB-compliant statuses
+    const statusMap = {
+      started: 'pickup_completed',
+      completed: 'delivered',
+      driver_navigating: 'driver_going_to_pickup',
+    };
+    const finalDbStatus = statusMap[status] || status;
+
+    try {
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+
+      // Update orders table with driver assignment check
+      const result = await pool.request()
+        .input('orderId', sql.Int, orderId)
+        .input('orderStatus', sql.VarChar, finalDbStatus)
+        .input('driverId', sql.Int, driverId)
+        .query(`
+          UPDATE orders 
+          SET order_status = @orderStatus,
+              updated_at = DATEADD(hour, 3, GETDATE())
+          WHERE id = @orderId AND driver_id = @driverId
+        `);
+
+      if (result.rowsAffected[0] === 0) {
+        console.warn(`⚠️ Order ${orderId} not found or not assigned to driver ${driverId}`);
+        return false;
+      }
+
+      // Insert into order_status_history
+      try {
+        await pool.request()
+          .input('orderId', sql.Int, orderId)
+          .input('oldStatus', sql.VarChar, oldStatus)
+          .input('newStatus', sql.VarChar, finalDbStatus)
+          .input('driverId', sql.Int, driverId)
+          .query(`
+            INSERT INTO order_status_history (order_id, old_status, new_status, changed_by_driver_id, created_at)
+            VALUES (@orderId, @oldStatus, @newStatus, @driverId, DATEADD(hour, 3, GETDATE()))
+          `);
+        console.log(`📋 Order status history recorded for order ${orderId}: ${oldStatus} -> ${finalDbStatus}`);
+      } catch (historyError) {
+        console.error(`❌ Error inserting order status history:`, historyError);
+        // History kaydı eklenemese bile ana işlem devam etmeli
+      }
+
+      // Fetch customer to emit updates
+      const orderDetails = await this.getOrderDetails(orderId);
+      const customerId = orderDetails?.user_id;
+
+      // Map DB statuses to driver-friendly display statuses
+      const driverDisplayStatusMap = {
+        driver_going_to_pickup: 'in_progress',
+        pickup_completed: 'in_progress',
+        in_transit: 'in_progress',
+        delivered: 'completed',
+        payment_completed: 'completed',
+        cancelled: 'cancelled',
+      };
+      const driverEmitStatus = driverDisplayStatusMap[finalDbStatus] || status;
+
+      // Determine phase for driver UI
+      let phase = null;
+      if (finalDbStatus === 'driver_going_to_pickup') {
+        phase = 'pickup';
+      } else if (finalDbStatus === 'pickup_completed' || finalDbStatus === 'in_transit') {
+        phase = 'delivery';
+      } else if (finalDbStatus === 'delivered' || finalDbStatus === 'payment_completed') {
+        phase = null;
+      }
+
+      // Emit order status updates
+      try {
+        const driverRoom = roomUtils.getUserRoomId('driver', driverId);
+        if (customerId) {
+          const customerRoom = roomUtils.getUserRoomId('customer', customerId);
+          // Send DB status to customer
+          this.io.to(customerRoom).emit('order_status_update', { orderId, status: finalDbStatus });
+        }
+        // Send mapped status to driver for UI compatibility
+        this.io.to(driverRoom).emit('order_status_update', { orderId, status: driverEmitStatus });
+
+        // Emit phase update to driver if applicable
+        if (phase !== null) {
+          this.io.to(driverRoom).emit('order_phase_update', {
+            orderId,
+            currentPhase: phase,
+            status: finalDbStatus,
+          });
+        }
+      } catch (emitError) {
+        console.error('❌ Error emitting status/phase updates:', emitError);
+      }
+
+      // Stop periodic updates when order is finalized or cancelled
+      if (finalDbStatus === 'delivered' || finalDbStatus === 'payment_completed' || finalDbStatus === 'cancelled') {
+        const intervalKey = `${driverId}_${orderId}`;
+        if (this.driverLocationIntervals && this.driverLocationIntervals.has(intervalKey)) {
+          try {
+            clearInterval(this.driverLocationIntervals.get(intervalKey));
+          } catch {}
+          this.driverLocationIntervals.delete(intervalKey);
+          console.log(`🛑 Stopped driver location updates for ${intervalKey}`);
+        }
+      }
+
+      console.log(`✅ Order ${orderId} status updated to '${finalDbStatus}' for driver ${driverId}`);
+      return true;
+
+    } catch (error) {
+      console.error(`❌ Error updating order status:`, error);
+      return false;
+    }
   }
 
   async sendNearbyDriversToCustomer(socket) {
@@ -1844,13 +2369,25 @@ class SocketServer extends EventEmitter {
       });
 
       // Siparişi "inspecting" durumuna getir (driver_id set etme)
-      await pool.request()
+      const updateResult = await pool.request()
         .input('orderId', sql.Int, orderIdInt)
         .query(`
           UPDATE orders 
-          SET order_status = 'inspecting'
+          SET order_status = 'inspecting',
+              updated_at = DATEADD(hour, 3, GETDATE())
           WHERE id = @orderId AND order_status = 'pending'
         `);
+      
+      if (updateResult.rowsAffected[0] === 0) {
+        console.warn(`⚠️ Order ${orderIdInt} could not be updated to inspecting status (may not exist or not in pending status)`);
+        const driverData = this.connectedDrivers.get(driverId);
+        if (driverData) {
+          this.io.to(driverData.socketId).emit('order_no_longer_available', { orderId: actualOrderId });
+        }
+        return;
+      }
+      
+      console.log(`✅ Order ${orderIdInt} status updated to 'inspecting'`);
 
       // Diğer sürücülere bu siparişin incelendiğini bildir
       this.connectedDrivers.forEach((driverData, otherDriverId) => {
@@ -1878,12 +2415,8 @@ class SocketServer extends EventEmitter {
           message: 'Siparişiniz bir sürücü tarafından inceleniyor'
         });
         
-        // Müşteriye order_status_update da gönder
-        this.io.to(customerRoom).emit('order_status_update', {
-          orderId: actualOrderId,
-          status: 'inspecting',
-          message: 'Siparişiniz inceleniyor'
-        });
+        // NOT: order_status_update event'i kaldırıldı - sadece order_inspection_started yeterli
+        // Bu sayede müşteri tarafında yanlış modal açılmayacak
       }
 
       // İnceleyen sürücüye sipariş detaylarını gönder
@@ -2124,7 +2657,19 @@ class SocketServer extends EventEmitter {
           WHERE o.id = @orderId
         `);
       
-      return result.recordset[0] || null;
+      const orderData = result.recordset[0];
+      if (!orderData) return null;
+      
+      // Transform database field names to match frontend expectations
+      // Frontend expects delivery_latitude/delivery_longitude instead of destination_latitude/destination_longitude
+      return {
+        ...orderData,
+        delivery_latitude: orderData.destination_latitude,
+        delivery_longitude: orderData.destination_longitude,
+        // Keep original fields for backward compatibility
+        destination_latitude: orderData.destination_latitude,
+        destination_longitude: orderData.destination_longitude
+      };
     } catch (error) {
       console.error('Error getting order details:', error);
       return null;
@@ -2389,6 +2934,394 @@ class SocketServer extends EventEmitter {
         source: 'failed'
       };
     }
+  }
+
+  /**
+   * Handle driver price confirmation - send to customer for approval
+   */
+  async handlePriceConfirmation(driverId, orderId, finalPrice, laborCost) {
+    try {
+      console.log(`💰 Price confirmation: Driver ${driverId} for order ${orderId}, final price: ${finalPrice}, labor: ${laborCost}`);
+      
+      // Get order details to find customer
+      const orderDetails = await this.getOrderDetails(orderId);
+      if (!orderDetails) {
+        console.error(`❌ Order ${orderId} not found for price confirmation`);
+        return;
+      }
+      
+      const customerId = orderDetails.user_id;
+      const driverData = this.connectedDrivers.get(driverId);
+      
+      if (!driverData) {
+        console.error(`❌ Driver ${driverId} not found in connected drivers`);
+        return;
+      }
+      
+      // Get driver info
+      const db = DatabaseConnection.getInstance();
+      const pool = await db.connect();
+      
+      const driverResult = await pool.request()
+        .input('driverId', driverId)
+        .query(`
+          SELECT d.first_name, d.last_name, d.vehicle_plate, d.vehicle_model, d.vehicle_color
+          FROM drivers d
+          WHERE d.id = @driverId
+        `);
+      
+      if (driverResult.recordset.length === 0) {
+        console.error(`❌ Driver ${driverId} not found in database`);
+        return;
+      }
+      
+      const driverInfo = driverResult.recordset[0];
+      
+      // Send price confirmation to customer
+      const customerRoom = roomUtils.getUserRoomId('customer', customerId);
+      this.io.to(customerRoom).emit('order_price_confirmed', {
+        orderId,
+        finalPrice,
+        laborCost,
+        driverInfo: {
+          id: driverId,
+          name: `${driverInfo.first_name} ${driverInfo.last_name}`,
+          vehicle: `${driverInfo.vehicle_color} ${driverInfo.vehicle_model}`,
+          plate: driverInfo.vehicle_plate
+        },
+        timeout: 60000 // 60 seconds for customer response
+      });
+      
+      console.log(`💰 Price confirmation sent to customer ${customerId} for order ${orderId}`);
+      
+      // Set timeout for customer response
+      setTimeout(async () => {
+        // Check if customer responded (you might want to track this in memory or database)
+        console.log(`⏰ Price confirmation timeout for order ${orderId}`);
+        // You can add timeout handling here if needed
+      }, 60000);
+      
+    } catch (error) {
+      console.error('❌ Error handling price confirmation:', error);
+    }
+  }
+
+  /**
+   * Handle customer price response - accept or reject
+   */
+  async handleCustomerPriceResponse(customerId, orderId, accepted) {
+    try {
+      console.log(`💰 Customer ${customerId} price response for order ${orderId}: ${accepted ? 'ACCEPTED' : 'REJECTED'}`);
+      
+      // Önce bekleyen onay verisini kontrol et
+      if (!this.pendingOrderApprovals || !this.pendingOrderApprovals.has(orderId)) {
+        console.error(`❌ No pending approval found for order ${orderId}`);
+        return;
+      }
+      
+      const pendingApproval = this.pendingOrderApprovals.get(orderId);
+      const driverId = pendingApproval.driverId;
+      const laborCount = pendingApproval.laborCount;
+      
+      // Get order details
+      const orderDetails = await this.getOrderDetails(orderId);
+      if (!orderDetails) {
+        console.error(`❌ Order ${orderId} not found for price response`);
+        return;
+      }
+      
+      const driverData = this.connectedDrivers.get(driverId);
+      
+      if (!driverData) {
+        console.error(`❌ Driver ${driverId} not connected for price response`);
+        return;
+      }
+      
+      const currentOrderStatus = orderDetails.order_status; // Mevcut durumu al
+      
+      if (accepted) {
+        // Önce siparişe driver ataması yap ve durumu güncelle
+        const db = DatabaseConnection.getInstance();
+        const pool = await db.connect();
+        
+        try {
+          // Siparişe driver ataması yap ve işçi sayısını güncelle
+          await pool.request()
+            .input('orderId', sql.Int, orderId)
+            .input('driverId', sql.Int, driverId)
+            .input('laborCount', sql.Int, laborCount)
+            .input('orderStatus', sql.VarChar, 'accepted')
+            .query(`
+              UPDATE orders 
+              SET driver_id = @driverId, 
+                  order_status = @orderStatus, 
+                  labor_count = @laborCount,
+                  updated_at = DATEADD(hour, 3, GETDATE())
+              WHERE id = @orderId
+            `);
+          
+          // Sürücünün müsaitliğini güncelle
+          await pool.request()
+            .input('driverId', sql.Int, driverId)
+            .input('isAvailable', sql.Bit, false)
+            .query('UPDATE drivers SET is_available = @isAvailable WHERE id = @driverId');
+            
+          // Memory'de sürücü durumunu güncelle
+          const driverData = this.connectedDrivers.get(driverId);
+          if (driverData) {
+            driverData.isAvailable = false;
+            driverData.currentOrderId = orderId;
+          }
+          
+          console.log(`✅ Order ${orderId} assigned to driver ${driverId} and status updated to accepted`);
+          
+        } catch (dbError) {
+          console.error(`❌ Database error during order assignment:`, dbError);
+          return;
+        }
+        
+        // Send acceptance to driver
+        const driverSocket = this.getDriverSocket(driverId);
+        if (driverSocket) {
+          driverSocket.emit('price_accepted_by_customer', {
+            orderId,
+            message: 'Müşteri fiyatı onayladı, yola çıkabilirsiniz'
+          });
+          
+          // Remove other drivers from customer room (only accepted driver stays)
+          const customerRoom = roomUtils.getUserRoomId('customer', customerId);
+          
+          // Get all drivers in customer room
+          const room = this.io.sockets.adapter.rooms.get(customerRoom);
+          if (room) {
+            room.forEach(socketId => {
+              const socket = this.io.sockets.sockets.get(socketId);
+              if (socket && socket.userType === 'driver' && socket.userId !== driverId) {
+                socket.leave(customerRoom);
+                console.log(`🚪 Removed driver ${socket.userId} from customer ${customerId} room - order accepted by different driver`);
+              }
+            });
+          }
+          
+          // Notify customer that order is now confirmed
+          this.io.to(customerRoom).emit('order_status_update', {
+            orderId: orderId,
+            status: 'accepted',
+            message: 'Siparişiniz onaylandı, sürücünüz yola çıkıyor'
+          });
+          
+          // Start driver navigation
+          await this.handleDriverStartedNavigation(driverId, orderId);
+          
+          console.log(`✅ Price accepted by customer ${customerId} for order ${orderId}, navigation started for driver ${driverId}`);
+        }
+      } else {
+        // Send rejection to driver
+        const driverSocket = this.getDriverSocket(driverId);
+        if (driverSocket) {
+          driverSocket.emit('price_rejected_by_customer', {
+            orderId,
+            message: 'Müşteri fiyatı reddetti'
+          });
+          
+          // Driver hala müsait durumda, sadece pending onayı temizle
+          // Sipariş durumunu güncelleme (henüz atama yapılmadı)
+          await this.updateOrderStatus(orderId, 'customer_price_rejected', null, currentOrderStatus);
+          
+          // Remove all drivers from customer room since order is rejected
+          const customerRoom = roomUtils.getUserRoomId('customer', customerId);
+          
+          // Get all drivers in customer room
+          const room = this.io.sockets.adapter.rooms.get(customerRoom);
+          if (room) {
+            room.forEach(socketId => {
+              const socket = this.io.sockets.sockets.get(socketId);
+              if (socket && socket.userType === 'driver') {
+                socket.leave(customerRoom);
+                console.log(`🚪 Removed driver ${socket.userId} from customer ${customerId} room - order rejected by customer`);
+              }
+            });
+          }
+          
+          // Cancel the order completely - customer rejected, order is dead
+          await this.updateOrderStatus(orderId, 'cancelled', null, 'customer_price_rejected');
+          
+          // Notify customer that order is cancelled
+          this.io.to(customerRoom).emit('order_status_update', {
+            orderId: orderId,
+            status: 'cancelled',
+            message: 'Siparişiniz iptal edildi, yeni sipariş oluşturabilirsiniz'
+          });
+          
+          // Remove this order from driver's order list
+          const driverSocket = this.getDriverSocket(driverId);
+          if (driverSocket) {
+            driverSocket.emit('order_removed_from_list', {
+              orderId: orderId,
+              reason: 'customer_rejected_price',
+              message: 'Müşteri fiyatı reddetti, sipariş listeden kaldırıldı'
+            });
+          }
+          
+          console.log(`❌ Price rejected by customer ${customerId} for order ${orderId}, order CANCELLED, driver ${driverId} still available`);
+        }
+      }
+      
+      // Her durumda pending onayı temizle
+      if (this.pendingOrderApprovals && this.pendingOrderApprovals.has(orderId)) {
+        this.pendingOrderApprovals.delete(orderId);
+        console.log(`🧹 Pending approval cleaned for order ${orderId}`);
+      }
+      
+      // Countdown timer'ı iptal et
+      if (this.orderCountdownTimers && this.orderCountdownTimers.has(orderId)) {
+        const timer = this.orderCountdownTimers.get(orderId);
+        clearTimeout(timer);
+        this.orderCountdownTimers.delete(orderId);
+        console.log(`⏰ Countdown timer cancelled for order ${orderId}`);
+      }
+      
+      // Countdown interval'ı iptal et
+      if (this.orderCountdownIntervals && this.orderCountdownIntervals.has(orderId)) {
+        const interval = this.orderCountdownIntervals.get(orderId);
+        clearInterval(interval);
+        this.orderCountdownIntervals.delete(orderId);
+        console.log(`⏰ Countdown interval cancelled for order ${orderId}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error handling customer price response:', error);
+    }
+  }
+
+  /**
+   * Handle driver started navigation
+   */
+  async handleDriverStartedNavigation(driverId, orderId) {
+    try {
+      console.log(`🚗 Driver ${driverId} started navigation for order ${orderId}`);
+      
+      // Get order details to find customer
+      const orderDetails = await this.getOrderDetails(orderId);
+      if (!orderDetails) {
+        console.error(`❌ Order ${orderId} not found for navigation start`);
+        return;
+      }
+      
+      const customerId = orderDetails.user_id;
+      
+      // Send navigation started to customer
+      const customerRoom = roomUtils.getUserRoomId('customer', customerId);
+      this.io.to(customerRoom).emit('driver_started_navigation', {
+        orderId,
+        driverId,
+        timestamp: new Date().toISOString(),
+        message: 'Sürücünüz yola çıktı'
+      });
+      
+      // Update order status to new schema compatible value
+      await this.updateOrderStatus(orderId, 'driver_going_to_pickup', driverId);
+      
+      console.log(`🚗 Navigation started notification sent to customer ${customerId} for order ${orderId}`);
+      
+      // Start periodic location updates (ETA to pickup)
+      this.startDriverLocationUpdates(driverId, orderId, customerId);
+      
+    } catch (error) {
+      console.error('❌ Error handling driver navigation start:', error);
+    }
+  }
+
+  /**
+   * Start periodic driver location updates for customer tracking
+   */
+  startDriverLocationUpdates(driverId, orderId, customerId) {
+    const updateInterval = setInterval(async () => {
+      const driverData = this.connectedDrivers.get(driverId);
+      if (!driverData || !driverData.location) {
+        clearInterval(updateInterval);
+        return;
+      }
+
+      // Determine target based on current order status (pickup or delivery)
+      let eta = null;
+      let targetLat = null;
+      let targetLng = null;
+      let targetType = null; // 'pickup' | 'delivery'
+
+      try {
+        const orderDetails = await this.getOrderDetails(orderId);
+        const currentStatus = orderDetails?.order_status;
+
+        // Stop updates if order is finalized or cancelled
+        if (currentStatus === 'delivered' || currentStatus === 'payment_completed' || currentStatus === 'cancelled') {
+          clearInterval(updateInterval);
+          if (this.driverLocationIntervals) {
+            this.driverLocationIntervals.delete(`${driverId}_${orderId}`);
+          }
+          console.log(`🛑 Stopped driver location updates for order ${orderId} (status: ${currentStatus})`);
+          return;
+        }
+
+        if (currentStatus === 'driver_going_to_pickup' || currentStatus === 'confirmed' || currentStatus === 'driver_accepted_awaiting_customer') {
+          targetLat = orderDetails?.pickup_latitude || null;
+          targetLng = orderDetails?.pickup_longitude || null;
+          targetType = 'pickup';
+        } else if (currentStatus === 'pickup_completed' || currentStatus === 'in_transit') {
+          // Prefer delivery_latitude/longitude, fallback to destination_latitude/longitude
+          targetLat = (orderDetails?.delivery_latitude ?? orderDetails?.destination_latitude) || null;
+          targetLng = (orderDetails?.delivery_longitude ?? orderDetails?.destination_longitude) || null;
+          targetType = 'delivery';
+        }
+      } catch (e) {
+        console.error('❌ Error determining target for ETA:', e);
+      }
+
+      // Calculate ETA using target if available, fallback to customer's current location
+      if (targetLat != null && targetLng != null) {
+        const distance = this.calculateDistance(
+          driverData.location.latitude,
+          driverData.location.longitude,
+          targetLat,
+          targetLng
+        );
+        const etaMinutes = Math.round((distance / 30) * 60); // 30 km/h average speed
+        eta = etaMinutes;
+      } else {
+        const customerData = this.connectedCustomers.get(customerId);
+        if (customerData && customerData.location) {
+          const distance = this.calculateDistance(
+            driverData.location.latitude,
+            driverData.location.longitude,
+            customerData.location.latitude,
+            customerData.location.longitude
+          );
+          const etaMinutes = Math.round((distance / 30) * 60);
+          eta = etaMinutes;
+        }
+      }
+
+      // Send location update to customer with ETA and optional target info
+      const customerRoom = roomUtils.getUserRoomId('customer', customerId);
+      this.io.to(customerRoom).emit('driver_location_update', {
+        orderId,
+        driverId,
+        location: driverData.location,
+        eta: eta,
+        targetType: targetType,
+        target: targetLat != null && targetLng != null ? { latitude: targetLat, longitude: targetLng } : null,
+        timestamp: new Date().toISOString()
+      });
+
+      console.log(`📍 Driver ${driverId} location update sent to customer ${customerId} for order ${orderId}, ETA: ${eta} minutes, target: ${targetType || 'unknown'}`);
+
+    }, 5000); // Every 5 seconds
+
+    // Store the interval so we can clear it later
+    if (!this.driverLocationIntervals) {
+      this.driverLocationIntervals = new Map();
+    }
+    this.driverLocationIntervals.set(`${driverId}_${orderId}`, updateInterval);
   }
 }
 

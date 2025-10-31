@@ -1,7 +1,7 @@
 const sql = require('mssql');
 
 const config = {
-  server: 'localhost',
+  server: process.env.DB_SERVER || 'localhost',
   port: 1433,
   database: 'yuklegeltaksidb',
   user: 'sa',

@@ -91,12 +91,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           o.total_price,
           o.weight_kg,
           o.labor_count,
+          o.base_labor_count,
+          o.cargo_type_id,
           o.order_status,
           o.vehicle_type_id,
           o.created_at,
           u.first_name as customer_first_name,
           u.last_name as customer_last_name,
           u.phone_number as customer_phone,
+          ct.name as cargo_type_name,
+          ct.labor_count as cargo_type_labor_count,
           (
             6371 * acos(
               cos(radians(@driverLatitude)) * cos(radians(o.pickup_latitude)) *
@@ -106,6 +110,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           ) AS distance_to_pickup
         FROM orders o
         INNER JOIN users u ON o.user_id = u.id
+        LEFT JOIN cargo_types ct ON o.cargo_type_id = ct.id
         WHERE o.order_status IN ('pending', 'inspecting')
           AND o.pickup_latitude IS NOT NULL
           AND o.pickup_longitude IS NOT NULL
@@ -135,6 +140,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       estimatedPrice: order.total_price,
       weight_kg: order.weight_kg,
       laborCount: order.labor_count,
+      baseLaborCount: order.base_labor_count,
+      cargoTypeId: order.cargo_type_id,
+      cargoTypeName: order.cargo_type_name,
+      cargoTypeLaborCount: order.cargo_type_labor_count,
       order_status: order.order_status,
       vehicle_type_id: order.vehicle_type_id,
       createdAt: order.created_at,
