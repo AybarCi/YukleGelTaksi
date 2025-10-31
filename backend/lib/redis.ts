@@ -67,7 +67,10 @@ export const CacheKeys = {
     `orders:count:${status}:${search}`,
   order: (id: string) => `order:${id}`,
   driver: (id: string) => `driver:${id}`,
-  user: (id: string) => `user:${id}`
+  user: (id: string) => `user:${id}`,
+  usersList: (page: number, limit: number, search: string) => 
+    `users:list:${page}:${limit}:${search}`,
+  usersCount: (search: string) => `users:count:${search}`
 };
 
 // Cache Manager class
