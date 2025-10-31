@@ -6,10 +6,10 @@ services:
     container_name: yuklegeltaksi-backend
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3003:3001"
     environment:
       - NODE_ENV=production
-      - PORT=3001
+      - PORT=3003
       - DB_SERVER=172.17.0.5
       - DB_DATABASE=yuklegeltaksidb
       - DB_USER=sa
