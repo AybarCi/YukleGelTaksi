@@ -35,5 +35,5 @@ jobs:
           context: ./backoffice
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/backoffice:latest
-            ghcr.io/${{ github.repository }}/backoffice:${{ github.sha }}
+            ghcr.io/aybarci/yuklegeltaksi/backoffice:latest
+            ghcr.io/aybarci/yuklegeltaksi/backoffice:${{ github.sha }}
