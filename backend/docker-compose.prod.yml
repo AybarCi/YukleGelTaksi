@@ -2,21 +2,26 @@ version: '3.8'
 
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      target: production
+    image: ghcr.io/aybarci/yuklegeltaksi/backend:main
     container_name: yuklegeltaksi-backend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DB_SERVER=${DB_SERVER}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - DB_PORT=${DB_PORT:-1433}
+      - DB_REQUEST_TIMEOUTRVER=172.17.0.5
+      - DB_DATABASE=yuklegeltaksidb
+      - DB_USER=sa
+      - DB_PASSWORD=SeKo153759++
+      - DB_PORT=32801
+      - DB_ENCRYPT=false
+      - DB_TRUST_SERVER_CERTIFICATE=true
+      - DB_CONNECTION_TIMEOUT=60000
+      - DB_REQUEST_TIMEOUT=60000
+      - DB_POOL_MAX=10
+      - DB_POOL_MIN=0
+      - DB_POOL_IDLE_TIMEOUT=60000
+      - DB_POOL_ACQUIRE_TIMEOUT=60000
       - JWT_SECRET=${JWT_SECRET}
       - REDIS_URL=${REDIS_URL}
       - SOCKET_PORT=${SOCKET_PORT:-3001}
