@@ -15,6 +15,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: List files to debug
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Root directory contents:"
+          ls -la
+          echo "Backoffice directory contents:"
+          ls -la backoffice/ || echo "backoffice directory not found"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -28,8 +37,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: backoffice
-          file: backoffice/Dockerfile
+          context: ./backoffice
+          file: ./backoffice/Dockerfile
           push: true
           tags: |
             ghcr.io/aybarci/yuklegeltaksi/backoffice:latest
