@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  yuklegeltaksi-backoffice:
+    image: ghcr.io/aybarci/yuklegeltaksi/backoffice:main
+    container_name: yuklegeltaksi-backoffice
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://yuklegeltaksiapi.istekbilisim.com
+      - REACT_APP_BACKEND_URL=http://yuklegeltaksiapi.istekbilisim.com
+      - REACT_APP_SOCKET_URL=ws://yuklegeltaksiapi.istekbilisim.com
+      - REACT_APP_ENVIRONMENT=production
+    volumes:
+      - ./logs:/var/log/nginx
+    networks:
+      - yuklegeltaksi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # No longer depends on local backend since we're using external API
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backoffice.rule=Host(`backoffice.yuklegeltaksi.com`)"
+      - "traefik.http.routers.backoffice.tls=true"
+      - "traefik.http.routers.backoffice.tls.certresolver=letsencrypt"
+
+  # Backend service removed - using external API at http://yuklegeltaksiapi.istekbilisim.com
+
+  # Redis service removed - not needed since backend is external
+
+networks:
+  yuklegeltaksi-network:
+    driver: bridge
+    external: true
+
+# No volumes needed for backoffice-only setup
