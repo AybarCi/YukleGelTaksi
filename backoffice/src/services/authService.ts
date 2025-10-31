@@ -31,7 +31,7 @@ export interface VerifyResponse {
 
 class AuthService {
   private token: string | null = null;
-  private tokenCheckInterval: number | null = null;
+  private tokenCheckInterval: NodeJS.Timeout | number | null = null;
 
   constructor() {
     this.token = localStorage.getItem('supervisor_token');
