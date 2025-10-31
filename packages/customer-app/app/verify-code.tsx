@@ -13,6 +13,8 @@ import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoadingIndicator from '../components/LoadingIndicator';
 import { API_CONFIG } from '../config/api';
+import BackButton from '../components/BackButton';
+import SafeModal from '../components/SafeModal';
 
 export default function VerifyCodeScreen() {
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -243,12 +245,7 @@ export default function VerifyCodeScreen() {
       <StatusBar style="dark" />
       
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000000" />
-        </TouchableOpacity>
+        <BackButton />
       </View>
 
       <View style={styles.content}>

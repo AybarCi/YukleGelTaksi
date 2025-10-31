@@ -10,6 +10,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BackButton from '../components/BackButton';
+import SafeModal from '../components/SafeModal';
 
 const TermsOfServiceScreen = () => {
   const insets = useSafeAreaInsets();
@@ -19,12 +21,7 @@ const TermsOfServiceScreen = () => {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
+        <BackButton />
         <Text style={styles.headerTitle}>Kullanım Şartları</Text>
         <View style={styles.placeholder} />
       </View>

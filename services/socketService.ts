@@ -72,8 +72,8 @@ class SocketService {
         this.socket = null;
       }
 
-      // API config'den base URL'i al ve socket için düzenle
-      const serverUrl = API_CONFIG.BASE_URL.replace('/api', '');
+      // API config'den SOCKET_URL'i doğrudan kullan
+      const serverUrl = API_CONFIG.SOCKET_URL;
       
       this.socket = io(serverUrl, {
         auth: {
@@ -286,6 +286,28 @@ class SocketService {
       console.log('Confirm code error:', data);
       this.emit('confirm_code_error', data);
     });
+
+    // Price confirmation events
+    this.socket.on('price_confirmation_requested', (data) => {
+      console.log('Price confirmation requested:', data);
+      this.emit('price_confirmation_requested', data);
+    });
+
+    this.socket.on('price_confirmation_response', (data) => {
+      console.log('Price confirmation response:', data);
+      this.emit('price_confirmation_response', data);
+    });
+
+    // Navigation events
+    this.socket.on('driver_started_navigation', (data) => {
+      console.log('Driver started navigation:', data);
+      this.emit('driver_started_navigation', data);
+    });
+
+    this.socket.on('driver_location_update_for_customer', (data) => {
+      console.log('Driver location update for customer:', data);
+      this.emit('driver_location_update_for_customer', data);
+    });
   }
 
   private handleReconnection() {
@@ -495,6 +517,38 @@ class SocketService {
     }
 
     this.socket.emit('accept_order_with_labor', { orderId, laborCount });
+    return true;
+  }
+
+  // Price confirmation methods
+  public confirmPriceWithCustomer(orderId: number, finalPrice: number, laborCount: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('confirm_price_with_customer', { orderId, finalPrice, laborCount });
+    return true;
+  }
+
+  public customerPriceResponse(orderId: number, accepted: boolean) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('customer_price_response', { orderId, accepted });
+    return true;
+  }
+
+  // Navigation methods
+  public driverStartedNavigation(orderId: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('driver_started_navigation', { orderId });
     return true;
   }
 

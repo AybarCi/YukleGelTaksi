@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../config/api';
+import BackButton from '../components/BackButton';
+import SafeModal from '../components/SafeModal';
 
 interface FAQItem {
   id: string;
@@ -276,12 +278,7 @@ export default function CustomerSupportScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000000" />
-        </TouchableOpacity>
+        <BackButton />
         <Text style={styles.headerTitle}>Destek</Text>
         <View style={styles.placeholder} />
       </View>

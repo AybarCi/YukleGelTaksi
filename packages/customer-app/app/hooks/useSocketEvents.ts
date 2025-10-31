@@ -27,7 +27,10 @@ export const useSocketEvents = (
   setNotes: (notes: string) => void,
   setDistance: (distance: number | null) => void,
   setRouteDuration: (duration: string | null) => void,
-  setRouteCoordinates: (coords: any[]) => void
+  setRouteCoordinates: (coords: any[]) => void,
+  setPriceConfirmationModalVisible?: (visible: boolean) => void,
+  setPriceConfirmationData?: (data: any) => void,
+  showModal?: (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => void
 ) => {
   useEffect(() => {
     if (!token) {
@@ -194,11 +197,16 @@ export const useSocketEvents = (
           
           // Status mesajları
           const statusMessages: { [key: string]: string } = {
+            'accepted': 'Siparişiniz sürücü tarafından kabul edildi, fiyat onayı bekleniyor',
+            'driver_accepted_awaiting_customer': 'Sürücü siparişinizi kabul etti, onayınız bekleniyor',
             'confirmed': 'Sipariş onaylandı, sürücü yola çıkıyor',
             'in_progress': 'Sürücü yük alma noktasına gidiyor',
             'started': 'Yük alındı, varış noktasına gidiliyor',
             'completed': 'Sipariş tamamlandı',
-            'inspecting': 'Siparişiniz inceleniyor'
+            'inspecting': 'Siparişiniz inceleniyor',
+            'customer_price_approved': 'Fiyat onaylandı, sürücü yola çıkıyor',
+            'customer_price_rejected': 'Fiyat reddedildi, sipariş tekrar aranıyor',
+            'driver_going_to_pickup': 'Sürücünüz yola çıktı'
           };
           
           const status = data.status || 'unknown';
@@ -216,11 +224,16 @@ export const useSocketEvents = (
           }
           
           const statusMessages: { [key: string]: string } = {
+            'accepted': 'Siparişiniz sürücü tarafından kabul edildi, fiyat onayı bekleniyor',
+            'driver_accepted_awaiting_customer': 'Sürücü siparişinizi kabul etti, onayınız bekleniyor',
             'confirmed': 'Sipariş onaylandı, sürücü yola çıkıyor',
             'in_progress': 'Sürücü yük alma noktasına gidiyor',
             'started': 'Yük alındı, varış noktasına gidiliyor',
             'completed': 'Sipariş tamamlandı',
-            'inspecting': 'Siparişiniz inceleniyor'
+            'inspecting': 'Siparişiniz inceleniyor',
+            'customer_price_approved': 'Fiyat onaylandı, sürücü yola çıkıyor',
+            'customer_price_rejected': 'Fiyat reddedildi, sipariş tekrar aranıyor',
+            'driver_going_to_pickup': 'Sürücünüz yola çıktı'
           };
           
           const status = data.order.status || 'unknown';
@@ -232,6 +245,61 @@ export const useSocketEvents = (
         }
       } catch (error) {
         console.error('❌ order_status_update event hatası:', error);
+      }
+    });
+
+    // Order inspection started event - sürücü incelemeye başladığında
+    socketService.on('order_inspection_started', (data: any) => {
+      console.log('🔍 Sürücü incelemeye başladı:', data);
+      
+      try {
+        // Güvenlik kontrolleri
+        if (!data) {
+          console.error('❌ order_inspection_started: data boş');
+          return;
+        }
+        
+        // Yeni format: data.orderId ve data.status
+        if (data.orderId) {
+          // Mevcut siparişi güncelle
+          if (currentOrderRef && currentOrderRef.current && currentOrderRef.current.id === data.orderId) {
+            const updatedOrder = { ...currentOrderRef.current, status: 'inspecting' };
+            
+            if (typeof setCurrentOrder === 'function') {
+              setCurrentOrder(updatedOrder);
+            }
+            
+            currentOrderRef.current = updatedOrder;
+          }
+          
+          // Modal göster
+          if (showModal) {
+            showModal('İnceleme Başladı', 'Sürücü siparişinizi inceliyor.', 'info');
+          }
+          
+          const message = data.message || 'Sürücü siparişinizi inceliyor.';
+          console.log(`🔍 İnceleme başladı: ${message} - bildirim gösterildi`);
+        } else if (data.order) {
+          // Eski format desteği
+          if (typeof setCurrentOrder === 'function') {
+            setCurrentOrder(data.order);
+          }
+          
+          if (currentOrderRef && currentOrderRef.current !== undefined) {
+            currentOrderRef.current = data.order;
+          }
+          
+          // Modal göster
+          if (showModal) {
+            showModal('İnceleme Başladı', 'Sürücü siparişinizi inceliyor.', 'info');
+          }
+          
+          console.log('🔍 İnceleme başladı - bildirim gösterildi');
+        } else {
+          console.error('❌ order_inspection_started: order veya orderId bilgisi eksik', data);
+        }
+      } catch (error) {
+        console.error('❌ order_inspection_started event hatası:', error);
       }
     });
 
@@ -280,6 +348,71 @@ export const useSocketEvents = (
       }
     });
 
+    // Price confirmation requested event
+    socketService.on('price_confirmation_requested', (data: any) => {
+      console.log('💰 Fiyat onayı istendi:', data);
+      
+      try {
+        if (!data) {
+          console.error('❌ price_confirmation_requested: data boş');
+          return;
+        }
+        
+        if (data.orderId && data.finalPrice && data.laborCount) {
+          // Price confirmation modal'ını göster
+          if (setPriceConfirmationModalVisible && setPriceConfirmationData) {
+            setPriceConfirmationData({
+              orderId: data.orderId,
+              finalPrice: data.finalPrice,
+              laborCount: data.laborCount,
+              estimatedPrice: data.estimatedPrice || 0,
+              priceDifference: data.priceDifference || 0,
+              timeout: data.timeout || 60000 // Varsayılan 60 saniye
+            });
+            setPriceConfirmationModalVisible(true);
+          }
+          
+          console.log(`💰 Fiyat onayı istendi - Modal gösteriliyor: Sipariş ${data.orderId}, Fiyat: ${data.finalPrice}, Timeout: ${data.timeout || 60000}ms`);
+        } else {
+          console.error('❌ price_confirmation_requested: Eksik veri', data);
+        }
+      } catch (error) {
+        console.error('❌ price_confirmation_requested event hatası:', error);
+      }
+    });
+
+    // Price confirmation response event
+    socketService.on('price_confirmation_response', (data: any) => {
+      console.log('💰 Fiyat onayı yanıtı:', data);
+      
+      try {
+        if (!data) {
+          console.error('❌ price_confirmation_response: data boş');
+          return;
+        }
+        
+        if (data.orderId && data.success !== undefined) {
+          if (data.success) {
+            console.log(`💰 Fiyat onayı başarılı: Sipariş ${data.orderId}`);
+            // Modal'ı kapat
+            if (setPriceConfirmationModalVisible) {
+              setPriceConfirmationModalVisible(false);
+            }
+          } else {
+            console.log(`💰 Fiyat onayı reddedildi: Sipariş ${data.orderId}`);
+            // Modal'ı kapat
+            if (setPriceConfirmationModalVisible) {
+              setPriceConfirmationModalVisible(false);
+            }
+          }
+        } else {
+          console.error('❌ price_confirmation_response: Eksik veri', data);
+        }
+      } catch (error) {
+        console.error('❌ price_confirmation_response event hatası:', error);
+      }
+    });
+
     // Cleanup
     return () => {
       socketService.off('connect');
@@ -294,6 +427,7 @@ export const useSocketEvents = (
       socketService.off('driver_disconnected');
       socketService.off('order_accepted');
       socketService.off('order_status_update');
+      socketService.off('order_inspection_started');
       socketService.off('order_inspection_stopped');
     };
   }, []);

@@ -59,6 +59,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
             <Text style={styles.statusText}>
               {currentOrder?.status === 'pending' && 'Bekliyor'}
               {currentOrder?.status === 'inspecting' && 'İnceleniyor'}
+              {currentOrder?.status === 'driver_accepted_awaiting_customer' && 'Onayla'}
               {['accepted', 'confirmed'].includes(currentOrder?.status || '') && 'Onaylandı'}
               {currentOrder?.status === 'in_progress' && 'Sürücü yolda'}
               {currentOrder?.status === 'started' && 'Yük alındı'}
@@ -84,6 +85,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 Sipariş #{currentOrder?.id} • {
                   currentOrder?.status === 'pending' ? 'Bekliyor' :
                   currentOrder?.status === 'inspecting' ? 'İnceleniyor' :
+                  currentOrder?.status === 'driver_accepted_awaiting_customer' ? 'Onayla' :
                   ['accepted', 'confirmed'].includes(currentOrder?.status || '') ? 'Onaylandı' :
                   currentOrder?.status === 'in_progress' ? 'Sürücü yolda' :
                   currentOrder?.status === 'started' ? 'Yük alındı' :
@@ -134,7 +136,9 @@ const OrderCard: React.FC<OrderCardProps> = ({
                          ['in_progress', 'started', 'completed'].includes(currentOrder?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
                 />
               </View>
-              <Text style={styles.phaseLabel}>Yolda</Text>
+              <Text style={styles.phaseLabel}>
+                {currentOrder?.status === 'driver_accepted_awaiting_customer' ? 'Onayla' : 'Yolda'}
+              </Text>
             </View>
             
             <View style={[

@@ -19,6 +19,8 @@ interface NewOrderCreatedModalProps {
     destinationAddress: string;
     estimatedPrice: number;
     distance?: number;
+    cargoTypeId?: string;
+    cargoTypeName?: string;
   } | null;
 }
 
@@ -35,6 +37,20 @@ const NewOrderCreatedModal: React.FC<NewOrderCreatedModalProps> = ({
       Vibration.vibrate([0, 200, 100, 200]);
     }
   }, [visible, orderData]);
+
+  // Hammaliye ücreti uyarısı gerekip gerekmediğini kontrol et
+  const shouldShowHandlingFeeWarning = () => {
+    // Eğer yük tipi bilgisi varsa ve özellikle ağır veya özel taşıma gerektiren yüklerse uyarı göster
+    const heavyCargoTypes = ['ağır yük', 'makine', 'inşaat malzemesi', 'yüksek hacimli'];
+    const cargoTypeName = orderData?.cargoTypeName?.toLowerCase() || '';
+    const cargoTypeId = orderData?.cargoTypeId || '';
+    
+    // ID'ye göre de kontrol et (örneğin: 3, 4, 5 gibi ağır yük ID'leri)
+    const heavyCargoIds = ['3', '4', '5', '6', '7'];
+    
+    return heavyCargoTypes.some(type => cargoTypeName.includes(type)) || 
+           heavyCargoIds.includes(cargoTypeId);
+  };
 
   // NewOrderCreatedModal render
   
@@ -70,31 +86,45 @@ const NewOrderCreatedModal: React.FC<NewOrderCreatedModalProps> = ({
               
               <View style={styles.locationContainer}>
                 <View style={styles.locationRow}>
-                  <Ionicons name="location" size={16} color="#10B981" />
+                  <Ionicons name="location" size={16} color="#6B7280" />
                   <Text style={styles.locationText} numberOfLines={2}>
-                    {orderData.pickupAddress || 'Adres belirtilmemiş'}
+                    {orderData.pickupAddress || 'Alım adresi belirtilmedi'}
                   </Text>
                 </View>
                 
                 <View style={styles.routeLine} />
                 
                 <View style={styles.locationRow}>
-                  <Ionicons name="flag" size={16} color="#EF4444" />
+                  <Ionicons name="flag" size={16} color="#6B7280" />
                   <Text style={styles.locationText} numberOfLines={2}>
-                    {orderData.destinationAddress || 'Adres belirtilmemiş'}
+                    {orderData.destinationAddress || 'Varış adresi belirtilmedi'}
                   </Text>
                 </View>
               </View>
 
+              {/* Tahmini Ücret */}
               <View style={styles.priceContainer}>
-                <Text style={styles.priceLabel}>Tahmini Ücret</Text>
-                <Text style={styles.priceValue}>{formatTurkishLira(orderData.estimatedPrice || 0)}</Text>
+                <Text style={styles.priceLabel}>Tahmini Ücret:</Text>
+                <Text style={styles.priceValue}>
+                  {formatTurkishLira(orderData.estimatedPrice || 0)}
+                </Text>
               </View>
+
+              {/* Hammaliye Ücreti Uyarısı */}
+              {shouldShowHandlingFeeWarning() && (
+                <View style={styles.warningContainer}>
+                  <View style={styles.warningRow}>
+                    <Ionicons name="information-circle" size={16} color="#92400E" />
+                    <Text style={styles.warningText}>
+                      Sürücü yükünüzü inceledikten sonra, yük tipine göre hammaliye ücreti artabilir. 
+                      Bu normal bir durumdur ve sürücü tarafından belirlenir.
+                    </Text>
+                  </View>
+                </View>
+              )}
             </View>
           ) : (
-            <View style={styles.orderDetails}>
-              <Text style={styles.message}>Sipariş detayları yükleniyor...</Text>
-            </View>
+            <Text style={styles.message}>Sipariş detayları yükleniyor...</Text>
           )}
 
           {/* Close Button */}
@@ -197,6 +227,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
+    marginBottom: 12,
   },
   priceLabel: {
     fontSize: 16,
@@ -207,6 +238,25 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#10B981',
     fontWeight: 'bold',
+  },
+  warningContainer: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  warningText: {
+    fontSize: 13,
+    color: '#92400E',
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 18,
   },
   button: {
     backgroundColor: '#10B981',

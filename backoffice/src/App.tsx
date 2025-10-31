@@ -13,6 +13,7 @@ import SystemSettingsPage from './pages/SystemSettingsPage';
 import CancellationSettingsPage from './pages/CancellationSettingsPage';
 import SupportTicketsPage from './pages/SupportTicketsPage';
 import VehicleTypesPage from './pages/VehicleTypesPage';
+import CargoTypesPage from './pages/CargoTypesPage';
 import MonitoringPage from './pages/MonitoringPage';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -90,6 +91,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <VehicleTypesPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/cargo-types" element={
+              <ProtectedRoute>
+                <Layout>
+                  <CargoTypesPage />
                 </Layout>
               </ProtectedRoute>
             } />

@@ -33,12 +33,11 @@ export interface DriverInfo {
 export interface OrderData {
   id: number;
   pickupAddress: string;
-  pickup_latitude: number;
-  pickup_longitude: number;
+  pickupLatitude: number;
+  pickupLongitude: number;
   destinationAddress: string;
-  delivery_latitude: number;
-  delivery_longitude: number;
-  weight: number;
+  destinationLatitude: number;
+  destinationLongitude: number;
   laborCount: number;
   estimatedPrice: number;
   customerId: number;

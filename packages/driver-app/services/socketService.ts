@@ -73,7 +73,7 @@ class SocketService {
       }
 
       // API config'den base URL'i al ve socket için düzenle
-      const serverUrl = API_CONFIG.BASE_URL;
+      const serverUrl = API_CONFIG.SOCKET_URL;
       
       this.socket = io(serverUrl, {
         auth: {
@@ -173,17 +173,11 @@ class SocketService {
       this.emit('nearbyDriversUpdate', data);
     });
 
-    // New order for drivers
+    // New order for drivers - doğrudan backend'ten gelen event'i expose et
     this.socket.on('new_order_available', (data) => {
       console.log('🔔 NEW ORDER AVAILABLE EVENT ALINDI:', data);
-      // New order available
-      this.emit('new_order', data);
-    });
-
-    // Order created event - yeni sipariş oluşturulduğunda sürücülere bildirim
-    this.socket.on('order_created', (data) => {
-      // Order created (duplicate)
-      this.emit('order_created', data);
+      // Doğrudan new_order_available event'ini emit et, gereksiz re-naming yok
+      this.emit('new_order_available', data);
     });
 
     // Driver offline event
@@ -251,6 +245,11 @@ class SocketService {
       this.emit('order_cancelled_by_customer', data);
     });
 
+    this.socket.on('order_removed_from_list', (data) => {
+      // Order removed from driver's list (customer rejected price)
+      this.emit('order_removed_from_list', data);
+    });
+
     this.socket.on('cancel_order_error', (data) => {
       // Cancel order error
       this.emit('cancel_order_error', data);
@@ -288,32 +287,8 @@ class SocketService {
     }
   }
 
-  // Public methods for customers
-  public createOrder(orderData: OrderData) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-
-    this.socket.emit('create_order', orderData);
-    return true;
-  }
-
   public getConnectionStatus() {
     return this.isConnected;
-  }
-
-  public cancelOrder(orderId: number) {
-    // cancelOrder called
-    
-    if (!this.isConnected || !this.socket) {
-      console.error('❌ Socket not connected or socket object missing');
-      return false;
-    }
-
-    // Emitting cancel_order event
-      this.socket.emit('cancel_order', orderId);
-    return true;
   }
 
   // Public methods for drivers
@@ -364,16 +339,6 @@ class SocketService {
     return true;
   }
 
-  public acceptOrder(orderId: number) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-
-    this.socket.emit('accept_order', orderId);
-    return true;
-  }
-
   public updateOrderStatus(orderId: number, status: string) {
     if (!this.isConnected || !this.socket) {
       console.error('Socket not connected');
@@ -391,46 +356,6 @@ class SocketService {
     }
 
     this.socket.emit('customer_reject_order', { orderId });
-    return true;
-  }
-
-  public confirmOrder(orderId: number) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-
-    this.socket.emit('customer_confirm_order', { orderId });
-    return true;
-  }
-
-  public verifyConfirmCode(orderId: number, confirmCode: string) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-
-    this.socket.emit('verify_confirm_code', { orderId, confirmCode });
-    return true;
-  }
-
-  public cancelOrderWithCode(orderId: number, confirmCode: string) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-
-    this.socket.emit('cancel_order_with_code', { orderId, confirmCode });
-    return true;
-  }
-
-  public verifyCancelCode(orderId: number, confirmCode: string) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-
-    this.socket.emit('verify_cancel_code', { orderId, confirmCode });
     return true;
   }
 
@@ -518,6 +443,16 @@ class SocketService {
   public async connectWithToken(token: string) {
     console.log('Connecting socket with provided token');
     await this.connect(token);
+  }
+
+  public driverStartedNavigation(orderId: number) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('driver_started_navigation', { orderId });
+    return true;
   }
 
   public disconnect() {

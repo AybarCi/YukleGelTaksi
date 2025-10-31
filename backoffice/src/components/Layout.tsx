@@ -30,6 +30,9 @@ import {
   AccountCircle,
   Logout,
   BarChart as MonitoringIcon,
+  Inventory as InventoryIcon,
+  Calculate as CalculateIcon,
+  RadioButtonChecked as SteeringIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -85,13 +88,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     },
     {
       text: 'Sürücüler',
-      icon: <DriversIcon />,
+      icon: <SteeringIcon />,
       path: '/drivers'
     },
     {
       text: 'Araç Tipleri',
-      icon: <DirectionsCar />,
+      icon: <LocalShippingIcon />,
       path: '/vehicle-types'
+    },
+    {
+      text: 'Yük Tipleri',
+      icon: <InventoryIcon />,
+      path: '/cargo-types'
     },
     {
       text: 'Siparişler',
@@ -110,7 +118,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     },
     {
       text: 'Taşıma Hesaplama',
-      icon: <LocalShippingIcon />,
+      icon: <CalculateIcon />,
       path: '/pricing'
     },
     {

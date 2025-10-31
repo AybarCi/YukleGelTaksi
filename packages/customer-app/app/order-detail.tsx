@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,22 +9,27 @@ import {
   Linking,
   Image,
   TextInput,
+  Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import BackButton from '../components/BackButton';
+import SafeModal from '../components/SafeModal';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
 import ReviewOrderPhotos from '../components/ReviewOrderPhotos';
 import { cancelOrder, calculateCancellationFee, clearCurrentOrder } from '../store/slices/orderSlice';
+import { loadVehicleTypes } from '../store/slices/vehicleSlice';
 import socketService from '../services/socketService';
 import PaymentModal from '../components/PaymentModal';
 import CancelOrderModal from '../components/CancelOrderModal';
 import SuccessModal from '../components/SuccessModal';
 import { useAuth } from '../contexts/AuthContext';
 import { formatTurkishLira } from './utils/currencyUtils';
+import SystemSettingsService from '../services/systemSettingsService';
 
 interface Order {
   id?: string;
@@ -57,8 +62,11 @@ interface Order {
   driver_heading?: number;
   vehicleTypeId?: string | number;
   vehicle_type_id?: string | number;
+  cargoTypeId?: string | number;
+  cargo_type_id?: string | number;
   laborRequired?: boolean;
   laborCount?: number;
+  base_labor_count?: number;
   weight_kg?: number;
   cargoImages?: string[];
   cargo_photo_urls?: string[];
@@ -86,13 +94,55 @@ export default function OrderDetailScreen() {
   const confirmCodeInputRefs = React.useRef<(TextInput | null)[]>([]);
   const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
   const [cancelConfirmCode, setCancelConfirmCode] = useState('');
+  const [laborPrice, setLaborPrice] = useState<number>(25); // Varsayılan değer
   const vehicleTypes = useSelector((state: RootState) => state.vehicle.vehicleTypes);
   const { currentOrder } = useSelector((state: RootState) => state.order);
 
+  // Animasyon değerleri
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Onay butonu animasyonları
+  useEffect(() => {
+    console.log('🎯 DEBUG: Order status:', order?.status);
+    console.log('🎯 DEBUG: Pulse animasyonu hazır, pulseAnim değeri:', pulseAnim);
+    
+    // Pulse animasyonu - daha belirgin
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    // Sadece fiyat onayı bekleniyor durumunda animasyonu başlat
+    if (order?.status === 'driver_accepted_awaiting_customer') {
+      pulseAnimation.start();
+      console.log('🎯 DEBUG: Pulse animasyonu başlatıldı');
+    }
+
+    return () => {
+      pulseAnimation.stop();
+      console.log('🎯 DEBUG: Pulse animasyonu durduruldu');
+    };
+  }, [order?.status, pulseAnim]);
+
   // Debug: successModalVisible state değişimini takip et
   useEffect(() => {
-    // Debug logs removed
-  }, [successModalVisible, successModalData]);
+    console.log('🔍 DEBUG: successModalVisible değişti:', successModalVisible);
+  }, [successModalVisible]);
+
+  useEffect(() => {
+    // Vehicle types'ı yükle
+    dispatch(loadVehicleTypes() as any);
+  }, [dispatch]);
 
   useEffect(() => {
     // Debug logs removed
@@ -109,6 +159,22 @@ export default function OrderDetailScreen() {
     setLoading(false);
   }, [currentOrder, orderId, vehicleTypes]);
 
+  // Hammaliye ücretini yükle
+  useEffect(() => {
+    const loadLaborPrice = async () => {
+      try {
+        const systemSettings = SystemSettingsService.getInstance();
+        const price = await systemSettings.getLaborPrice();
+        setLaborPrice(price);
+      } catch (error) {
+        console.error('Hammaliye fiyatı yüklenirken hata:', error);
+        setLaborPrice(25); // Hata durumunda varsayılan değer
+      }
+    };
+
+    loadLaborPrice();
+  }, []);
+
   // Socket event listener for order status updates
   useEffect(() => {
     // Debug logs removed
@@ -123,6 +189,30 @@ export default function OrderDetailScreen() {
           ...prevOrder!,
           status: data.status
         }));
+
+        // Sipariş iptal edildiğinde otomatik olarak ana sayfaya yönlendir
+        if (data.status === 'cancelled') {
+          console.log('🔍 DEBUG: Sipariş iptal edildi, ana sayfaya yönlendiriliyor...');
+          
+          // Redux store'dan currentOrder'ı temizle
+          dispatch(clearCurrentOrder());
+          
+          // Kısa bir gecikme ile ana sayfaya yönlendir
+          setTimeout(() => {
+            try {
+              router.replace('/home');
+              console.log('🔍 DEBUG: Ana sayfaya yönlendirme başarılı');
+            } catch (error) {
+              console.error('🚨 ERROR: Ana sayfaya yönlendirme hatası:', error);
+              // Fallback olarak push dene
+              try {
+                router.push('/home');
+              } catch (pushError) {
+                console.error('🚨 ERROR: router.push("/home") hatası:', pushError);
+              }
+            }
+          }, 1000); // 1 saniye gecikme ile kullanıcının durumu görmesini sağla
+        }
       }
     };
 
@@ -133,8 +223,6 @@ export default function OrderDetailScreen() {
       setCancellationFee(data.cancellationFee || 0);
       setCancelOrderModalVisible(true);
     };
-
-
 
     // Socket bağlantısını kontrol et
     if (!socketService.isSocketConnected()) {
@@ -156,6 +244,8 @@ export default function OrderDetailScreen() {
       socketService.off('cancel_order_confirmation_required', handleCancelOrderConfirmationRequired);
     };
   }, [order, dispatch, router]);
+
+
 
   const handleCancelOrder = async () => {
     if (!order?.id) {
@@ -189,15 +279,34 @@ export default function OrderDetailScreen() {
 
   const handlePayment = () => {
     setPaymentModalVisible(false);
-    // Ödeme sayfasına yönlendir
-    router.push({
-      pathname: '/payment',
-      params: {
-        orderId: order?.id,
-        cancellationFee: cancellationFee.toString(),
-        estimatedAmount: estimatedAmount.toString()
+    // Ödeme sayfasına yönlendir - güvenli navigation
+    try {
+      console.log('🔍 DEBUG: router.push("/payment") çağrılıyor...');
+      router.push({
+        pathname: '/payment',
+        params: {
+          orderId: order?.id,
+          cancellationFee: cancellationFee.toString(),
+          estimatedAmount: estimatedAmount.toString()
+        }
+      });
+      console.log('🔍 DEBUG: router.push("/payment") başarılı');
+    } catch (error) {
+      console.error('🚨 ERROR: router.push("/payment") hatası:', error);
+      // Fallback olarak replace dene
+      try {
+        router.replace({
+          pathname: '/payment',
+          params: {
+            orderId: order?.id,
+            cancellationFee: cancellationFee.toString(),
+            estimatedAmount: estimatedAmount.toString()
+          }
+        });
+      } catch (replaceError) {
+        console.error('🚨 ERROR: router.replace("/payment") hatası:', replaceError);
       }
-    });
+    }
   };
 
   const handleDirectCancel = () => {
@@ -218,18 +327,16 @@ export default function OrderDetailScreen() {
   };
 
   const showModal = (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', onPress?: () => void) => {
-    // Debug logs removed
+    console.log('🔍 DEBUG: showModal çağrıldı:', { title, message, type });
     
-    // İptal işlemi başarılı olduğunda anasayfaya yönlendir
+    // İptal işlemi başarılı olduğunda SuccessModal kullan
     if (type === 'success' && title === 'İptal İşlemi Başarılı') {
-      const handleSuccess = () => {
-        // Debug logs removed
-        router.push('/');
-        if (onPress) onPress();
-      };
-      authShowModal(title, message, type, [{ text: 'Tamam', onPress: handleSuccess }]);
+      console.log('🔍 DEBUG: SuccessModal açılacak');
+      setSuccessModalData({ title, message });
+      setSuccessModalVisible(true);
     } else {
-      // Diğer durumlar için normal modal
+      // Diğer durumlar için authShowModal kullan
+      console.log('🔍 DEBUG: authShowModal kullanılacak');
       authShowModal(title, message, type, onPress ? [{ text: 'Tamam', onPress }] : undefined);
     }
   };
@@ -237,12 +344,13 @@ export default function OrderDetailScreen() {
   const canCancelOrder = (status?: string) => {
     if (!status) return false;
     // Sadece belirli durumlarda iptal edilebilir
-    return ['pending', 'inspecting', 'accepted', 'confirmed', 'started'].includes(status);
+    return ['pending', 'inspecting', 'driver_accepted_awaiting_customer', 'accepted', 'confirmed', 'started'].includes(status);
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
       case 'pending': return 'Beklemede';
+      case 'driver_accepted_awaiting_customer': return 'Onayınızı Bekliyor';
       case 'inspecting': return 'İnceleniyor';
       case 'accepted': return 'Kabul Edildi';
       case 'confirmed': return 'Onaylandı';
@@ -258,6 +366,7 @@ export default function OrderDetailScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return '#F59E0B';
+      case 'driver_accepted_awaiting_customer': return '#FF6B35';
       case 'inspecting': return '#3B82F6';
       case 'accepted':
       case 'confirmed': return '#10B981';
@@ -321,18 +430,27 @@ export default function OrderDetailScreen() {
   };
 
   if (!order) {
+    const handleNewOrder = () => {
+      router.push('/home');
+    };
+
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
-          </TouchableOpacity>
+          <BackButton />
           <Text style={styles.headerTitle}>Sipariş Detayı</Text>
           <View style={styles.placeholder} />
         </View>
         <View style={styles.emptyContainer}>
           <MaterialIcons name="error-outline" size={64} color="#D1D5DB" />
           <Text style={styles.emptyText}>Sipariş bilgisi bulunamadı</Text>
+          <TouchableOpacity 
+            style={styles.newOrderButton}
+            onPress={handleNewOrder}
+          >
+            <Ionicons name="add-circle" size={20} color="#FFFFFF" />
+            <Text style={styles.newOrderButtonText}>Yeni Sipariş</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -341,9 +459,7 @@ export default function OrderDetailScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
+        <BackButton />
         <Text style={styles.headerTitle}>Sipariş Detayı</Text>
         <View style={styles.placeholder} />
       </View>
@@ -504,6 +620,87 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
+        {/* Fiyat Onayı Bekleniyor */}
+        {order.status === 'driver_accepted_awaiting_customer' && (
+          <View style={styles.section}>
+            {/* <Text style={styles.sectionTitle}>Fiyat Onayı Bekleniyor</Text> */}
+            <View style={styles.priceApprovalCard}>
+              <View style={styles.priceApprovalHeader}>
+                <Ionicons name="information-circle" size={24} color="#FF6B35" />
+                <Text style={styles.priceApprovalTitle}>Sürücü Kabul Etti</Text>
+              </View>
+              <Text style={styles.priceApprovalText}>
+                Sürücü siparişinizi kabul etti ve güncellenmiş fiyatı onaylamanız bekleniyor.
+              </Text>
+              
+              {order.laborCount && order.laborCount > 0 && (
+                <View style={styles.laborInfoContainer}>
+                  <Ionicons name="people" size={20} color="#F59E0B" />
+                  <Text style={styles.laborInfoText}>
+                    {order.base_labor_count && order.base_labor_count > 0 ? (
+                      order.laborCount > order.base_labor_count ? (
+                        `Yük tipi: ${order.base_labor_count} temel işçi, Sürücü ekledi: ${order.laborCount - order.base_labor_count} ek işçi`
+                      ) : (
+                        `Yük tipi: ${order.base_labor_count} temel işçi`
+                      )
+                    ) : (
+                      `Sürücü ${order.laborCount} kişilik hammaliye ekibi önerdi.`
+                    )}
+                    {' '}Ek işçi ücreti sürücü tarafından belirlenmiştir.
+                  </Text>
+                </View>
+              )}
+              
+              <View style={styles.priceBreakdownContainer}>
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Taşıma Ücreti:</Text>
+                  <Text style={styles.priceValue}>
+                    {formatTurkishLira((order.total_price || order.estimatedPrice || 0) - (order.laborCount || 0) * laborPrice)}
+                  </Text>
+                </View>
+                {order.laborCount && order.laborCount > 0 && (
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>
+                      Hammaliye 
+                      {order.base_labor_count && order.base_labor_count > 0 
+                        ? `(${order.base_labor_count} temel${order.laborCount > order.base_labor_count ? ` + ${order.laborCount - order.base_labor_count} ek` : ''})`
+                        : `(${order.laborCount} kişi)`
+                      }:
+                    </Text>
+                    <Text style={styles.priceValue}>
+                      {formatTurkishLira((order.laborCount || 0) * laborPrice)}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.priceRowTotal}>
+                  <Text style={styles.priceLabelTotal}>Toplam Tutar:</Text>
+                  <Text style={styles.priceValueTotal}>
+                    {formatTurkishLira(order.total_price || order.estimatedPrice || 0)}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                style={styles.acceptButton}
+                onPress={() => {
+                  if (order.id) {
+                    socketService.priceConfirmationResponse(parseInt(order.id), true);
+                  }
+                }}
+              >
+                <Animated.View style={{ flexDirection: 'row', alignItems: 'center', transform: [{ scale: pulseAnim }] }}>
+                  <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
+                  <Text style={styles.acceptButtonText}>
+                    Onayla
+                  </Text>
+                </Animated.View>
+              </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Sürücü İnceleme Geçmişi */}
         {(order.status === 'pending' || order.status === 'accepted' || order.status === 'confirmed') && (
           <View style={styles.section}>
@@ -544,6 +741,14 @@ export default function OrderDetailScreen() {
         {/* Sipariş İptal Butonu */}
         {canCancelOrder(order.status) && (
           <View style={styles.section}>
+            {order.status === 'driver_accepted_awaiting_customer' && (
+              <View style={styles.cancelWarningContainer}>
+                <Ionicons name="information-circle" size={16} color="#F59E0B" />
+                <Text style={styles.cancelWarningText}>
+                  Sürücü kabul ettiği için iptal cezası uygulanabilir. Fiyatı onaylamak isterseniz yukarıdaki butonları kullanın.
+                </Text>
+              </View>
+            )}
             <TouchableOpacity 
               style={styles.cancelButton}
               onPress={handleCancelOrder}
@@ -600,8 +805,25 @@ export default function OrderDetailScreen() {
         buttonText="Ana Sayfaya Dön"
         onButtonPress={() => {
           console.log('🔍 DEBUG: SuccessModal onButtonPress çağrıldı');
+          // Önce modal'ı kapat
           setSuccessModalVisible(false);
-          router.replace('/home');
+          // Küçük bir gecikme ile navigation yap - modal'ın kapanmasını bekle
+          setTimeout(() => {
+            // Ana sayfaya yönlendirme - güvenli navigation
+            try {
+              console.log('🔍 DEBUG: router.push("/home") çağrılıyor...');
+              router.push('/home');
+              console.log('🔍 DEBUG: router.push("/home") başarılı');
+            } catch (error) {
+              console.error('🚨 ERROR: router.push("/home") hatası:', error);
+              // Fallback olarak replace dene
+              try {
+                router.replace('/home');
+              } catch (replaceError) {
+                console.error('🚨 ERROR: router.replace("/home") hatası:', replaceError);
+              }
+            }
+          }, 300); // 300ms gecikme ile modal'ın kapanmasını bekle
         }}
       />
 
@@ -946,5 +1168,167 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginLeft: 8,
     flex: 1,
+  },
+  newOrderButton: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    marginTop: 16,
+  },
+  newOrderButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  priceApprovalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  priceApprovalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  priceApprovalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#059669',
+    marginLeft: 12,
+  },
+  priceConfirmationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  priceConfirmationTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#D97706',
+    marginLeft: 12,
+  },
+  priceApprovalText: {
+    fontSize: 15,
+    color: '#6B7280',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  laborInfoContainer: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  laborInfoText: {
+    fontSize: 14,
+    color: '#92400E',
+    lineHeight: 20,
+    marginLeft: 12,
+    flex: 1,
+  },
+  priceBreakdownContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 24,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  priceRowLast: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: '#E5E7EB',
+  },
+  priceLabel: {
+    fontSize: 15,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  priceValue: {
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  priceValueTotal: {
+    fontSize: 18,
+    color: '#111827',
+    fontWeight: 'bold',
+  },
+  priceRowTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: '#E5E7EB',
+  },
+  priceLabelTotal: {
+    fontSize: 16,
+    color: '#111827',
+    fontWeight: 'bold',
+  },
+  actionButtons: {
+    marginTop: 24,
+  },
+
+  acceptButton: {
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ scale: 1 }],
+  },
+  acceptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  cancelWarningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  cancelWarningText: {
+    fontSize: 12,
+    color: '#92400E',
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 16,
   },
 });

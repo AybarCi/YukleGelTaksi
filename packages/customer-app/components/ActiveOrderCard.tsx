@@ -191,7 +191,11 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
     const statusMap: { [key: string]: string } = {
       'pending': 'Sipariş Bekliyor',
       'inspecting': 'İnceleniyor',
+      'driver_accepted_awaiting_customer': 'Onayla',
       'accepted': 'Kabul Edildi',
+      'customer_price_approved': 'Fiyat Onaylandı',
+      'customer_price_rejected': 'Fiyat Reddedildi',
+      'driver_going_to_pickup': 'Sürücü Yolda',
       'confirmed': 'Onaylandı',
       'in_progress': 'Devam Ediyor',
       'started': 'Başladı',
@@ -205,7 +209,11 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
     const colorMap: { [key: string]: string } = {
       'pending': '#FFA500',
       'inspecting': '#FF6B35',
+      'driver_accepted_awaiting_customer': '#FF6B35',
       'accepted': '#4CAF50',
+      'customer_price_approved': '#4CAF50',
+      'customer_price_rejected': '#F44336',
+      'driver_going_to_pickup': '#2196F3',
       'confirmed': '#2196F3',
       'in_progress': '#9C27B0',
       'started': '#FF9800',
@@ -303,28 +311,30 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
           
           <View style={[
             styles.phaseLine,
-            ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
+            ['driver_accepted_awaiting_customer', 'accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
           ]} />
           
           <View style={styles.phaseStep}>
             <View style={[
               styles.phaseCircle,
-              ['accepted', 'confirmed'].includes(order?.status || '') ? styles.phaseActive :
+              ['driver_accepted_awaiting_customer', 'accepted', 'confirmed'].includes(order?.status || '') ? styles.phaseActive :
               ['in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseCompleted : styles.phaseInactive
             ]}>
               <MaterialIcons 
                 name="local-shipping" 
                 size={12} 
-                color={['accepted', 'confirmed'].includes(order?.status || '') ? '#F59E0B' : 
+                color={['driver_accepted_awaiting_customer', 'accepted', 'confirmed'].includes(order?.status || '') ? '#F59E0B' : 
                        ['in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? '#FFFFFF' : '#9CA3AF'} 
               />
             </View>
-            <Text style={styles.phaseLabel}>Yolda</Text>
+            <Text style={styles.phaseLabel}>
+              {order?.status === 'driver_accepted_awaiting_customer' ? 'Onayla' : 'Yolda'}
+            </Text>
           </View>
           
           <View style={[
             styles.phaseLine,
-            ['in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
+            ['accepted', 'confirmed', 'in_progress', 'started', 'transporting', 'completed'].includes(order?.status || '') ? styles.phaseLineCompleted : styles.phaseLineInactive
           ]} />
           
           <View style={styles.phaseStep}>
@@ -397,14 +407,14 @@ const ActiveOrderCard: React.FC<ActiveOrderCardProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 0,
     padding: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -417,30 +427,31 @@ const styles = StyleSheet.create({
     borderColor: '#F3F4F6',
     marginHorizontal: 0,
     width: '100%',
+    minHeight: 160,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
   },
   statusText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: '#374151',
   },
   content: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   orderInfo: {
     flexDirection: 'row',
@@ -448,19 +459,19 @@ const styles = StyleSheet.create({
   },
   orderDetails: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 16,
   },
   orderTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   orderSubtitle: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#6B7280',
-    marginBottom: 8,
-    lineHeight: 20,
+    marginBottom: 10,
+    lineHeight: 22,
   },
   orderMeta: {
     flexDirection: 'row',
@@ -468,22 +479,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   orderMetaText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#9CA3AF',
-    marginRight: 4,
+    marginRight: 6,
   },
   footer: {
     alignItems: 'center',
   },
   footerText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#9CA3AF',
     fontStyle: 'italic',
   },
   timelineContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   phaseStep: {
     alignItems: 'center',
@@ -491,12 +502,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   phaseCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   phaseActive: {
     backgroundColor: '#FEF3C7',
@@ -512,8 +523,8 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   phaseLine: {
-    height: 2,
-    width: 20,
+    height: 3,
+    width: 24,
     marginHorizontal: 0,
   },
   phaseLineCompleted: {
@@ -523,45 +534,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
   },
   phaseLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '500',
     color: '#6B7280',
     textAlign: 'center',
     flexWrap: 'wrap',
-    maxWidth: 40,
+    maxWidth: 50,
   },
   animatedProgressContainer: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   animatedProgressTrack: {
-    height: 6,
+    height: 8,
     backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    marginBottom: 8,
+    borderRadius: 4,
+    marginBottom: 10,
     overflow: 'hidden',
   },
   animatedProgressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 4,
   },
   animatedProgressText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
     fontStyle: 'italic',
   },
   addressContainer: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
   addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   addressText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#6B7280',
-    marginLeft: 8,
+    marginLeft: 10,
     flex: 1,
   },
 });

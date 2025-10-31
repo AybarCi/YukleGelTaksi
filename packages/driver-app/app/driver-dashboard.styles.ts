@@ -617,4 +617,90 @@ export const styles = StyleSheet.create({
     rightArrow: {
       right: 20,
     },
+    // Navigasyon Durum Göstergesi
+    navigationStatusContainer: {
+      position: 'absolute',
+      top: 120,
+      left: 20,
+      right: 20,
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      borderRadius: 12,
+      padding: 12,
+      zIndex: 1000,
+      elevation: 5,
+    },
+    navigationStatusContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    navigationStatusText: {
+      marginLeft: 12,
+      flex: 1,
+    },
+    navigationStatusTitle: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      color: '#FFFFFF',
+      marginBottom: 2,
+    },
+    navigationStatusSubtitle: {
+    fontSize: 12,
+    color: '#E5E7EB',
+  },
+  // Waiting for Customer Approval Styles
+  waitingApprovalContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    maxHeight: '50%',
+  },
+  waitingApprovalContent: {
+    alignItems: 'center',
+  },
+  waitingApprovalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000000',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  waitingApprovalText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  cancelWaitingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  cancelWaitingButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginLeft: 8,
+  },
+  disabledButton: {
+    backgroundColor: '#9CA3AF',
+    opacity: 0.6,
+  },
+  disabledButtonText: {
+    color: '#E5E7EB',
+  },
 });

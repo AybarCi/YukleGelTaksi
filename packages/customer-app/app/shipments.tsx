@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import BackButton from '../components/BackButton';
+import SafeModal from '../components/SafeModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -304,12 +306,7 @@ export default function ShipmentsScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000000" />
-        </TouchableOpacity>
+        <BackButton style={styles.backButton} />
         <Text style={styles.headerTitle}>Taşımalarım</Text>
         <View style={styles.placeholder} />
       </View>
@@ -375,7 +372,7 @@ export default function ShipmentsScreen() {
             </Text>
             <TouchableOpacity 
               style={styles.createOrderButton}
-              onPress={() => router.back()}
+              onPress={() => router.push('/')}
             >
               <Text style={styles.createOrderButtonText}>Yeni Sipariş Ver</Text>
             </TouchableOpacity>
@@ -384,7 +381,7 @@ export default function ShipmentsScreen() {
       </ScrollView>
 
       {/* Detail Modal */}
-      <Modal
+      <SafeModal
         visible={showDetailModal}
         animationType="slide"
         presentationStyle="pageSheet"
@@ -489,10 +486,10 @@ export default function ShipmentsScreen() {
             </ScrollView>
           )}
         </View>
-      </Modal>
+      </SafeModal>
 
       {/* Image Modal */}
-      <Modal
+      <SafeModal
         visible={showImageModal}
         animationType="fade"
         transparent={true}
@@ -528,7 +525,7 @@ export default function ShipmentsScreen() {
             </View>
           </TouchableOpacity>
         </View>
-      </Modal>
+      </SafeModal>
     </View>
   );
 }

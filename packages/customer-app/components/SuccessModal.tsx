@@ -37,11 +37,6 @@ const SuccessModal: React.FC<SuccessModalProps> = ({
     }
   };
 
-  if (!visible) {
-    console.log('🔍 SUCCESS MODAL: visible false, modal render edilmiyor');
-    return null;
-  }
-
   console.log('🔍 SUCCESS MODAL: Modal render ediliyor!');
   console.log('🔍 SUCCESS MODAL: Modal JSX oluşturuluyor...');
 

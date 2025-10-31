@@ -56,18 +56,22 @@ const CancellationSettingsPage: React.FC = () => {
 
   const orderStatusLabels: { [key: string]: string } = {
     'pending': 'Beklemede',
+    'inspecting': 'İnceleme Aşamasında',
     'driver_accepted_awaiting_customer': 'Sürücü Kabul Etti - Müşteri Onayı Bekleniyor',
     'confirmed': 'Onaylandı',
     'driver_going_to_pickup': 'Sürücü Yola Çıktı',
     'pickup_completed': 'Yük Alındı',
     'in_transit': 'Yolda',
-    'delivered': 'Teslim Edildi'
+    'delivered': 'Teslim Edildi',
+    'payment_completed': 'Ödeme Tamamlandı'
   };
 
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'pending':
         return '#ff9800'; // Orange
+      case 'inspecting':
+        return '#00bcd4'; // Cyan
       case 'driver_accepted_awaiting_customer':
         return '#2196f3'; // Blue
       case 'confirmed':
@@ -80,6 +84,8 @@ const CancellationSettingsPage: React.FC = () => {
         return '#795548'; // Brown
       case 'delivered':
         return '#607d8b'; // Blue Grey
+      case 'payment_completed':
+        return '#4caf50'; // Green
       default:
         return '#757575'; // Grey
     }
@@ -102,7 +108,26 @@ const CancellationSettingsPage: React.FC = () => {
         });
         
         if (response.data.success && response.data.data) {
-          setCancellationFees(response.data.data);
+          let fees = response.data.data;
+          
+          // inspecting statüsü yoksa ekle
+          const hasInspecting = fees.some((fee: CancellationFee) => fee.order_status === 'inspecting');
+          if (!hasInspecting) {
+            fees.push({
+              id: Date.now(), // Geçici ID
+              order_status: 'inspecting',
+              fee_percentage: 0,
+              is_active: true,
+              description: 'İnceleme aşamasındaki siparişler için cezai şart yok',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          }
+          
+          // payment_completed statüsünü UI'da gösterme (kullanıcı istemedi)
+          fees = fees.filter((fee: CancellationFee) => fee.order_status !== 'payment_completed');
+          
+          setCancellationFees(fees);
         }
       } catch (err: any) {
         console.error('Cezai şart ayarları yüklenirken hata:', err);
@@ -149,9 +174,12 @@ const CancellationSettingsPage: React.FC = () => {
         return;
       }
 
+      // payment_completed statüsünü backend'e gönderme (kullanıcı istemedi)
+      const filteredFees = cancellationFees.filter(fee => fee.order_status !== 'payment_completed');
+      
       const response = await axios.put(
         `${API_CONFIG.BASE_URL}/admin/cancellation-fees`,
-        { cancellationFees },
+        { cancellationFees: filteredFees },
         {
           headers: {
             'Authorization': `Bearer ${token}`,

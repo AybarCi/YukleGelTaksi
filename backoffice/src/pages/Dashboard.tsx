@@ -142,7 +142,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [token]);
 
   const fetchDashboardData = async () => {
     try {

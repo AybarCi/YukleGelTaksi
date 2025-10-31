@@ -14,6 +14,7 @@ interface OrderData {
   laborCount: number;
   estimatedPrice: number;
   vehicle_type_id?: number; // Araç tipi ID'si
+  cargo_type_id?: number; // Kargo tipi ID'si
 }
 
 interface LocationUpdate {
@@ -278,6 +279,28 @@ class SocketService {
       // Confirm code error
       this.emit('confirm_code_error', data);
     });
+
+    // Price confirmation events
+    this.socket.on('price_confirmation_requested', (data) => {
+      // Price confirmation requested
+      this.emit('price_confirmation_requested', data);
+    });
+
+    this.socket.on('price_confirmation_response', (data) => {
+      // Price confirmation response
+      this.emit('price_confirmation_response', data);
+    });
+
+    // Navigation events for customer after acceptance
+    this.socket.on('driver_started_navigation', (data) => {
+      // Driver started navigation
+      this.emit('driver_started_navigation', data);
+    });
+
+    this.socket.on('driver_location_update_for_customer', (data) => {
+      // Driver location updates for customer
+      this.emit('driver_location_update_for_customer', data);
+    });
   }
 
   private handleReconnection() {
@@ -511,24 +534,7 @@ class SocketService {
     return true;
   }
 
-  public inspectOrder(orderId: number) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-    this.socket.emit('inspect_order', { orderId });
-    return true;
-  }
 
-  public stopInspectingOrder(orderId: number) {
-    if (!this.isConnected || !this.socket) {
-      console.error('Socket not connected');
-      return false;
-    }
-
-    this.socket.emit('stop_inspecting_order', { orderId });
-    return true;
-  }
 
   public acceptOrderWithLabor(orderId: number, laborCount: number) {
     if (!this.isConnected || !this.socket) {
@@ -537,6 +543,16 @@ class SocketService {
     }
 
     this.socket.emit('accept_order_with_labor', { orderId, laborCount });
+    return true;
+  }
+
+  public priceConfirmationResponse(orderId: number, isAccepted: boolean) {
+    if (!this.isConnected || !this.socket) {
+      console.error('Socket not connected');
+      return false;
+    }
+
+    this.socket.emit('price_confirmation_response', { orderId, isAccepted });
     return true;
   }
 

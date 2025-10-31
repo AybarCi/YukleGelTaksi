@@ -40,6 +40,14 @@
     "scheme": "yukle-gel-driver",
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "API_HOST": "192.168.1.134",
+      "API_PORT": 3000,
+      "SOCKET_PORT": 3000,
+      "NODE_ENV": "development",
+      "PROD_SOCKET_URL": "https://socket.yuklegeltaksi.com",
+      "PROD_API_URL": "https://api.yuklegeltaksi.com"
     }
   }
 }

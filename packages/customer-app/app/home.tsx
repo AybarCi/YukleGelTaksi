@@ -42,17 +42,20 @@ import FreeCancelModal from '../components/FreeCancelModal';
 import PendingOrderModal from '../components/PendingOrderModal';
 import ImagePickerModal from '../components/ImagePickerModal';
 import VehicleTypeModal from '../components/VehicleTypeModal';
+import CargoTypeModal from '../components/CargoTypeModal';
 import PaymentModal from '../components/PaymentModal';
 import ActiveOrderCard from '../components/ActiveOrderCard';
 import NewOrderForm from '../components/NewOrderForm';
 import DriverNotFoundModal from '../components/DriverNotFoundModal';
 import NewOrderCreatedModal from '../components/NewOrderCreatedModal';
+import PriceConfirmationModal from '../components/PriceConfirmationModal';
 import { DriverMarker, PickupMarker, DestinationMarker } from './components/MapMarkers';
 import { calculateZoomLevel, animateToRegionWithOffset, animateToShowBothPoints } from './utils/mapUtils';
 import { useImagePicker } from './utils/imageUtils';
 import { usePriceCalculation } from './utils/priceUtils';
 import { useSocketEvents } from './hooks/useSocketEvents';
 import { styles } from './styles';
+import { cargoTypesService, CargoType } from '../services/cargoTypesService';
 
 
 interface Driver {
@@ -157,6 +160,9 @@ function HomeScreen() {
   
   // Yük bilgileri state'leri
   const [selectedVehicleType, setSelectedVehicleType] = useState<VehicleType | null>(null);
+  const [selectedCargoType, setSelectedCargoType] = useState<CargoType | null>(null);
+  const [cargoTypes, setCargoTypes] = useState<CargoType[]>([]);
+  const [cargoTypesLoading, setCargoTypesLoading] = useState<boolean>(false);
   // vehicleTypes artık Redux'tan geliyor, local state kaldırıldı
   const [pickupLocation, setPickupLocation] = useState('');
   const [destinationLocation, setDestinationLocation] = useState('');
@@ -257,6 +263,9 @@ function HomeScreen() {
   // Vehicle type modal için state
   const [showVehicleTypeModal, setShowVehicleTypeModal] = useState(false);
   
+  // Cargo type modal için state
+  const [showCargoTypeModal, setShowCargoTypeModal] = useState(false);
+  
   // Driver not found modal için state
   const [driverNotFoundModalVisible, setDriverNotFoundModalVisible] = useState(false);
   const [driverNotFoundMessage, setDriverNotFoundMessage] = useState('');
@@ -271,6 +280,10 @@ function HomeScreen() {
   // Kullanıcının manuel harita etkileşimini takip etmek için
   const [userInteractedWithMap, setUserInteractedWithMap] = useState(false);
   const [lastRouteUpdate, setLastRouteUpdate] = useState<number>(0);
+  
+  // PriceConfirmation modal için state
+  const [priceConfirmationModalVisible, setPriceConfirmationModalVisible] = useState(false);
+  const [priceConfirmationData, setPriceConfirmationData] = useState<any>(null);
   
   // Socket events hook'unu çağır
   useSocketEvents(
@@ -297,48 +310,19 @@ function HomeScreen() {
     setNotes,
     setDistance,
     setRouteDuration,
-    setRouteCoordinates
+    setRouteCoordinates,
+    setPriceConfirmationModalVisible,
+    setPriceConfirmationData,
+    showModal
   );
   
-  // PanResponder for BottomSheet dragging
+  // PanResponder for BottomSheet dragging - DISABLED
+  // Bottom sheet artık drag edilemez, sabit kalır
   const panResponder = PanResponder.create({
-    onMoveShouldSetPanResponder: (evt, gestureState) => {
-      return Math.abs(gestureState.dy) > 10;
-    },
-    onPanResponderGrant: () => {
-      setIsDragging(true);
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const newHeight = screenHeight * 0.6 - gestureState.dy;
-      if (newHeight >= minBottomSheetHeight && newHeight <= maxBottomSheetHeight) {
-        bottomSheetHeight.setValue(newHeight);
-      }
-    },
-    onPanResponderRelease: (evt, gestureState) => {
-      setIsDragging(false);
-      const currentHeight = screenHeight * 0.6 - gestureState.dy;
-      
-      // Snap to nearest position
-      if (currentHeight < screenHeight * 0.4) {
-        // Snap to minimum
-        Animated.spring(bottomSheetHeight, {
-          toValue: minBottomSheetHeight,
-          useNativeDriver: true,
-        }).start();
-      } else if (currentHeight > screenHeight * 0.7) {
-        // Snap to maximum
-        Animated.spring(bottomSheetHeight, {
-          toValue: maxBottomSheetHeight,
-          useNativeDriver: true,
-        }).start();
-      } else {
-        // Snap to middle
-        Animated.spring(bottomSheetHeight, {
-          toValue: screenHeight * 0.6,
-          useNativeDriver: true,
-        }).start();
-      }
-    },
+    onMoveShouldSetPanResponder: () => false,
+    onPanResponderGrant: () => {},
+    onPanResponderMove: () => {},
+    onPanResponderRelease: () => {},
   });
 
   // Cancel order modal için state
@@ -373,7 +357,9 @@ function HomeScreen() {
         pickupAddress: reduxCurrentOrder.pickupAddress,
         destinationAddress: reduxCurrentOrder.destinationAddress,
         estimatedPrice: reduxCurrentOrder.estimatedPrice || 0,
-        distance: reduxCurrentOrder.distance || 0
+        distance: reduxCurrentOrder.distance || 0,
+        cargoTypeId: reduxCurrentOrder.vehicleTypeId || '',
+        cargoTypeName: selectedCargoType?.name || ''
       };
       
       setCreatedOrderData(orderData);
@@ -431,6 +417,8 @@ function HomeScreen() {
       }, 100);
     }
   }, [cancelOrderModalVisible]);
+
+
   const [cancelConfirmCode, setCancelConfirmCode] = useState('');
   const [userCancelCode, setUserCancelCode] = useState('');
   const [cancellationFee, setCancellationFee] = useState(0);
@@ -945,6 +933,46 @@ function HomeScreen() {
     }
   }, []);
 
+  // Load cargo types - Sadece bir kez yükle, cache kontrollü
+  useEffect(() => {
+    const loadCargoTypes = async () => {
+      // Cache kontrolü - son 5 dakika içinde yüklendiyse tekrar yükleme
+      try {
+        const lastFetch = await AsyncStorage.getItem('cargo_types_last_fetch');
+        const cachedTypes = await AsyncStorage.getItem('cargo_types_cache');
+        
+        if (lastFetch && cachedTypes) {
+          const lastFetchTime = parseInt(lastFetch);
+          const now = Date.now();
+          const fiveMinutes = 5 * 60 * 1000;
+          
+          if (now - lastFetchTime < fiveMinutes) {
+            // Cache geçerli, kullan
+            setCargoTypes(JSON.parse(cachedTypes));
+            return;
+          }
+        }
+        
+        // Cache yoksa veya süresi geçmişse yükle
+        setCargoTypesLoading(true);
+        const types = await cargoTypesService.getCargoTypes();
+        setCargoTypes(types);
+        
+        // Cache'e kaydet
+        await AsyncStorage.setItem('cargo_types_cache', JSON.stringify(types));
+        await AsyncStorage.setItem('cargo_types_last_fetch', Date.now().toString());
+        
+      } catch (error) {
+        console.error('Error loading cargo types:', error);
+        showModal('Hata', 'Kargo tipleri yüklenirken bir hata oluştu.', 'error');
+      } finally {
+        setCargoTypesLoading(false);
+      }
+    };
+
+    loadCargoTypes();
+  }, []); // Sadece bir kez çalışsın
+
   // Token hazır olduğunda araç tiplerini yükle
   useEffect(() => {
     if (token) {
@@ -1244,6 +1272,10 @@ function HomeScreen() {
       
       let message = '';
       switch (data.status) {
+        case 'driver_accepted_awaiting_customer':
+          message = 'Sürücü siparişinizi kabul etti, onayınız bekleniyor.';
+          showModal('Sürücü Kabul Etti', message, 'info');
+          break;
         case 'inspecting':
           message = 'Siparişiniz bir sürücü tarafından inceleniyor.';
           showModal('Sipariş İnceleniyor', message, 'info');
@@ -1400,7 +1432,7 @@ function HomeScreen() {
         dispatch(setReduxCurrentOrder(updatedOrder));
       }
       
-      showModal('İnceleme Başladı', 'Sürücü siparişinizi inceliyor.', 'info');
+      // Modal artık useSocketEvents.ts'de gösteriliyor
     });
 
     socketService.on('order_inspection_stopped', (data: any) => {
@@ -2049,10 +2081,14 @@ function HomeScreen() {
   }, [userLocation, pickupCoords, getCurrentLocation, animateToShowBothPoints, animateToRegionWithOffset]);
 
   const handlePickupLocationSelect = useCallback((location: any) => {
+    console.log('🔍 DEBUG: Pickup location selected:', location);
+    
     const coords = {
       latitude: location.coordinates.latitude,
       longitude: location.coordinates.longitude
     };
+    
+    console.log('🔍 DEBUG: Pickup coordinates:', coords);
     
     setPickupCoords(coords);
     setPickupLocation(location.address);
@@ -2068,14 +2104,22 @@ function HomeScreen() {
     
     setLocationModalVisible(true);
     
+    console.log('🔍 DEBUG: mapRef.current exists:', !!mapRef.current);
+    console.log('🔍 DEBUG: destinationCoords exists:', !!destinationCoords);
+    
     if (mapRef.current) {
       // Eğer destination da varsa, her iki noktayı göster
       if (destinationCoords) {
+        console.log('🔍 DEBUG: Animating to show both points');
         animateToShowBothPoints(mapRef, bottomSheetHeight, coords, destinationCoords);
       } else {
         // Sadece pickup noktasını göster
+        console.log('🔍 DEBUG: Animating to pickup location only');
+        console.log('🔍 DEBUG: bottomSheetHeight value:', (bottomSheetHeight as any)._value);
         animateToRegionWithOffset(mapRef, bottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
       }
+    } else {
+      console.error('🚨 ERROR: mapRef.current is null, cannot animate to region');
     }
   }, [destinationCoords, animateToShowBothPoints, animateToRegionWithOffset]);
 
@@ -2127,9 +2171,9 @@ function HomeScreen() {
   // Fiyat hesaplama için useEffect
   useEffect(() => {
     if (distance && selectedVehicleType) {
-      calculatePrice(distance, selectedVehicleType);
+      calculatePrice(distance, selectedVehicleType, selectedCargoType?.labor_count || 0);
     }
-  }, [distance, selectedVehicleType, calculatePrice]);
+  }, [distance, selectedVehicleType, selectedCargoType, calculatePrice]);
 
   // Koordinat objelerini optimize et
   const activeOrderPickupCoords = useMemo(() => {
@@ -2679,6 +2723,14 @@ function HomeScreen() {
         onSelectVehicleType={setSelectedVehicleType}
       />
 
+      <CargoTypeModal
+        visible={showCargoTypeModal}
+        onClose={() => setShowCargoTypeModal(false)}
+        cargoTypes={cargoTypes}
+        selectedCargoType={selectedCargoType}
+        onSelectCargoType={setSelectedCargoType}
+      />
+
       <PaymentModal
         visible={paymentModalVisible}
         onClose={() => setPaymentModalVisible(false)}
@@ -2717,6 +2769,44 @@ function HomeScreen() {
           dispatch(setNewOrderCreated(false));
         }}
         orderData={createdOrderData}
+      />
+
+      <PriceConfirmationModal
+        visible={priceConfirmationModalVisible}
+        onClose={() => {
+          setPriceConfirmationModalVisible(false);
+          setPriceConfirmationData(null);
+        }}
+        orderId={priceConfirmationData?.orderId || 0}
+        finalPrice={priceConfirmationData?.finalPrice || 0}
+        laborCount={priceConfirmationData?.laborCount || 1}
+        estimatedPrice={priceConfirmationData?.estimatedPrice || 0}
+        priceDifference={priceConfirmationData?.priceDifference || 0}
+        timeout={priceConfirmationData?.timeout || 60000}
+        onAccept={() => {
+          // Fiyat onayını socket üzerinden gönder
+          if (priceConfirmationData?.orderId) {
+            const success = socketService.priceConfirmationResponse(priceConfirmationData.orderId, true);
+            if (!success) {
+              showModal('Hata', 'Fiyat onayı gönderilemedi. Lütfen tekrar deneyin.', 'error');
+            }
+          }
+        }}
+        onReject={() => {
+          // Fiyat reddini socket üzerinden gönder
+          if (priceConfirmationData?.orderId) {
+            const success = socketService.priceConfirmationResponse(priceConfirmationData.orderId, false);
+            if (!success) {
+              showModal('Hata', 'Fiyat reddi gönderilemedi. Lütfen tekrar deneyin.', 'error');
+            }
+          }
+        }}
+        onCancel={() => {
+          // Fiyat onay modalını kapat ve iptal modalını aç
+          setPriceConfirmationModalVisible(false);
+          setPriceConfirmationData(null);
+          setCancelOrderModalVisible(true);
+        }}
       />
 
       {/* Loading Splash Screen */}

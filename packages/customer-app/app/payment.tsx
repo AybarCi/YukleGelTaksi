@@ -12,6 +12,8 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import socketService from '../services/socketService';
 import { useAuth } from '../contexts/AuthContext';
+import BackButton from '../components/BackButton';
+import SafeModal from '../components/SafeModal';
 
 interface PaymentScreenProps {}
 
@@ -103,6 +105,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
+        <BackButton />
         <Text style={styles.headerTitle}>Cezai Şart Ödemesi</Text>
         <Text style={styles.headerSubtitle}>Sipariş #{orderId}</Text>
       </View>

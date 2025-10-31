@@ -12,6 +12,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import BackButton from '../components/BackButton';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function UserInfoScreen() {
@@ -88,12 +89,7 @@ export default function UserInfoScreen() {
       <StatusBar style="dark" />
       
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000000" />
-        </TouchableOpacity>
+        <BackButton />
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>

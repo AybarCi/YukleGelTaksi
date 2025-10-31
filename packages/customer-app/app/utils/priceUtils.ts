@@ -11,9 +11,26 @@ interface VehicleType {
   base_price?: number;
 }
 
+export interface PriceBreakdown {
+  base_price: number;
+  distance_price: number;
+  labor_price: number;
+  total_price: number;
+  breakdown: {
+    base_fee: string;
+    distance_fee: string;
+    labor_fee: string;
+    total: string;
+  };
+  distance_km: number;
+  labor_count: number;
+  vehicle_type_id: number;
+}
+
 export const usePriceCalculation = (
   setPriceLoading: React.Dispatch<React.SetStateAction<boolean>>,
-  setEstimatedPrice: React.Dispatch<React.SetStateAction<number | null>>
+  setEstimatedPrice: React.Dispatch<React.SetStateAction<number | null>>,
+  setPriceBreakdown?: React.Dispatch<React.SetStateAction<PriceBreakdown | null>>
 ) => {
   // Fiyat hesaplama fonksiyonu
   const calculatePrice = useCallback(async (distance: number | null, selectedVehicleType: VehicleType | null, laborCount: number = 0) => {
@@ -58,9 +75,15 @@ export const usePriceCalculation = (
       if (response.ok && data.success) {
         console.log('Setting estimated price:', data.data.total_price);
         setEstimatedPrice(data.data.total_price);
+        if (setPriceBreakdown) {
+          setPriceBreakdown(data.data);
+        }
       } else {
         console.error('Price calculation failed:', data.message || 'Unknown error');
         setEstimatedPrice(null);
+        if (setPriceBreakdown) {
+          setPriceBreakdown(null);
+        }
       }
     } catch (error) {
       console.error('Price calculation error:', error);

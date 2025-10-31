@@ -223,7 +223,7 @@ const CancelOrderModal: React.FC<CancelOrderModalProps> = ({
               {loading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>İptal Et</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: '600', textAlign: 'center' }}>Onayla</Text>
               )}
             </TouchableOpacity>
           </View>

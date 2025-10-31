@@ -40,6 +40,16 @@ import {
 import { API_CONFIG } from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
 
+// Türk Lirası formatlama fonksiyonu
+const formatTurkishLira = (amount: number): string => {
+  return new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: 'TRY',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(amount);
+};
+
 interface VehicleType {
   id: number;
   name: string;
@@ -57,10 +67,19 @@ interface VehicleTypePricing {
   is_active: boolean;
 }
 
+interface CargoType {
+  id: number;
+  name: string;
+  description: string;
+  labor_count: number;
+  is_active: boolean;
+}
+
 const PricingPage: React.FC = () => {
   const { token } = useAuth();
   const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([]);
   const [pricingData, setPricingData] = useState<VehicleTypePricing[]>([]);
+  const [cargoTypes, setCargoTypes] = useState<CargoType[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [initialLoading, setInitialLoading] = useState(true);
@@ -71,8 +90,9 @@ const PricingPage: React.FC = () => {
 
   // Örnek hesaplama için
   const [exampleDistance, setExampleDistance] = useState(10);
-  const [exampleLabor, setExampleLabor] = useState(2);
+  const [exampleExtraLabor, setExampleExtraLabor] = useState(0); // Ekstra hammal, başlangıçta 0
   const [selectedVehicleTypeForExample, setSelectedVehicleTypeForExample] = useState<number>(1);
+  const [selectedCargoTypeForExample, setSelectedCargoTypeForExample] = useState<number>(1);
 
   // Sayfa yüklendiğinde mevcut ayarları getir
   useEffect(() => {
@@ -95,6 +115,15 @@ const PricingPage: React.FC = () => {
         if (pricingResponse.data.success) {
           setPricingData(pricingResponse.data.data);
         }
+
+        // Yük tiplerini getir
+        const cargoTypesResponse = await axios.get(`${API_CONFIG.BASE_URL}/admin/cargo-types`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (cargoTypesResponse.data.success) {
+          setCargoTypes(cargoTypesResponse.data.data.filter((ct: CargoType) => ct.is_active));
+        }
       } catch (err) {
         console.error('Veriler yüklenirken hata:', err);
         setError('Veriler yüklenirken hata oluştu');
@@ -108,13 +137,22 @@ const PricingPage: React.FC = () => {
     }
   }, [token]);
 
+  // Yük tipi değiştiğinde ekstra hammal sıfırla
+  useEffect(() => {
+    setExampleExtraLabor(0);
+  }, [selectedCargoTypeForExample]);
+
   const calculateExamplePrice = () => {
     const selectedPricing = pricingData.find(p => p.vehicle_type_id === selectedVehicleTypeForExample);
     if (!selectedPricing) return 0;
 
+    const selectedCargoType = cargoTypes.find(ct => ct.id === selectedCargoTypeForExample);
+    const cargoLaborCount = selectedCargoType ? selectedCargoType.labor_count : 0;
+    const totalLaborCount = cargoLaborCount + exampleExtraLabor;
+
     const basePrice = selectedPricing.base_price;
     const distancePrice = selectedPricing.price_per_km * exampleDistance;
-    const laborPrice = selectedPricing.labor_price * exampleLabor;
+    const laborPrice = selectedPricing.labor_price * totalLaborCount;
     
     // Km ücreti + hammaliye ücreti
     const calculatedPrice = distancePrice + laborPrice;
@@ -230,17 +268,17 @@ const PricingPage: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
-                            ₺{pricing.base_price.toFixed(2)}
+                            {formatTurkishLira(pricing.base_price)}
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
-                            ₺{pricing.price_per_km.toFixed(2)}/km
+                            {formatTurkishLira(pricing.price_per_km)}/km
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
-                            ₺{pricing.labor_price.toFixed(2)}/kişi
+                            {formatTurkishLira(pricing.labor_price)}/kişi
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
@@ -279,6 +317,21 @@ const PricingPage: React.FC = () => {
 
               <Box sx={{ mb: 3 }}>
                 <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Yük Tipi</InputLabel>
+                  <Select
+                    value={selectedCargoTypeForExample}
+                    label="Yük Tipi"
+                    onChange={(e) => setSelectedCargoTypeForExample(Number(e.target.value))}
+                  >
+                    {cargoTypes.map((cargoType) => (
+                      <MenuItem key={cargoType.id} value={cargoType.id}>
+                        {cargoType.name} (Hammal: {cargoType.labor_count})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Araç Tipi</InputLabel>
                   <Select
                     value={selectedVehicleTypeForExample}
@@ -307,13 +360,29 @@ const PricingPage: React.FC = () => {
                 
                 <TextField
                   fullWidth
-                  label="Hammal Sayısı"
+                  label="Ekstra Hammal Sayısı"
                   type="number"
-                  value={exampleLabor}
-                  onChange={(e) => setExampleLabor(parseFloat(e.target.value) || 0)}
+                  value={exampleExtraLabor}
+                  onChange={(e) => {
+                    const value = Math.max(0, parseFloat(e.target.value) || 0);
+                    setExampleExtraLabor(value);
+                  }}
                   InputProps={{
                     endAdornment: <InputAdornment position="end">kişi</InputAdornment>,
                   }}
+                  helperText={
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        fontWeight: 'bold', 
+                        color: '#d32f2f',
+                        fontSize: '0.875rem',
+                        mt: 0.5
+                      }}
+                    >
+                      ⚠️ Yük tipi: {cargoTypes.find(ct => ct.id === selectedCargoTypeForExample)?.labor_count || 0} kişi
+                    </Typography>
+                  }
                 />
               </Box>
 
@@ -330,7 +399,13 @@ const PricingPage: React.FC = () => {
                   
                   const basePrice = selectedPricing.base_price;
                   const distancePrice = selectedPricing.price_per_km * exampleDistance;
-                  const laborPrice = selectedPricing.labor_price * exampleLabor;
+                  
+                  // Calculate total labor count based on selected cargo type and extra labor
+                  const selectedCargoType = cargoTypes.find(ct => ct.id === selectedCargoTypeForExample);
+                  const cargoLaborCount = selectedCargoType ? selectedCargoType.labor_count : 0;
+                  const totalLaborCount = cargoLaborCount + exampleExtraLabor;
+                  
+                  const laborPrice = selectedPricing.labor_price * totalLaborCount;
                   const calculatedPrice = distancePrice + laborPrice;
                   const finalPrice = calculateExamplePrice();
                   
@@ -338,16 +413,16 @@ const PricingPage: React.FC = () => {
                     <>
                       <Box sx={{ mb: 1 }}>
                         <Typography variant="body2">
-                          Base Ücret ({selectedPricing.vehicle_type_name}): ₺{basePrice.toFixed(2)}
+                          Base Ücret ({selectedPricing.vehicle_type_name}): {formatTurkishLira(basePrice)}
                         </Typography>
                         <Typography variant="body2">
-                          Mesafe ({exampleDistance} km): ₺{distancePrice.toFixed(2)}
+                          Mesafe ({exampleDistance} km): {formatTurkishLira(distancePrice)}
                         </Typography>
                         <Typography variant="body2">
-                          Hammaliye ({exampleLabor} kişi): ₺{laborPrice.toFixed(2)}
+                          Hammaliye ({cargoLaborCount} yük tipi + {exampleExtraLabor} ekstra = {totalLaborCount} kişi): {formatTurkishLira(laborPrice)}
                         </Typography>
                         <Typography variant="body2" sx={{ fontWeight: 'bold', color: '#1976d2' }}>
-                          Km + Hammaliye Toplamı: ₺{calculatedPrice.toFixed(2)}
+                          Km + Hammaliye Toplamı: {formatTurkishLira(calculatedPrice)}
                         </Typography>
                         <Typography variant="body2" sx={{ fontStyle: 'italic', color: '#666' }}>
                           {calculatedPrice < basePrice ? 'Base ücret uygulandı' : 'Km + hammaliye ücreti uygulandı'}
@@ -359,7 +434,7 @@ const PricingPage: React.FC = () => {
                           Toplam:
                         </Typography>
                         <Chip
-                          label={`₺${finalPrice.toFixed(2)}`}
+                          label={formatTurkishLira(finalPrice)}
                           sx={{
                             backgroundColor: '#000000',
                             color: '#FFD700',

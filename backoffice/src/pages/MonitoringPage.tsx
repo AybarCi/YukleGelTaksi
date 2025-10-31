@@ -195,7 +195,7 @@ const MonitoringPage: React.FC = () => {
     }
 
     // Socket URL'sini düzelt - /api kısmını çıkar
-    const socketUrl = API_BASE_URL.replace('/api', '');
+    const socketUrl = API_CONFIG.SOCKET_URL;
     console.log('Connecting to socket:', socketUrl);
     
     const newSocket = io(socketUrl, {

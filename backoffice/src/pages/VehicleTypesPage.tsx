@@ -41,7 +41,7 @@ import {
   Image as ImageIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
-import { API_CONFIG } from '../config/api';
+import { API_CONFIG, getImageUrl } from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
 
 interface VehicleType {
@@ -166,7 +166,7 @@ const VehicleTypesPage: React.FC = () => {
         is_active: vehicleType.is_active,
         image_url: vehicleType.image_url || ''
       });
-      setImagePreview(vehicleType.image_url ? (vehicleType.image_url.startsWith('http') ? vehicleType.image_url : `${API_CONFIG.BASE_URL}${vehicleType.image_url}`) : null);
+      setImagePreview(vehicleType.image_url ? getImageUrl(vehicleType.image_url) : null);
     } else {
       setFormData({
         id: undefined,
@@ -446,7 +446,7 @@ const VehicleTypesPage: React.FC = () => {
                       <Box sx={{ width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {vehicleType.image_url ? (
                           <img
-                            src={vehicleType.image_url.startsWith('http') ? vehicleType.image_url : `${API_CONFIG.BASE_URL}${vehicleType.image_url}`}
+                            src={getImageUrl(vehicleType.image_url)}
                             alt={vehicleType.name}
                             style={{
                               width: '50px',

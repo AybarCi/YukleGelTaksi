@@ -17,18 +17,20 @@ import {
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppDispatch, useAppSelector } from '../store';
 import { createOrder } from '../store/slices/orderSlice';
 import { checkDriverAvailability } from '../store/slices/driverSlice';
 import YukKonumuInput, { YukKonumuInputRef } from './YukKonumuInput';
 import VarisNoktasiInput, { VarisNoktasiInputRef } from './VarisNoktasiInput';
 import VehicleTypeModal from './VehicleTypeModal';
+import CargoTypeModal from './CargoTypeModal';
 import ImagePickerModal from './ImagePickerModal';
 import PhotoSuccessModal from './PhotoSuccessModal';
 import DriverNotFoundModal from './DriverNotFoundModal';
 import { formatTurkishLira } from '../app/utils/currencyUtils';
-
-import { usePriceCalculation } from '../app/utils/priceUtils';
+import { usePriceCalculation, PriceBreakdown } from '../app/utils/priceUtils';
+import { cargoTypesService, CargoType } from '../services/cargoTypesService';
 
 interface LocationCoords {
   latitude: number;
@@ -73,6 +75,9 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
 
   // Form state
   const [selectedVehicleType, setSelectedVehicleType] = useState<VehicleType | null>(reduxSelectedVehicleType);
+  const [selectedCargoType, setSelectedCargoType] = useState<CargoType | null>(null);
+  const [cargoTypes, setCargoTypes] = useState<CargoType[]>([]);
+  const [cargoTypesLoading, setCargoTypesLoading] = useState<boolean>(false);
   const [pickupCoords, setPickupCoords] = useState<LocationCoords | null>(null);
   const [destinationCoords, setDestinationCoords] = useState<LocationCoords | null>(null);
   const [pickupAddress, setPickupAddress] = useState<string>('');
@@ -91,12 +96,14 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   const [localEstimatedPrice, setLocalEstimatedPrice] = useState<number | null>(estimatedPrice || null);
   const [localPriceLoading, setLocalPriceLoading] = useState<boolean>(priceLoading || false);
   const [localDistance, setLocalDistance] = useState<number | null>(distance || null);
+  const [priceBreakdown, setPriceBreakdown] = useState<PriceBreakdown | null>(null);
 
   // Price calculation hook
-  const { calculatePrice } = usePriceCalculation(setLocalPriceLoading, setLocalEstimatedPrice);
+  const { calculatePrice } = usePriceCalculation(setLocalPriceLoading, setLocalEstimatedPrice, setPriceBreakdown);
 
   // Modal states
   const [showVehicleTypeModal, setShowVehicleTypeModal] = useState<boolean>(false);
+  const [showCargoTypeModal, setShowCargoTypeModal] = useState<boolean>(false);
   const [showImagePickerModal, setShowImagePickerModal] = useState<boolean>(false);
   const [photoSuccessModalVisible, setPhotoSuccessModalVisible] = useState(false);
   const [addedPhotoCount, setAddedPhotoCount] = useState(0);
@@ -121,6 +128,45 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
+  }, []);
+
+  // Load cargo types - Cache kontrollü yükleme
+  useEffect(() => {
+    const loadCargoTypes = async () => {
+      try {
+        // Cache kontrolü - son 5 dakika içinde yüklendiyse tekrar yükleme
+        const lastFetch = await AsyncStorage.getItem('cargo_types_last_fetch');
+        const cachedTypes = await AsyncStorage.getItem('cargo_types_cache');
+        
+        if (lastFetch && cachedTypes) {
+          const lastFetchTime = parseInt(lastFetch);
+          const now = Date.now();
+          const fiveMinutes = 5 * 60 * 1000;
+          
+          if (now - lastFetchTime < fiveMinutes) {
+            // Cache geçerli, kullan
+            setCargoTypes(JSON.parse(cachedTypes));
+            return;
+          }
+        }
+        
+        // Cache yoksa veya süresi geçmişse yükle
+        setCargoTypesLoading(true);
+        const types = await cargoTypesService.getCargoTypes();
+        setCargoTypes(types);
+        
+        // Cache'e kaydet
+        await AsyncStorage.setItem('cargo_types_cache', JSON.stringify(types));
+        await AsyncStorage.setItem('cargo_types_last_fetch', Date.now().toString());
+        
+      } catch (error) {
+        console.error('Error loading cargo types:', error);
+      } finally {
+        setCargoTypesLoading(false);
+      }
+    };
+
+    loadCargoTypes();
   }, []);
 
   // Location handlers
@@ -332,6 +378,12 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
     setShowVehicleTypeModal(false);
   };
 
+  // Cargo type handlers
+  const handleCargoTypeSelect = (cargoType: CargoType) => {
+    setSelectedCargoType(cargoType);
+    setShowCargoTypeModal(false);
+  };
+
   // Distance calculation function
   const calculateDistance = useCallback((pickup: LocationCoords, destination: LocationCoords): number => {
     const R = 6371; // Earth's radius in kilometers
@@ -354,23 +406,23 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
       // Distance calculated
       
       // If we have a selected vehicle type, calculate price
-      if (selectedVehicleType) {
-        // Vehicle type available, calculating price
-        calculatePrice(calculatedDistance, selectedVehicleType);
+      if (selectedVehicleType && selectedCargoType) {
+        // Vehicle type and cargo type available, calculating price
+        calculatePrice(calculatedDistance, selectedVehicleType, selectedCargoType.labor_count);
       }
     } else {
       setLocalDistance(null);
       setLocalEstimatedPrice(null);
     }
-  }, [pickupCoords, destinationCoords, selectedVehicleType, calculateDistance, calculatePrice]);
+  }, [pickupCoords, destinationCoords, selectedVehicleType, selectedCargoType, calculateDistance, calculatePrice]);
 
-  // Effect to calculate price when vehicle type changes
+  // Effect to calculate price when vehicle type or cargo type changes
   useEffect(() => {
-    if (localDistance && selectedVehicleType) {
-      // Vehicle type changed, recalculating price
-      calculatePrice(localDistance, selectedVehicleType);
+    if (localDistance && selectedVehicleType && selectedCargoType) {
+      // Vehicle type or cargo type changed, recalculating price
+      calculatePrice(localDistance, selectedVehicleType, selectedCargoType.labor_count);
     }
-  }, [selectedVehicleType, localDistance, calculatePrice]);
+  }, [selectedVehicleType, selectedCargoType, localDistance, calculatePrice]);
 
   // Image picker handlers
   const handleImagePicker = () => {
@@ -453,6 +505,7 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
   const isFormValid = () => {
     return (
       selectedVehicleType &&
+      selectedCargoType &&
       pickupCoords &&
       destinationCoords &&
       cargoImages.length > 0
@@ -502,6 +555,8 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         estimatedTime: 30,
         notes: notes.trim(),
         vehicleTypeId: selectedVehicleType!.id.toString(),
+        cargoTypeId: selectedCargoType!.id.toString(),
+        laborCount: selectedCargoType!.labor_count,
         cargoImages: cargoImages,
       };
 
@@ -541,7 +596,7 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
       console.error('Order creation error:', error);
       showLocalErrorModal('Hata', error.message || 'Sipariş oluşturulurken bir hata oluştu.');
     }
-  }, [isFormValid, pickupCoords, destinationCoords, pickupAddress, destinationAddress, selectedVehicleType, cargoImages, notes, estimatedPrice, distance, dispatch, onOrderCreated]);
+  }, [isFormValid, pickupCoords, destinationCoords, pickupAddress, destinationAddress, selectedVehicleType, selectedCargoType, cargoImages, notes, estimatedPrice, distance, dispatch, onOrderCreated]);
 
   return (
     <KeyboardAvoidingView
@@ -585,6 +640,33 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
           </TouchableOpacity>
         </View>
 
+        {/* Cargo Type Selection */}
+        <View style={styles.fieldContainer}>
+          <Text style={styles.fieldLabel}>Yük Tipi</Text>
+          <TouchableOpacity
+            style={styles.vehicleTypeButton}
+            onPress={() => setShowCargoTypeModal(true)}
+            disabled={cargoTypesLoading}
+          >
+            {cargoTypesLoading ? (
+              <ActivityIndicator size="small" color="#6B7280" />
+            ) : (
+              <Text style={[
+                styles.vehicleTypeText,
+                selectedCargoType ? styles.selectedText : styles.placeholderText
+              ]}>
+                {selectedCargoType ? selectedCargoType.name : 'Yük tipi seçin'}
+              </Text>
+            )}
+            <Ionicons name="chevron-down" size={20} color="#6B7280" />
+          </TouchableOpacity>
+          {selectedCargoType && (
+            <Text style={styles.cargoInfoText}>
+              Hammaliye: {selectedCargoType.labor_count} kişi
+            </Text>
+          )}
+        </View>
+
         {/* Pickup Location */}
         <View style={styles.fieldContainer}>
           <YukKonumuInput
@@ -609,20 +691,80 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
 
         {/* Distance and Price Info */}
         {(localDistance || distance) && (
-          <View style={styles.distanceInfo}>
-            <Ionicons name="location-outline" size={20} color="#FFD700" />
-            <Text style={styles.distanceText}>
-              Mesafe: {(localDistance || distance)?.toFixed(1)} km
-            </Text>
-            <Text style={styles.priceText}>
-              {(localPriceLoading || priceLoading) ? (
-                '(Ücret hesaplanıyor...)'
-              ) : (localEstimatedPrice || estimatedPrice) ? (
-                `(Tahmini Ücret: ${formatTurkishLira(localEstimatedPrice || estimatedPrice || 0)})`
-              ) : (
-                '(Ücret hesaplanamadı)'
+          <View style={styles.priceBreakdownContainer}>
+            <View style={styles.priceBreakdownHeader}>
+              <Ionicons name="location-outline" size={20} color="#FFD700" />
+              <Text style={styles.priceBreakdownTitle}>Tahmini Ücret Detayı</Text>
+            </View>
+            
+            <View style={styles.priceBreakdownContent}>
+              <View style={styles.priceRow}>
+                <Text style={styles.priceLabel}>Mesafe ({(localDistance || distance)?.toFixed(1)} km)</Text>
+                <Text style={styles.priceValue}>
+                  {(localPriceLoading || priceLoading) ? (
+                    'Hesaplanıyor...'
+                  ) : priceBreakdown ? (
+                    formatTurkishLira(priceBreakdown.distance_price)
+                  ) : (localEstimatedPrice || estimatedPrice) ? (
+                    formatTurkishLira((localEstimatedPrice || estimatedPrice || 0) * 0.7)
+                  ) : (
+                    '-'
+                  )}
+                </Text>
+              </View>
+              
+              {selectedCargoType && (
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>
+                    Hammaliye ({selectedCargoType.labor_count} kişi)
+                  </Text>
+                  <Text style={styles.priceValue}>
+                    {(localPriceLoading || priceLoading) ? (
+                      'Hesaplanıyor...'
+                    ) : priceBreakdown ? (
+                      formatTurkishLira(priceBreakdown.labor_price)
+                    ) : (localEstimatedPrice || estimatedPrice) ? (
+                      formatTurkishLira((localEstimatedPrice || estimatedPrice || 0) * 0.3)
+                    ) : (
+                      '-'
+                    )}
+                  </Text>
+                </View>
               )}
-            </Text>
+              
+              {priceBreakdown && priceBreakdown.base_price > 0 && (
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Temel Ücret</Text>
+                  <Text style={styles.priceValue}>
+                    {formatTurkishLira(priceBreakdown.base_price)}
+                  </Text>
+                </View>
+              )}
+              
+              {priceBreakdown && (
+                <View style={[styles.priceRow, { marginTop: 4 }]}>
+                  <Text style={[styles.priceLabel, { fontSize: 12, fontStyle: 'italic' }]}>
+                    {priceBreakdown.base_price > 0 ? 'Temel ücret uygulandı' : 'Km + hammaliye ücreti uygulandı'}
+                  </Text>
+                  <Text style={styles.priceValue}></Text>
+                </View>
+              )}
+              
+              <View style={styles.priceDivider} />
+              
+              <View style={styles.priceRowTotal}>
+                <Text style={styles.priceTotalLabel}>Toplam Tahmini Ücret</Text>
+                <Text style={styles.priceTotalValue}>
+                  {(localPriceLoading || priceLoading) ? (
+                    'Hesaplanıyor...'
+                  ) : (localEstimatedPrice || estimatedPrice) ? (
+                    formatTurkishLira(localEstimatedPrice || estimatedPrice || 0)
+                  ) : (
+                    'Ücret hesaplanamadı'
+                  )}
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -706,6 +848,14 @@ const NewOrderForm: React.FC<NewOrderFormProps> = ({
         vehicleTypes={reduxVehicleTypes}
         selectedVehicleType={selectedVehicleType}
         onSelectVehicleType={handleVehicleTypeSelect}
+      />
+
+      <CargoTypeModal
+        visible={showCargoTypeModal}
+        onClose={() => setShowCargoTypeModal(false)}
+        cargoTypes={cargoTypes}
+        selectedCargoType={selectedCargoType}
+        onSelectCargoType={handleCargoTypeSelect}
       />
 
       <ImagePickerModal
@@ -813,6 +963,12 @@ const styles = StyleSheet.create({
   placeholderText: {
     color: '#9CA3AF',
   },
+  cargoInfoText: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
   distanceInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -831,6 +987,72 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: '#6B7280',
+  },
+  // Yeni fiyat detay stilleri
+  priceBreakdownContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  priceBreakdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  priceBreakdownTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginLeft: 8,
+  },
+  priceBreakdownContent: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  priceRowTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  priceLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  priceValue: {
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  priceTotalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  priceTotalValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  priceDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 8,
   },
   imageContainer: {
     borderWidth: 2,

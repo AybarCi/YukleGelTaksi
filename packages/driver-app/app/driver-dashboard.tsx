@@ -10,6 +10,7 @@ import {
   TextInput,
   Linking,
   Image,
+  Alert,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { StatusBar } from 'expo-status-bar';
@@ -27,11 +28,12 @@ import NewOrderNotificationModal from '../components/NewOrderNotificationModal';
 import OrderCancellationModal from '../components/OrderCancellationModal';
 
 import { Header } from '../components/driver-dashboard/Header';
-import { MapComponent } from '../components/driver-dashboard/MapComponent';
+import MapComponent from '../components/driver-dashboard/MapComponent';
 import { ActiveOrderCard } from '../components/driver-dashboard/ActiveOrderCard';
 import { default as CustomerList } from '../components/driver-dashboard/CustomerList';
 import { DriverInfo as DashboardDriverInfo, OrderData as DashboardOrderData, LocationCoords, MapRegion } from '../types/dashboard';
 import ToggleButton from '../components/ToggleButton';
+import { navigationService, NavigationUpdate } from '../services/navigationService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -43,8 +45,10 @@ interface Customer {
   destination: string;
   distance: string;
   estimated_fare: number;
-  status: 'pending' | 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
+  status: 'pending' | 'waiting' | 'driver_accepted_awaiting_customer' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting' | 'rejected' | 'timeout';
   created_at: string;
+  countdownTime?: number; // Geri sayım süresi (milisaniye)
+  countdownTotal?: number; // Toplam süre (milisaniye)
 }
 
 interface DriverInfo {
@@ -58,12 +62,11 @@ interface DriverInfo {
 interface OrderData {
   id: number;
   pickupAddress: string;
-  pickup_latitude: number;
-  pickup_longitude: number;
+  pickupLatitude: number;
+  pickupLongitude: number;
   destinationAddress: string;
-  delivery_latitude: number;
-  delivery_longitude: number;
-  weight: number;
+  destinationLatitude: number;
+  destinationLongitude: number;
   laborCount: number;
   estimatedPrice: number;
   customerId: number;
@@ -83,7 +86,6 @@ interface RoutePhase {
     longitude: number;
     address: string;
   };
-  completed: boolean;
 }
 
 export default function DriverDashboardScreen() {
@@ -126,6 +128,9 @@ export default function DriverDashboardScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   
+  // Navigasyon servisi ve state'leri
+  const [navigationUpdate, setNavigationUpdate] = useState<NavigationUpdate | null>(null);
+  
   const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
   
   // Fotoğraf slider fonksiyonları
@@ -150,6 +155,9 @@ export default function DriverDashboardScreen() {
   // Aşamalı rota sistemi için state'ler
   const [activeOrder, setActiveOrder] = useState<OrderData | null>(null);
   const [currentPhase, setCurrentPhase] = useState<'pickup' | 'delivery' | null>(null);
+  const [isWaitingForCustomerApproval, setIsWaitingForCustomerApproval] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState<number | null>(null);
+  const [pendingOrderDetails, setPendingOrderDetails] = useState<any>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
   const [routeDuration, setRouteDuration] = useState<number | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
@@ -161,7 +169,32 @@ export default function DriverDashboardScreen() {
   });
   const mapRef = useRef<MapView>(null);
 
-  // Handle pickup complete function
+  // Navigasyon durumu değiştiğinde cleanup
+  useEffect(() => {
+    if (!isNavigating && navigationService.isNavigating()) {
+      console.log('🧹 Navigasyon durduruluyor (isNavigating false)');
+      navigationService.stopNavigation();
+    }
+  }, [isNavigating]);
+
+  // Aktif sipariş değiştiğinde navigasyonu temizle
+  useEffect(() => {
+    if (!activeOrder && isNavigating) {
+      console.log('🧹 Aktif sipariş yok, navigasyon durduruluyor');
+      navigationService.stopNavigation();
+      setIsNavigating(false);
+      setNavigationUpdate(null);
+    }
+  }, [activeOrder, isNavigating]);
+  useEffect(() => {
+    return () => {
+      console.log('🧹 Component unmount, navigasyon temizleniyor...');
+      navigationService.stopNavigation();
+      setIsNavigating(false);
+    };
+  }, []);
+
+  // Navigasyon durumu değiştiğinde cleanup
   const handlePickupComplete = (orderId: number) => {
     console.log('Pickup completed for order:', orderId);
     setCurrentPhase('delivery');
@@ -217,16 +250,16 @@ export default function DriverDashboardScreen() {
         showModal('Bağlantı Sorunu', 'Sunucu ile bağlantı kurulamıyor. Lütfen uygulamayı yeniden başlatın.', 'error');
       });
       
-      // Socket event listener'ları
-      socketService.on('new_order', (orderData: OrderData) => {
-        console.log('🔔 NEW ORDER BİLDİRİMİ ALINDI:');
+      // Socket event listener'ları - sadece backend'ten gelen new_order_available event'ini dinle
+      socketService.on('new_order_available', (orderData: OrderData) => {
+        console.log('🔔 NEW ORDER AVAILABLE BİLDİRİMİ ALINDI:');
         console.log('📋 Sipariş Detayları:', JSON.stringify(orderData, null, 2));
         console.log('👤 Müşteri:', orderData.customer_first_name, orderData.customer_last_name);
         console.log('📍 Alış Adresi:', orderData.pickupAddress);
         console.log('🎯 Varış Adresi:', orderData.destinationAddress);
         console.log('💰 Tahmini Ücret:', orderData.estimatedPrice);
         console.log('📏 Mesafe:', orderData.distance);
-        console.log('⚖️ Ağırlık:', orderData.weight);
+
         console.log('👷 İşçi Sayısı:', orderData.laborCount);
         
         // Yeni sipariş bildirim modalını göster
@@ -262,55 +295,6 @@ export default function DriverDashboardScreen() {
             return updated;
           } else {
             console.log('➕ Yeni sipariş eklendi:', newCustomer.id);
-            return [newCustomer, ...currentCustomers];
-          }
-        });
-      });
-      
-      // Order created event - yeni sipariş oluşturulduğunda bildirim
-      socketService.on('order_created', (orderData: any) => {
-        console.log('🔔 ORDER CREATED BİLDİRİMİ ALINDI:');
-        console.log('📋 Sipariş Verisi:', JSON.stringify(orderData, null, 2));
-        console.log('🆔 Sipariş ID:', orderData.orderId || orderData.id);
-        console.log('👤 Müşteri Adı:', orderData.customer_first_name, orderData.customer_last_name);
-        console.log('📞 Müşteri Telefon:', orderData.customerPhone);
-        console.log('📍 Alış Konumu:', orderData.pickupAddress);
-        console.log('🎯 Varış Konumu:', orderData.destinationAddress);
-        console.log('💰 Tahmini Fiyat:', orderData.estimatedPrice);
-        
-        // Yeni sipariş bildirim modalını göster
-        setNewOrderData(orderData);
-        setShowNewOrderModal(true);
-        
-        // OrderData'yı Customer formatına dönüştür
-        const newCustomer: Customer = {
-          id: orderData.orderId || orderData.id || Date.now(),
-          name: orderData.customer_first_name && orderData.customer_last_name 
-            ? `${orderData.customer_first_name} ${orderData.customer_last_name}` 
-            : (orderData.customerName || 'Müşteri'),
-          phone: orderData.customerPhone || 'Bilinmiyor',
-          pickup_location: orderData.pickupAddress,
-          destination: orderData.destinationAddress,
-          distance: orderData.distance ? `${orderData.distance.toFixed(1)} km` : 'Hesaplanıyor...',
-          estimated_fare: orderData.estimatedPrice,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-        };
-        
-        console.log('✅ Dönüştürülen Müşteri Verisi:', JSON.stringify(newCustomer, null, 2));
-        
-        // Yeni siparişi customers listesine ekle
-        setCustomers(prev => {
-          const currentCustomers = Array.isArray(prev) ? prev : [];
-          // Aynı ID'li sipariş varsa güncelle, yoksa ekle
-          const existingIndex = currentCustomers.findIndex(c => c.id === newCustomer.id);
-          if (existingIndex >= 0) {
-            const updated = [...currentCustomers];
-            updated[existingIndex] = newCustomer;
-            console.log('🔄 Mevcut sipariş güncellendi (order_created):', newCustomer.id);
-            return updated;
-          } else {
-            console.log('➕ Yeni sipariş eklendi (order_created):', newCustomer.id);
             return [newCustomer, ...currentCustomers];
           }
         });
@@ -381,6 +365,37 @@ export default function DriverDashboardScreen() {
         });
       });
 
+      // Müşteri sipariş iptal onayı istediğinde (backend'ten gelen event)
+      socketService.on('cancel_order_confirmation_required', (data: { orderId: number, message?: string }) => {
+        console.log('🔔 CANCEL ORDER CONFIRMATION REQUIRED BİLDİRİMİ ALINDI:');
+        console.log('🆔 İptal Onayı İstenen Sipariş ID:', data.orderId);
+        console.log('💬 Mesaj:', data.message);
+        
+        // İptal onayı istenen siparişi listeden kaldır
+        setCustomers(prev => {
+          const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
+          console.log('❌ Sipariş listeden kaldırıldı (iptal onayı istendi):', data.orderId);
+          console.log('📊 Kalan sipariş sayısı:', filtered.length);
+          return filtered;
+        });
+        
+        // İptal onayı istenen sipariş bilgilerini al ve modal göster
+        const orderToCancel = customers?.find(customer => customer.id === data.orderId);
+        if (orderToCancel) {
+          setCancellationData({
+            orderId: data.orderId,
+            message: data.message || 'Müşteri sipariş iptal onayı istiyor',
+            customerName: orderToCancel.name,
+            pickupAddress: orderToCancel.pickup_location,
+            destinationAddress: orderToCancel.destination
+          });
+          setShowCancellationModal(true);
+        } else {
+          // Sipariş bulunamazsa genel bilgilendirme modalı göster
+          showModal('İptal Onayı', data.message || `#${data.orderId} numaralı sipariş için iptal onayı isteniyor.`, 'info');
+        }
+      });
+
       // Müşteri siparişi iptal ettiğinde (backend'ten gelen event)
       socketService.on('order_cancelled_by_customer', (data: { orderId: number, message?: string }) => {
         console.log('🔔 ORDER CANCELLED BY CUSTOMER BİLDİRİMİ ALINDI:');
@@ -444,13 +459,24 @@ export default function DriverDashboardScreen() {
         console.log('🆔 Onaylanan Sipariş ID:', data.orderId);
         console.log('👤 Müşteri Bilgisi:', data.customerInfo);
         
-        // Siparişi listeden kaldır ve başarı mesajı göster
+        // Sipariş durumunu güncelle (listeden kaldırma)
         setCustomers(prev => {
-          const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
-          console.log('✅ Onaylanan sipariş listeden kaldırıldı:', data.orderId);
-          return filtered;
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('✅ Sipariş durumu güncellendi (müşteri onayladı):', customer.id);
+              return { ...customer, status: 'confirmed' as Customer['status'] };
+            }
+            return customer;
+          });
+          return updated;
         });
-        // TODO: Başarı mesajı modal'ı göster
+        
+        // Müşteri onayı geldiğinde aktif siparişi başlat
+        startActiveOrderAfterCustomerApproval(data.orderId);
+        
+        // Başarı mesajı göster
+        showModal('Müşteri Onayı Alındı', 'Müşteri fiyatı onayladı. Yük alma noktasına gitmeye başlayabilirsiniz.', 'success');
       });
       
       // Müşteri siparişi reddetti
@@ -460,13 +486,230 @@ export default function DriverDashboardScreen() {
         console.log('🆔 Reddedilen Sipariş ID:', data.orderId);
         console.log('❌ Red Sebebi:', data.reason || 'Belirtilmemiş');
         
-        // Siparişi listeden kaldır
+        // Sipariş durumunu güncelle (listeden kaldırma)
         setCustomers(prev => {
-          const filtered = (prev || []).filter(customer => customer.id !== data.orderId);
-          console.log('❌ Reddedilen sipariş listeden kaldırıldı:', data.orderId);
-          return filtered;
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('❌ Sipariş durumu güncellendi (müşteri reddetti):', customer.id);
+              return { ...customer, status: 'rejected' as Customer['status'] };
+            }
+            return customer;
+          });
+          return updated;
         });
-        // TODO: Bilgilendirme mesajı göster
+        
+        // Bilgilendirme mesajı göster
+        showModal('Sipariş Reddedildi', 'Müşteri siparişi reddetti.', 'info');
+      });
+
+      // Müşteri fiyat onayını kabul etti
+      socketService.on('price_accepted_by_customer', (data: { orderId: number, message?: string }) => {
+        console.log('🔔 PRICE ACCEPTED BY CUSTOMER BİLDİRİMİ ALINDI:');
+        console.log('📋 Fiyat Onayı Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Onaylanan Sipariş ID:', data.orderId);
+        console.log('💬 Mesaj:', data.message || 'Müşteri fiyatı onayladı');
+        
+        // Sipariş durumunu güncelle (listeden kaldırma)
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('✅ Sipariş durumu güncellendi (fiyat onaylandı):', customer.id);
+              return { ...customer, status: 'confirmed' as Customer['status'] };
+            }
+            return customer;
+          });
+          return updated;
+        });
+        
+        // İnceleme modalı açıksa kapat
+        if (selectedOrder && selectedOrder.id === data.orderId) {
+          setShowInspectionModal(false);
+          setSelectedOrder(null);
+          setOrderDetails(null);
+        }
+        
+        // İnceleme listesinden kaldır
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          return newSet;
+        });
+        
+        showModal('Fiyat Onayı', 'Müşteri fiyatı onayladı. Yük alma noktasına gitmeye başlayabilirsiniz.', 'success');
+      });
+
+      // Müşteri fiyat onayını reddetti
+      socketService.on('price_rejected_by_customer', (data: { orderId: number, message?: string }) => {
+        console.log('🔔 PRICE REJECTED BY CUSTOMER BİLDİRİMİ ALINDI:');
+        console.log('📋 Fiyat Reddi Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Reddedilen Sipariş ID:', data.orderId);
+        console.log('💬 Mesaj:', data.message || 'Müşteri fiyatı reddetti');
+        
+        // Sipariş durumunu güncelle (listeden kaldırma)
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('❌ Sipariş durumu güncellendi (fiyat reddedildi):', customer.id);
+              return { ...customer, status: 'rejected' as Customer['status'] };
+            }
+            return customer;
+          });
+          return updated;
+        });
+        
+        // İnceleme modalı açıksa kapat
+        if (selectedOrder && selectedOrder.id === data.orderId) {
+          setShowInspectionModal(false);
+          setSelectedOrder(null);
+          setOrderDetails(null);
+        }
+        
+        // İnceleme listesinden kaldır
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          return newSet;
+        });
+        
+        showModal('Fiyat Reddedildi', 'Müşteri fiyatı reddetti. Sipariş iptal edildi.', 'info');
+      });
+
+      // Müşteri fiyat onay süresi doldu
+      socketService.on('price_confirmation_timeout', (data: { orderId: number, message?: string }) => {
+        console.log('🔔 PRICE CONFIRMATION TIMEOUT BİLDİRİMİ ALINDI:');
+        console.log('📋 Zaman Aşımı Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Zaman Aşan Sipariş ID:', data.orderId);
+        console.log('💬 Mesaj:', data.message || 'Müşteri onay süresi doldu');
+        
+        // Sipariş durumunu güncelle (listeden kaldırma)
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('⏰ Sipariş durumu güncellendi (zaman aşımı):', customer.id);
+              return { ...customer, status: 'timeout' as Customer['status'], countdownTime: 0 };
+            }
+            return customer;
+          });
+          return updated;
+        });
+        
+        // İnceleme modalı açıksa kapat
+        if (selectedOrder && selectedOrder.id === data.orderId) {
+          setShowInspectionModal(false);
+          setSelectedOrder(null);
+          setOrderDetails(null);
+        }
+        
+        // İnceleme listesinden kaldır
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          return newSet;
+        });
+        
+        showModal('Zaman Aşımı', data.message || 'Müşteri onay süresi doldu. Sipariş tekrar müsait duruma döndü.', 'warning');
+      });
+
+      // Fiyat onayı geri sayımı başlatıldığında
+      socketService.on('price_confirmation_countdown_started', (data: { orderId: number, timeout: number, message: string, countdownStartTime: number }) => {
+        console.log('🔔 PRICE CONFIRMATION COUNTDOWN STARTED BİLDİRİMİ ALINDI:');
+        console.log('📋 Geri Sayım Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Sipariş ID:', data.orderId);
+        console.log('⏰ Zaman Aşımı Süresi:', data.timeout);
+        console.log('💬 Mesaj:', data.message);
+        console.log('🕐 Geri Sayım Başlangıç Zamanı:', data.countdownStartTime);
+        
+        // İlgili siparişi customers listesinde güncelle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('🔄 Sipariş geri sayım durumuna geçirildi:', customer.id);
+              return { 
+                ...customer, 
+                status: 'driver_accepted_awaiting_customer' as Customer['status'],
+                countdownTime: data.timeout,
+                countdownTotal: data.timeout
+              };
+            }
+            return customer;
+          });
+          return updated;
+        });
+      });
+
+      // Fiyat onayı geri sayım güncellendiğinde
+      socketService.on('price_confirmation_countdown_update', (data: { orderId: number, remainingTime: number, totalTime: number }) => {
+        console.log('🔔 PRICE CONFIRMATION COUNTDOWN UPDATE BİLDİRİMİ ALINDI:');
+        console.log('📋 Geri Sayım Güncelleme Verisi:', JSON.stringify(data, null, 2));
+        console.log('🆔 Sipariş ID:', data.orderId);
+        console.log('⏰ Kalan Süre:', data.remainingTime);
+        console.log('📊 Toplam Süre:', data.totalTime);
+        
+        // İlgili siparişi customers listesinde güncelle
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('🔄 Sipariş geri sayımı güncellendi:', customer.id, 'Kalan süre:', data.remainingTime);
+              return { 
+                ...customer, 
+                countdownTime: data.remainingTime,
+                countdownTotal: data.totalTime
+              };
+            }
+            return customer;
+          });
+          return updated;
+        });
+      });
+
+      // Sipariş başarıyla kabul edildiğinde
+      socketService.on('order_accepted_success', (data: { orderId: number, message: string }) => {
+        console.log('🔔 ORDER ACCEPTED SUCCESS BİLDİRİMİ ALINDI:');
+        console.log('🆔 Kabul Edilen Sipariş ID:', data.orderId);
+        console.log('💬 Mesaj:', data.message);
+        
+        // Sipariş durumunu güncelle (listeden kaldırma)
+        setCustomers(prev => {
+          const currentCustomers = Array.isArray(prev) ? prev : [];
+          const updated = currentCustomers.map(customer => {
+            if (customer.id === data.orderId) {
+              console.log('✅ Sipariş durumu güncellendi (kabul edildi):', customer.id);
+              return { ...customer, status: 'accepted' as Customer['status'] };
+            }
+            return customer;
+          });
+          return updated;
+        });
+        
+        // İnceleme modalı açıksa kapat
+        if (selectedOrder && selectedOrder.id === data.orderId) {
+          setShowInspectionModal(false);
+          setSelectedOrder(null);
+          setOrderDetails(null);
+        }
+        
+        // İnceleme listesinden kaldır
+        setInspectingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.orderId);
+          return newSet;
+        });
+        
+        showModal('Başarılı', data.message, 'success');
+      });
+
+      // Sipariş kabul edilirken hata oluştuğunda
+      socketService.on('order_accept_error', (data: { message: string }) => {
+        console.log('🔔 ORDER ACCEPT ERROR BİLDİRİMİ ALINDI:');
+        console.log('❌ Hata Mesajı:', data.message);
+        
+        showModal('Hata', data.message, 'error');
       });
       
       // Server konum güncellemesi istediğinde mevcut konumu gönder
@@ -521,6 +764,16 @@ export default function DriverDashboardScreen() {
           const updated = currentCustomers.map(customer => {
             if (customer.id === data.orderId) {
               console.log('🔄 Sipariş durumu güncellendi:', customer.id, 'Eski:', customer.status, 'Yeni:', data.status);
+              
+              // Sipariş iptal edildiyse bildirim göster
+              if (data.status === 'cancelled') {
+                Alert.alert(
+                  '📱 Sipariş İptal Edildi',
+                  `Sipariş #${data.orderId} müşteri tarafından iptal edildi.`,
+                  [{ text: 'Tamam', style: 'default' }]
+                );
+              }
+              
               return { ...customer, status: data.status as Customer['status'] };
             }
             return customer;
@@ -688,6 +941,8 @@ export default function DriverDashboardScreen() {
       if (locationWatchRef.current) {
         locationWatchRef.current.remove();
       }
+      // Cleanup navigation service
+      navigationService.stopNavigation();
     };
   }, [token]);
 
@@ -1015,8 +1270,8 @@ export default function DriverDashboardScreen() {
         {
           text: 'Kabul Et',
           onPress: () => {
-            // Socket üzerinden sipariş kabul et
-            socketService.acceptOrder(customerId);
+            // Socket üzerinden sipariş kabul et (varsayılan 1 hammal ile)
+            socketService.acceptOrderWithLabor(customerId, 1);
           },
         },
       ]
@@ -1056,11 +1311,15 @@ export default function DriverDashboardScreen() {
       
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Sipariş detayları API yanıtı:', JSON.stringify(data, null, 2));
         setOrderDetails(data.order);
         // API'den gelen labor_count değerini laborCount state'ine set et
         if (data.order?.labor_count) {
           setLaborCount(data.order.labor_count.toString());
         }
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Sipariş detayları API hatası:', errorData);
       }
       
       setShowInspectionModal(true);
@@ -1102,41 +1361,27 @@ export default function DriverDashboardScreen() {
   };
 
   const acceptOrderWithLabor = (orderId: number, laborCount: number) => {
+    // Zaten bekliyorsak tekrar gönderme
+    if (isWaitingForCustomerApproval || pendingOrderId) {
+      console.log('⚠️ acceptOrderWithLabor: Zaten müşteri onayı bekleniyor, tekrar gönderme engellendi');
+      return;
+    }
+    
     // Socket üzerinden hammaliye ile kabul et
     socketService.acceptOrderWithLabor(orderId, laborCount);
     
-    // İncelemeyi durdur
-    stopInspecting(orderId);
+    // Müşteri onayı bekleme durumuna geç
+    setIsWaitingForCustomerApproval(true);
+    setPendingOrderId(orderId);
     
-    // Aktif siparişi ayarla ve pickup fazını başlat
+    // Sipariş detaylarını sakla ama aktif siparişi henüz ayarlama
     if (orderDetails) {
-      const newActiveOrder: OrderData = {
-        id: orderId,
-        pickupAddress: orderDetails.pickup_address,
-        pickup_latitude: orderDetails.pickup_latitude,
-        pickup_longitude: orderDetails.pickup_longitude,
-        destinationAddress: orderDetails.destination_address,
-        delivery_latitude: orderDetails.destination_latitude,
-        delivery_longitude: orderDetails.destination_longitude,
-        weight: orderDetails.weight,
-        laborCount: laborCount,
-        estimatedPrice: orderDetails.estimated_price,
-        customerId: orderDetails.customer_id,
-        customerName: orderDetails.customer_name,
-        customerPhone: orderDetails.customer_phone
-      };
+      console.log('📍 acceptOrderWithLabor: Sürücü kabul etti, müşteri onayı bekleniyor:', orderId);
       
-      setActiveOrder(newActiveOrder);
-      setCurrentPhase('pickup');
-      
-      // Yük alma noktasına rota çiz
-      getDirectionsRoute(
-        currentLocation,
-        {
-          latitude: orderDetails.pickup_latitude,
-          longitude: orderDetails.pickup_longitude
-        }
-      );
+      // Sipariş detaylarını sakla (sonra kullanılacak)
+      setPendingOrderDetails(orderDetails);
+    } else {
+      console.error('❌ acceptOrderWithLabor: orderDetails null veya undefined');
     }
   };
 
@@ -1164,8 +1409,8 @@ export default function DriverDashboardScreen() {
               getDirectionsRoute(
                 currentLocation,
                 {
-                  latitude: activeOrder.delivery_latitude,
-                  longitude: activeOrder.delivery_longitude
+                  latitude: activeOrder.destinationLatitude,
+                  longitude: activeOrder.destinationLongitude
                 }
               );
             } else if (status === 'completed') {
@@ -1270,6 +1515,74 @@ export default function DriverDashboardScreen() {
       console.error('Rota çizimi hatası:', error);
     }
   }, []);
+
+  // Müşteri onayı geldiğinde aktif siparişi başlat
+  const startActiveOrderAfterCustomerApproval = useCallback((orderId: number) => {
+    if (pendingOrderDetails && pendingOrderId === orderId) {
+      console.log('✅ Müşteri onayı geldi, aktif sipariş başlatılıyor:', orderId);
+      
+      // Koordinatları kontrol et ve varsayılan değerler kullan
+      const pickupLat = pendingOrderDetails.pickupLatitude ?? 41.0082; // Istanbul default
+        const pickupLng = pendingOrderDetails.pickupLongitude ?? 28.9784; // Istanbul default
+      const deliveryLat = pendingOrderDetails.destination_latitude ?? 41.0082; // Istanbul default
+      const deliveryLng = pendingOrderDetails.destination_longitude ?? 28.9784; // Istanbul default
+      
+      console.log('📍 startActiveOrderAfterCustomerApproval koordinatları:', {
+        pickupLat, pickupLng, deliveryLat, deliveryLng,
+        originalPickupLat: pendingOrderDetails.pickupLatitude,
+          originalPickupLng: pendingOrderDetails.pickupLongitude,
+        originalDeliveryLat: pendingOrderDetails.destination_latitude,
+        originalDeliveryLng: pendingOrderDetails.destination_longitude
+      });
+      
+      const newActiveOrder: OrderData = {
+        id: orderId,
+        pickupAddress: pendingOrderDetails.pickup_address || '',
+        pickupLatitude: pickupLat,
+          pickupLongitude: pickupLng,
+          destinationAddress: pendingOrderDetails.destination_address,
+          destinationLatitude: deliveryLat,
+          destinationLongitude: deliveryLng,
+        laborCount: pendingOrderDetails.laborCount || 0,
+        estimatedPrice: pendingOrderDetails.estimated_price || 0,
+        customerId: pendingOrderDetails.customer_id || 0,
+        customerName: pendingOrderDetails.customer_name,
+        customerPhone: pendingOrderDetails.customer_phone
+      };
+      
+      setActiveOrder(newActiveOrder);
+      setCurrentPhase('pickup');
+      setIsWaitingForCustomerApproval(false);
+      setPendingOrderId(null);
+      setPendingOrderDetails(null);
+      
+      // Yük alma noktasına rota çiz - currentLocation kontrolü ile
+      if (currentLocation && currentLocation.latitude && currentLocation.longitude) {
+        getDirectionsRoute(
+          currentLocation,
+          {
+            latitude: pickupLat,
+            longitude: pickupLng
+          }
+        );
+      } else {
+        // Konum bilinmiyorsa, varsayılan konumu kullan
+        const defaultLocation = {
+          latitude: 41.0082,
+          longitude: 28.9784
+        };
+        getDirectionsRoute(
+          defaultLocation,
+          {
+            latitude: pickupLat,
+            longitude: pickupLng
+          }
+        );
+      }
+    } else {
+      console.error('❌ startActiveOrderAfterCustomerApproval: pendingOrderDetails yok veya orderId uyuşmuyor');
+    }
+  }, [pendingOrderDetails, pendingOrderId, currentLocation, getDirectionsRoute]);
   
   // Polyline decode fonksiyonu
   const decodePolyline = (encoded: string) => {
@@ -1317,53 +1630,141 @@ export default function DriverDashboardScreen() {
       return;
     }
 
+    // Zaten navigasyon başlatılmışsa tekrar başlatma
+    if (isNavigating) {
+      console.log('Navigasyon zaten aktif, tekrar başlatılmıyor');
+      return;
+    }
+
+    console.log('🧭 Navigasyon başlatılıyor...', {
+      orderId: activeOrder.id,
+      currentPhase: currentPhase,
+      currentLocation: currentLocation
+    });
+
     setIsNavigating(true);
     
     try {
       let destination;
+      let destinationAddress;
       
       if (currentPhase === 'pickup') {
         // Yük alma fazında - yük konumuna git
         destination = {
-          latitude: activeOrder.pickup_latitude,
-          longitude: activeOrder.pickup_longitude
+          latitude: activeOrder.pickupLatitude,
+            longitude: activeOrder.pickupLongitude
         };
+        destinationAddress = activeOrder.pickupAddress;
       } else {
         // Teslimat fazında - varış noktasına git
         destination = {
-          latitude: activeOrder.delivery_latitude,
-          longitude: activeOrder.delivery_longitude
+          latitude: activeOrder.destinationLatitude,
+            longitude: activeOrder.destinationLongitude
         };
+        destinationAddress = activeOrder.destinationAddress;
       }
+      
+      console.log('📍 Hedef:', destination);
       
       // Backend API ile rota hesapla
+      let routeCalculated = false;
+      
       if (currentPhase) {
+        console.log('🗺️ Backend API ile rota hesaplanıyor...');
         const routeResult = await calculateRouteFromAPI(activeOrder.id, currentPhase);
         
-        if (!routeResult.success) {
-          // Fallback olarak Google Directions API kullan
-          await getDirectionsRoute(currentLocation, destination);
+        if (routeResult.success && routeResult.route) {
+          console.log('✅ Backend rota hesaplandı:', routeResult.route);
+          
+          // Backend'den gelen rotayı navigation service'e ayarla
+          try {
+            // Navigation service'e rotayı ayarla (sadece origin ve destination)
+            await navigationService.calculateRoute(currentLocation, destination);
+            routeCalculated = true;
+            console.log('✅ Navigation service rota ayarlandı');
+          } catch (calcError) {
+            console.error('❌ Navigation service rota ayarlama hatası:', calcError);
+          }
+        } else {
+          console.warn('⚠️ Backend rota hesaplaması başarısız, Google Directions API kullanılıyor');
         }
-      } else {
-        // currentPhase null ise sadece Google Directions API kullan
+      }
+      
+      // Eğer backend rota hesaplamadıysa veya currentPhase null ise Google Directions API kullan
+      if (!routeCalculated) {
+        console.log('🗺️ Google Directions API ile rota hesaplanıyor...');
         await getDirectionsRoute(currentLocation, destination);
+        
+        // Google Directions'dan gelen veriyi navigation service'e aktar
+        // Bu durumda basit bir rota oluşturalım
+        if (routeCoordinates.length > 0) {
+          console.log('✅ Google Directions rota alındı, navigation service ayarlanıyor...');
+          
+          const simpleSteps = [{
+            instruction: `${destinationAddress} konumuna gidin`,
+            maneuver: 'straight',
+            location: destination,
+            distance: routeDuration ? routeDuration * 30 : 300 // Yaklaşık mesafe hesabı, null check
+          }];
+          
+          try {
+            // Navigation service'e rotayı Google Directions verisiyle ayarla
+            // calculateRoute sadece 2-3 parametre alır: origin, destination, waypoints
+            // simpleSteps'ı ayrıca ayarlamamız gerekecek
+            await navigationService.calculateRoute(currentLocation, destination);
+            
+            // Navigation service'e manuel adımları ekle
+            const currentRoute = navigationService.getCurrentRoute();
+            if (currentRoute && simpleSteps.length > 0) {
+              currentRoute.steps = simpleSteps.map(step => ({
+                instruction: step.instruction,
+                distance: `${step.distance}m`,
+                duration: Math.round(step.distance / 30), // Yaklaşık süre
+                maneuver: step.maneuver,
+                location: step.location
+              }));
+            }
+            routeCalculated = true;
+            console.log('✅ Navigation service Google rotası ayarlandı');
+          } catch (calcError) {
+            console.error('❌ Navigation service Google rota ayarlama hatası:', calcError);
+          }
+        } else {
+          console.error('❌ Google Directions rota alınamadı');
+        }
       }
       
-      // Harici navigasyon uygulamasını aç
-      const url = `https://www.google.com/maps/dir/?api=1&origin=${currentLocation.latitude},${currentLocation.longitude}&destination=${destination?.latitude},${destination?.longitude}&travelmode=driving`;
-      
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
+      // Rota hesaplandıysa navigasyonu başlat
+      if (routeCalculated) {
+        console.log('🚀 Navigation service başlatılıyor...');
+        
+        // Navigasyon servisini başlat ve güncellemeleri dinle
+        await navigationService.startNavigation(currentLocation, (update: NavigationUpdate) => {
+          console.log('📡 Navigation update:', update);
+          setNavigationUpdate(update);
+        });
+        
+        // Sunucuya sürücünün navigasyonu başlattığını bildir
+        try {
+          if (activeOrder?.id) {
+            console.log('📣 Emitting driver_started_navigation for order:', activeOrder.id);
+            socketService.driverStartedNavigation(activeOrder.id);
+          }
+        } catch (emitError) {
+          console.error('driver_started_navigation emit error:', emitError);
+        }
+        
+        console.log('✅ Navigasyon başarıyla başlatıldı');
       } else {
-        showModal('Hata', 'Navigasyon uygulaması açılamadı', 'error');
+        throw new Error('Rota hesaplanamadı, navigasyon başlatılamıyor');
       }
+      
     } catch (error) {
-      console.error('Navigasyon başlatma hatası:', error);
+      console.error('❌ Navigasyon başlatma hatası:', error);
       showModal('Hata', 'Navigasyon başlatılamadı', 'error');
       setIsNavigating(false);
     }
-  }, [activeOrder, currentLocation, currentPhase, calculateRouteFromAPI, getDirectionsRoute, showModal]);
+  }, [activeOrder, currentLocation, currentPhase, calculateRouteFromAPI, getDirectionsRoute, showModal, isNavigating, routeCoordinates, routeDuration]);
   
   const handleLogout = async () => {
     showModal(
@@ -1375,12 +1776,30 @@ export default function DriverDashboardScreen() {
         {
           text: 'Çıkış Yap',
           onPress: async () => {
+            // Navigasyonu durdur
+            navigationService.stopNavigation();
             await logout();
             router.replace('/phone-auth');
           },
         },
       ]
     );
+  };
+
+  // Navigasyon güncellemelerini işle
+  const handleNavigationUpdate = (update: NavigationUpdate) => {
+    setNavigationUpdate(update);
+    
+    // Rota süresini güncelle
+    if (update.timeToDestination) {
+      setRouteDuration(update.timeToDestination);
+    }
+    
+    // Hedefe ulaşıldı mı kontrol et
+    if (update.distanceToDestination && update.distanceToDestination < 50) {
+      // 50 metre yaklaşıldı
+      console.log('🎯 Hedefe yaklaşıldı:', update.distanceToDestination, 'metre');
+    }
   };
 
   const renderCustomerItem = ({ item }: { item: Customer }) => {
@@ -1518,6 +1937,23 @@ export default function DriverDashboardScreen() {
         />
       </View>
 
+      {/* Navigasyon Durum Göstergesi */}
+      {isNavigating && navigationUpdate && (
+        <View style={styles.navigationStatusContainer}>
+          <View style={styles.navigationStatusContent}>
+            <Ionicons name="navigate" size={20} color="#FFFFFF" />
+            <View style={styles.navigationStatusText}>
+              <Text style={styles.navigationStatusTitle}>
+                {navigationUpdate.currentStep?.maneuver || 'Navigasyon devam ediyor'}
+              </Text>
+              <Text style={styles.navigationStatusSubtitle}>
+                Hedefe: {Math.round(navigationUpdate.distanceToDestination)}m • {navigationUpdate.timeToDestination}dk
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Map */}
       <MapComponent
         region={mapRegion}
@@ -1528,10 +1964,11 @@ export default function DriverDashboardScreen() {
         isNavigating={isNavigating}
         onStartNavigation={() => startNavigation()}
         onRegionChange={(region) => setMapRegion(region)}
+        onNavigationUpdate={handleNavigationUpdate}
       />
 
-      {/* Aktif Sipariş Kartı */}
-      {activeOrder && currentPhase && (
+      {/* Aktif Sipariş Kartı - Hide when waiting for customer approval */}
+      {activeOrder && currentPhase && !isWaitingForCustomerApproval && (
         <ActiveOrderCard
           activeOrder={activeOrder}
           currentPhase={currentPhase}
@@ -1541,8 +1978,8 @@ export default function DriverDashboardScreen() {
         />
       )}
 
-      {/* Navigation Button */}
-      {activeOrder && (
+      {/* Navigation Button - Hide when waiting for customer approval */}
+      {activeOrder && !isWaitingForCustomerApproval && (
         <TouchableOpacity
           style={styles.navigationButton}
           onPress={() => startNavigation()}
@@ -1565,6 +2002,7 @@ export default function DriverDashboardScreen() {
         onRefresh={refreshCustomers}
         isRefreshing={isRefreshing}
         isOnline={isOnline}
+        isWaitingForCustomerApproval={isWaitingForCustomerApproval}
       />
 
 
@@ -1581,6 +2019,7 @@ export default function DriverDashboardScreen() {
           onAccept={acceptOrderWithLabor}
           onOpenPhotoModal={openPhotoModal}
           styles={styles}
+          isWaitingForCustomerApproval={isWaitingForCustomerApproval}
         />
 
         {/* Fotoğraf Modal */}
@@ -1598,7 +2037,22 @@ export default function DriverDashboardScreen() {
           onClose={() => setShowNewOrderModal(false)}
           onViewOrder={() => {
             setShowNewOrderModal(false);
-            // Sipariş listesine odaklan veya sipariş detayına git
+            // Yeni sipariş geldiğinde direkt inceleme moduna geç
+            if (newOrderData) {
+              // newOrderData'yi Customer formatına çevir
+              const customerOrder: Customer = {
+                id: newOrderData.id || 0,
+                name: newOrderData.customerName || newOrderData.customer_first_name + ' ' + newOrderData.customer_last_name,
+                phone: newOrderData.customerPhone || '',
+                pickup_location: newOrderData.pickupAddress,
+                destination: newOrderData.destinationAddress,
+                estimated_fare: newOrderData.estimatedPrice || 0,
+                distance: String(newOrderData.distance || 0),
+                status: 'pending' as Customer['status'],
+                created_at: new Date().toISOString()
+              };
+              inspectOrder(customerOrder);
+            }
           }}
           orderData={newOrderData}
         />
@@ -1612,6 +2066,8 @@ export default function DriverDashboardScreen() {
             setCancellationData(null);
           }}
         />
+
+
       </View>
     );
   }

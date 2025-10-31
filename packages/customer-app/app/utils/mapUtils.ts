@@ -35,19 +35,35 @@ export const animateToRegionWithOffset = (
   latitudeDelta: number,
   longitudeDelta: number
 ) => {
-  if (!mapRef.current) return;
+  console.log('🔍 DEBUG: animateToRegionWithOffset called with:', {
+    latitude,
+    longitude,
+    latitudeDelta,
+    longitudeDelta,
+    mapRefExists: !!mapRef.current,
+    bottomSheetHeight: (bottomSheetHeight as any)._value
+  });
+  
+  if (!mapRef.current) {
+    console.error('🚨 ERROR: mapRef.current is null in animateToRegionWithOffset');
+    return;
+  }
   
   const currentBottomSheetHeight = (bottomSheetHeight as any)._value;
   const screenHeight = Dimensions.get('window').height;
   const offsetRatio = (currentBottomSheetHeight / 2) / screenHeight;
   const latitudeOffset = latitudeDelta * offsetRatio * 0.8;
   
-  mapRef.current.animateToRegion({
+  const targetRegion = {
     latitude: latitude - latitudeOffset,
     longitude: longitude,
     latitudeDelta,
     longitudeDelta,
-  }, 1500);
+  };
+  
+  console.log('🔍 DEBUG: Animating to region:', targetRegion);
+  
+  mapRef.current.animateToRegion(targetRegion, 1500);
 };
 
 // İki nokta arasındaki mesafeyi gösterecek şekilde haritayı ayarlama

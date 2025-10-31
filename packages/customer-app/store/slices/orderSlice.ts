@@ -16,8 +16,11 @@ interface OrderData {
   notes?: string;
   vehicleTypeId?: string | number;
   vehicle_type_id?: string | number; // Socket service için alternatif alan
+  cargoTypeId?: string | number;
+  cargo_type_id?: string | number;
   laborRequired?: boolean;
   laborCount?: number;
+  base_labor_count?: number;
   weight_kg?: number;
   cargoImages: string[];
   status?: string;
@@ -78,6 +81,7 @@ export const createOrder = createAsyncThunk(
       formData.append('estimatedTime', orderData.estimatedTime.toString());
       formData.append('notes', orderData.notes || '');
       formData.append('vehicle_type_id', orderData.vehicleTypeId?.toString() || '');
+      formData.append('cargo_type_id', orderData.cargoTypeId?.toString() || orderData.cargo_type_id?.toString() || '');
       formData.append('laborRequired', 'true');
       formData.append('laborCount', '1');
       formData.append('weight_kg', orderData.weight_kg?.toString() || '0');
@@ -150,6 +154,7 @@ export const createOrder = createAsyncThunk(
           laborCount: 1, // Default labor count
           estimatedPrice: result.order.estimatedPrice || 0,
           vehicle_type_id: Number(orderData.vehicleTypeId || orderData.vehicle_type_id) || undefined, // Araç tipi ID'si
+          cargo_type_id: Number(orderData.cargoTypeId || orderData.cargo_type_id) || undefined, // Kargo tipi ID'si
         });
 
         return result.order;
@@ -171,7 +176,7 @@ export const checkExistingOrder = createAsyncThunk(
   async ({ token }: { token: string }, { rejectWithValue }) => {
     try {
       const response = await fetch(
-        `${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,confirmed,in_progress&limit=1`,
+        `${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,customer_price_approved,customer_price_rejected,driver_going_to_pickup,confirmed,in_progress&limit=1`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -209,7 +214,7 @@ export const fetchActiveOrders = createAsyncThunk(
         throw new Error('Token bulunamadı');
       }
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,confirmed,in_progress,started&limit=1`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/users/orders?status=pending,inspecting,accepted,driver_accepted_awaiting_customer,customer_price_approved,customer_price_rejected,driver_going_to_pickup,confirmed,in_progress,started&limit=1`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -448,7 +453,40 @@ const orderSlice = createSlice({
       })
       .addCase(checkExistingOrder.fulfilled, (state, action) => {
         state.checkOrderLoading = false;
-        state.currentOrder = action.payload;
+        if (action.payload) {
+          // API formatını Redux formatına çevir - vehicle_type_id'yi vehicleTypeId'ye dönüştür
+          const apiOrder = action.payload;
+          const reduxOrder: OrderData = {
+            id: apiOrder.id ? apiOrder.id.toString() : `temp_${Date.now()}`,
+            pickupAddress: apiOrder.pickup_address || '',
+            pickupLatitude: apiOrder.pickup_latitude || 0,
+            pickupLongitude: apiOrder.pickup_longitude || 0,
+            destinationAddress: apiOrder.destination_address || '',
+            destinationLatitude: apiOrder.destination_latitude || 0,
+            destinationLongitude: apiOrder.destination_longitude || 0,
+            distance: apiOrder.distance_km || 0,
+            estimatedTime: 0,
+            notes: apiOrder.customer_notes || '',
+            vehicleTypeId: apiOrder.vehicle_type_id ? apiOrder.vehicle_type_id.toString() : '1',
+            laborRequired: (apiOrder.labor_count || 0) > 0,
+            laborCount: apiOrder.labor_count || 0,
+            weight_kg: apiOrder.weight_kg || 0,
+            cargoImages: apiOrder.cargo_photo_urls ? 
+              (typeof apiOrder.cargo_photo_urls === 'string' ? JSON.parse(apiOrder.cargo_photo_urls) : apiOrder.cargo_photo_urls) 
+              : [],
+            status: apiOrder.status || 'pending',
+            estimatedPrice: apiOrder.total_price || 0,
+            createdAt: apiOrder.created_at,
+            driver_id: apiOrder.driver?.id ? apiOrder.driver.id.toString() : undefined,
+            driver_name: apiOrder.driver?.name || undefined,
+            driver_latitude: apiOrder.driver?.latitude || undefined,
+            driver_longitude: apiOrder.driver?.longitude || undefined,
+            driver_heading: apiOrder.driver?.heading || undefined,
+          };
+          state.currentOrder = reduxOrder;
+        } else {
+          state.currentOrder = null;
+        }
         state.error = null;
       })
       .addCase(checkExistingOrder.rejected, (state, action) => {

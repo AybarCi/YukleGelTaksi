@@ -8,6 +8,7 @@ import {
   TextInput,
   Image,
   Linking,
+  StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_CONFIG } from '../config/api';
@@ -21,8 +22,10 @@ interface Customer {
   destination: string;
   distance: string;
   estimated_fare: number;
-  status: 'pending' | 'waiting' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting';
+  status: 'pending' | 'waiting' | 'driver_accepted_awaiting_customer' | 'accepted' | 'confirmed' | 'in_progress' | 'completed' | 'inspecting' | 'rejected' | 'timeout';
   created_at: string;
+  countdownTime?: number;
+  countdownTotal?: number;
 }
 
 interface OrderDetails {
@@ -45,6 +48,7 @@ interface OrderInspectionModalProps {
   onAccept: (orderId: number, laborCount: number) => void;
   onOpenPhotoModal: (urls: string[], index: number) => void;
   styles: any;
+  isWaitingForCustomerApproval?: boolean;
 }
 
 const OrderInspectionModal: React.FC<OrderInspectionModalProps> = ({
@@ -58,6 +62,7 @@ const OrderInspectionModal: React.FC<OrderInspectionModalProps> = ({
   onAccept,
   onOpenPhotoModal,
   styles,
+  isWaitingForCustomerApproval = false,
 }) => {
   const maskPhoneNumber = (phone: string) => {
     if (!phone) return 'Bilinmiyor';
@@ -132,9 +137,14 @@ const OrderInspectionModal: React.FC<OrderInspectionModalProps> = ({
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={isWaitingForCustomerApproval ? undefined : onClose}
     >
       <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={StyleSheet.absoluteFillObject} 
+          activeOpacity={1} 
+          onPress={isWaitingForCustomerApproval ? undefined : onClose}
+        />
         <View style={styles.inspectionModalContainer}>
           <View style={styles.inspectionModalHeader}>
             <Text style={styles.inspectionModalTitle}>Sipariş Detayları</Text>
@@ -237,16 +247,22 @@ const OrderInspectionModal: React.FC<OrderInspectionModalProps> = ({
           
           <View style={styles.inspectionModalActions}>
             <TouchableOpacity
-              style={[styles.modalActionButton, styles.cancelInspectionButton]}
-              onPress={onClose}
+              style={[styles.modalActionButton, styles.cancelInspectionButton, isWaitingForCustomerApproval && styles.disabledButton]}
+              onPress={isWaitingForCustomerApproval ? undefined : onClose}
+              disabled={isWaitingForCustomerApproval}
             >
-              <Text style={styles.cancelInspectionButtonText}>İncelemeyi Bitir</Text>
+              <Text style={[styles.cancelInspectionButtonText, isWaitingForCustomerApproval && styles.disabledButtonText]}>
+                İncelemeyi Bitir
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modalActionButton, styles.acceptInspectionButton]}
+              style={[styles.modalActionButton, styles.acceptInspectionButton, isWaitingForCustomerApproval && styles.disabledButton]}
               onPress={handleAccept}
+              disabled={isWaitingForCustomerApproval}
             >
-              <Text style={styles.acceptInspectionButtonText}>Kabul Et</Text>
+              <Text style={[styles.acceptInspectionButtonText, isWaitingForCustomerApproval && styles.disabledButtonText]}>
+                {isWaitingForCustomerApproval ? 'Onay Bekleniyor...' : 'Kabul Et'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

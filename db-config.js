@@ -1,5 +1,5 @@
 module.exports = {
-    server: 'localhost',
+    server: process.env.DB_SERVER || 'localhost',
     user: 'sa',
     // Lütfen Azure SQL Edge'i kurarken belirlediğiniz şifreyi buraya girin.
     password: 'Ca090353--',

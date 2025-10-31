@@ -13,6 +13,8 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import BackButton from '../components/BackButton';
+import SafeModal from '../components/SafeModal';
 
 export default function EmailInfoScreen() {
   const [email, setEmail] = useState('');
@@ -60,12 +62,7 @@ export default function EmailInfoScreen() {
       <StatusBar style="dark" />
       
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000000" />
-        </TouchableOpacity>
+        <BackButton />
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>

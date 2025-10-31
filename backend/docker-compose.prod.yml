@@ -1,15 +1,16 @@
 version: '3.8'
 
 services:
-  backend:
+  yuklegeltaksi-backend:
     image: ghcr.io/aybarci/yuklegeltaksi/backend:main
     container_name: yuklegeltaksi-backend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
       - NODE_ENV=production
-      - DB_REQUEST_TIMEOUTRVER=172.17.0.5
+      - PORT=3001
+      - DB_SERVER=172.17.0.5
       - DB_DATABASE=yuklegeltaksidb
       - DB_USER=sa
       - DB_PASSWORD=SeKo153759++
@@ -22,36 +23,29 @@ services:
       - DB_POOL_MIN=0
       - DB_POOL_IDLE_TIMEOUT=60000
       - DB_POOL_ACQUIRE_TIMEOUT=60000
-      - JWT_SECRET=${JWT_SECRET}
-      - REDIS_URL=${REDIS_URL}
-      - SOCKET_PORT=${SOCKET_PORT:-3001}
-      - API_BASE_URL=${API_BASE_URL}
+      - JWT_SECRET=YukleGelTaksi2024SecretKey!@#$%^&*()_+{}|:<>?[]\\;'\",./-=`~
+      - REDIS_HOST=yuklegeltaksi-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - VATAN_SMS_API_ID=e922a5b11aae40dd84928621
+      - VATAN_SMS_API_KEY=bcc4701b87c2490ea4bf1a80
+      - VATAN_SMS_SENDER=Midpot
+      - SMS_TEST_MODE=false
+      - SMS_RATE_LIMIT_ENABLED=true
+      - SMS_DAILY_LIMIT=1000
+      - SMS_HOURLY_LIMIT=100
+      - SMS_COOLDOWN_MS=60000
+      - PHONE_ENCRYPTION_KEY=Ka14+Xm07Z6Wm+ZaDfqyAN/gV/xGcIWG
     volumes:
-      - ./backend/uploads:/app/uploads
-      - ./backend/logs:/app/logs
+      - ./logs:/app/logs
     networks:
       - yuklegeltaksi-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        labels: "production_status"
-        env: "NODE_ENV"
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
 
   redis:
     image: redis:7-alpine
@@ -63,35 +57,16 @@ services:
       - redis-data:/data
     networks:
       - yuklegeltaksi-network
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  nginx:
-    image: nginx:alpine
-    container_name: yuklegeltaksi-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - backend
-    networks:
-      - yuklegeltaksi-network
+networks:
+  yuklegeltaksi-network:
+    driver: bridge
 
 volumes:
   redis-data:
     driver: local
-
-networks:
-  yuklegeltaksi-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
