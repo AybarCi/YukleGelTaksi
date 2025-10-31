@@ -33,6 +33,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./backoffice
+          file: ./backoffice/Dockerfile
           push: true
           tags: |
             ghcr.io/aybarci/yuklegeltaksi/backoffice:latest
