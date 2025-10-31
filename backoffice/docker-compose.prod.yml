@@ -6,7 +6,7 @@ services:
     container_name: yuklegeltaksi-backoffice
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3004:80"
     environment:
       - NODE_ENV=production
       - REACT_APP_API_URL=http://yuklegeltaksiapi.istekbilisim.com
