@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   yuklegeltaksi-backoffice:
-    image: ghcr.io/aybarci/yuklegeltaksi/backoffice:main
+    image: ghcr.io/aybarci/yuklegeltaksi/backoffice:latest
     container_name: yuklegeltaksi-backoffice
     restart: unless-stopped
     ports:
