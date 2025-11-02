@@ -16,7 +16,7 @@ services:
     volumes:
       - ./logs:/var/log/nginx
     networks:
-      - yuklegeltaksi-network
+      - yuklegeltaksi-backoffice-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -35,8 +35,7 @@ services:
   # Redis service removed - not needed since backend is external
 
 networks:
-  yuklegeltaksi-network:
+  yuklegeltaksi-backoffice-network:
     driver: bridge
-    external: true
 
 # No volumes needed for backoffice-only setup
