@@ -14,7 +14,7 @@ services:
       - DB_DATABASE=yuklegeltaksidb
       - DB_USER=sa
       - DB_PASSWORD=SeKo153759++
-      - DB_PORT=32801
+      - DB_PORT=1433
       - DB_ENCRYPT=false
       - DB_TRUST_SERVER_CERTIFICATE=true
       - DB_CONNECTION_TIMEOUT=60000
