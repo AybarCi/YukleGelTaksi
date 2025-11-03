@@ -167,7 +167,8 @@ class AuthService {
   public setupAxiosInterceptors(onUnauthorized?: () => void): void {
     axios.interceptors.request.use(
       (config) => {
-        if (this.token && (config.url?.includes('/supervisor/') || config.url?.includes('/admin/') || config.url?.includes('/api/'))) {
+        // Don't add token to login requests
+        if (this.token && !config.url?.includes('/auth/login') && (config.url?.includes('/supervisor/') || config.url?.includes('/admin/') || config.url?.includes('/api/'))) {
           config.headers.Authorization = `Bearer ${this.token}`;
         }
         return config;
