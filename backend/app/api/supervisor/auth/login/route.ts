@@ -10,10 +10,17 @@ export async function POST(request: NextRequest) {
     const { username, password } = await request.json();
 
     if (!username || !password) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Username and password are required' },
         { status: 400 }
       );
+      
+      // Add CORS headers
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return response;
     }
 
     const dbInstance = DatabaseConnection.getInstance();
@@ -27,20 +34,34 @@ export async function POST(request: NextRequest) {
     const supervisor = result.recordset[0];
 
     if (!supervisor) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
+      
+      // Add CORS headers
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return response;
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, supervisor.password_hash);
     
     if (!isValidPassword) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
+      
+      // Add CORS headers
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return response;
     }
 
     // Generate JWT token (10 hours)
@@ -69,7 +90,7 @@ export async function POST(request: NextRequest) {
       .input('expiresAt', expiresAt)
       .query('INSERT INTO supervisor_sessions (supervisor_id, token_hash, expires_at) VALUES (@supervisorId, @tokenHash, @expiresAt)');
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       token,
       supervisor: {
@@ -81,12 +102,38 @@ export async function POST(request: NextRequest) {
         role: supervisor.role
       }
     });
+    
+    // Add CORS headers
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return response;
 
   } catch (error) {
     console.error('Supervisor login error:', error);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     );
+    
+    // Add CORS headers
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return response;
   }
+}
+
+// OPTIONS method for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }
