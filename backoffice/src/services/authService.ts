@@ -165,6 +165,10 @@ class AuthService {
 
   // Setup axios interceptor for automatic token attachment
   public setupAxiosInterceptors(onUnauthorized?: () => void): void {
+    // Remove existing interceptors to prevent duplicates
+    axios.interceptors.request.clear();
+    axios.interceptors.response.clear();
+    
     axios.interceptors.request.use(
       (config) => {
         // Don't add token to login requests
@@ -182,12 +186,15 @@ class AuthService {
       (response) => response,
       (error) => {
         if (error.response?.status === 401 && (error.config?.url?.includes('/supervisor/') || error.config?.url?.includes('/admin/') || error.config?.url?.includes('/api/'))) {
-          this.stopTokenExpiryCheck();
-          this.clearLocalStorage();
-          if (onUnauthorized) {
-            onUnauthorized();
-          } else {
-            window.location.href = '/login';
+          // Only handle 401 if we're not already on the login page
+          if (!window.location.pathname.includes('/login')) {
+            this.stopTokenExpiryCheck();
+            this.clearLocalStorage();
+            if (onUnauthorized) {
+              onUnauthorized();
+            } else {
+              window.location.href = '/login';
+            }
           }
         }
         return Promise.reject(error);

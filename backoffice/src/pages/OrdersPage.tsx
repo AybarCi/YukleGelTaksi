@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { ThunkDispatch } from 'redux-thunk';
+import { Action } from 'redux';
 import {
   Box,
   Card,
@@ -49,24 +52,24 @@ import {
   AccessTime as AccessTimeIcon,
   PlayArrow as PlayArrowIcon,
 } from '@mui/icons-material';
-import ordersService, { Order, OrdersParams } from '../services/ordersService';
+import ordersService, { OrdersParams } from '../services/ordersService';
+import { fetchOrders } from '../store/reducers/ordersReducer';
+import { RootState, OrderData } from '../store/types';
 
 
 
 
 
 const OrdersPage: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useDispatch<ThunkDispatch<RootState, unknown, Action>>();
+  const { orders, loading, error, total, page: currentPage, limit } = useSelector((state: RootState) => state.orders);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedOrderForMenu, setSelectedOrderForMenu] = useState<Order | null>(null);
+  const [selectedOrderForMenu, setSelectedOrderForMenu] = useState<OrderData | null>(null);
   const [tabValue, setTabValue] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -83,33 +86,16 @@ const OrdersPage: React.FC = () => {
     { label: 'İptal Edildi', value: 'cancelled', icon: <CancelIcon /> },
   ], []);
 
-  const fetchOrders =
- useCallback(async (params: OrdersParams = {}) => {
-    try {
-      setRefreshing(true);
-      const currentStatus = statusTabs[tabValue]?.value;
-      const response = await ordersService.getOrders({
-        page: page + 1,
-        limit: rowsPerPage,
-        search: searchTerm || undefined,
-        status: currentStatus !== 'all' ? currentStatus : undefined,
-        ...params
-      });
-      setOrders(response.data.orders);
-      setTotalCount(response.data.pagination.total);
-      setError(null);
-    } catch (err) {
-      setError('Siparişler yüklenirken bir hata oluştu');
-      console.error('Error fetching orders:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [page, rowsPerPage, tabValue, searchTerm, statusTabs]);
+  const fetchOrdersData = useCallback(async () => {
+    setRefreshing(true);
+    const currentStatus = statusTabs[tabValue]?.value;
+    await dispatch(fetchOrders(page + 1, rowsPerPage, currentStatus !== 'all' ? currentStatus : undefined, searchTerm || undefined));
+    setRefreshing(false);
+  }, [dispatch, page, rowsPerPage, tabValue, searchTerm, statusTabs]);
 
   useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    fetchOrdersData();
+  }, [fetchOrdersData]);
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -130,7 +116,7 @@ const OrdersPage: React.FC = () => {
     setPage(0);
   };
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, order: Order) => {
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, order: OrderData) => {
     setAnchorEl(event.currentTarget);
     setSelectedOrderForMenu(order);
   };
@@ -140,14 +126,14 @@ const OrdersPage: React.FC = () => {
     setSelectedOrderForMenu(null);
   };
 
-  const handleViewDetails = (order: Order) => {
+  const handleViewDetails = (order: OrderData) => {
     setSelectedOrder(order);
     setDetailsOpen(true);
     handleMenuClose();
   };
 
   const handleRefresh = async () => {
-    await fetchOrders();
+    await fetchOrdersData();
   };
 
   const getStatusIcon = (status: string) => {
@@ -457,7 +443,7 @@ const OrdersPage: React.FC = () => {
         
         <TablePagination
           component="div"
-          count={totalCount}
+          count={total}
           page={page}
           onPageChange={handleChangePage}
           rowsPerPage={rowsPerPage}
@@ -540,7 +526,7 @@ const OrdersPage: React.FC = () => {
                         <Typography><strong>Telefon:</strong> {selectedOrder.driver.phone}</Typography>
                         <Typography><strong>Araç:</strong> {selectedOrder.driver.vehicle_model} - {selectedOrder.driver.vehicle_plate}</Typography>
                         <Typography><strong>Renk:</strong> {selectedOrder.driver.vehicle_color}</Typography>
-                        <Typography><strong>Puan:</strong> ⭐ {selectedOrder.driver.rating.toFixed(1)}</Typography>
+                        <Typography><strong>Puan:</strong> ⭐ {selectedOrder.driver.rating?.toFixed(1) || 'N/A'}</Typography>
                       </>
                     ) : (
                       <Typography color="text.secondary">Henüz sürücü atanmamış</Typography>
@@ -580,19 +566,19 @@ const OrdersPage: React.FC = () => {
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: '1fr 1fr 1fr 1fr' }, gap: 2, mb: 2 }}>
                     <Box>
                       <Typography><strong>Taban Fiyat:</strong></Typography>
-                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.base_price)}</Typography>
+                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.base_price || 0)}</Typography>
                     </Box>
                     <Box>
                       <Typography><strong>Mesafe Fiyatı:</strong></Typography>
-                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.distance_price)}</Typography>
+                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.distance_price || 0)}</Typography>
                     </Box>
                     <Box>
                       <Typography><strong>Ağırlık Fiyatı:</strong></Typography>
-                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.weight_price)}</Typography>
+                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.weight_price || 0)}</Typography>
                     </Box>
                     <Box>
                       <Typography><strong>Hammal Fiyatı:</strong></Typography>
-                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.labor_price)}</Typography>
+                      <Typography color="success.main">{ordersService.formatPrice(selectedOrder.labor_price || 0)}</Typography>
                     </Box>
                   </Box>
                   <Typography variant="h6" sx={{ mt: 1 }}>

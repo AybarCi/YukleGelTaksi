@@ -43,7 +43,8 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { API_CONFIG, getImageUrl } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 interface CargoType {
   id: number;
@@ -82,7 +83,7 @@ const CargoTypesPage: React.FC = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-  const { token, isLoading: authLoading } = useAuth();
+  const { token, isLoading: authLoading } = useSelector((state: RootState) => state.auth);
 
   // Token kontrolü
   useEffect(() => {

@@ -28,7 +28,8 @@ import {
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { API_CONFIG } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 interface SystemSetting {
   id: number;
@@ -49,7 +50,7 @@ interface SystemSettings {
 }
 
 const SystemSettingsPage: React.FC = () => {
-  const { token, user } = useAuth();
+  const { token, user } = useSelector((state: RootState) => state.auth);
   const [settings, setSettings] = useState<SystemSettings>({
     driverSearchRadiusKm: 5,
     maxDriversPerRequest: 20,

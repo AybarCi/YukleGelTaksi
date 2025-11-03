@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import { Box, CircularProgress } from '@mui/material';
 
 interface ProtectedRouteProps {
@@ -8,7 +9,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { user, token, isLoading } = useAuth();
+  const { user, token, isLoading } = useSelector((state: RootState) => state.auth);
 
   // Show loading while initializing
   if (isLoading) {

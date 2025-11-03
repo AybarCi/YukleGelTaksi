@@ -73,10 +73,9 @@ export interface OrdersParams {
 }
 
 class OrdersService {
-  private getAuthHeaders() {
-    const token = localStorage.getItem('supervisor_token');
+  // Authorization is now handled by axios interceptors setup in App.tsx
+  private getHeaders() {
     return {
-      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     };
   }
@@ -92,7 +91,7 @@ class OrdersService {
 
       const response = await axios.get(
         `${API_CONFIG.BASE_URL}/orders?${queryParams.toString()}`,
-        { headers: this.getAuthHeaders() }
+        { headers: this.getHeaders() }
       );
 
       return response.data;
@@ -106,7 +105,7 @@ class OrdersService {
     try {
       const response = await axios.get(
         `${API_CONFIG.BASE_URL}/orders/${id}`,
-        { headers: this.getAuthHeaders() }
+        { headers: this.getHeaders() }
       );
 
       return response.data.data;

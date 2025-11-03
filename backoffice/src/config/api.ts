@@ -3,25 +3,30 @@ const getEnvVar = (key: string, defaultValue: string = ''): string => {
   return process.env[`REACT_APP_${key}`] || defaultValue;
 };
 
+const getBaseUrl = (): string => {
+  // Her iki ortamda da yuklegeltaksiapi.istekbilisim.com kullan
+  return 'https://yuklegeltaksiapi.istekbilisim.com/api';
+};
+
+const getFilesUrl = (): string => {
+  // Her iki ortamda da yuklegeltaksiapi.istekbilisim.com kullan
+  return 'https://yuklegeltaksiapi.istekbilisim.com/api/files';
+};
+
+const getSocketUrl = (): string => {
+  // Her iki ortamda da yuklegeltaksiapi.istekbilisim.com kullan (wss protokolü ile)
+  return 'wss://yuklegeltaksiapi.istekbilisim.com';
+};
+
+const getGoogleMapsApiKey = (): string => {
+  return getEnvVar('GOOGLE_MAPS_API_KEY', '');
+};
+
 export const API_CONFIG = {
-  get BASE_URL() { 
-    const host = getEnvVar('API_HOST', 'localhost');
-    const port = getEnvVar('API_PORT', '3000');
-    return `http://${host}:${port}/api`;
-  },
-  get FILES_URL() { 
-    const host = getEnvVar('API_HOST', 'localhost');
-    const port = getEnvVar('API_PORT', '3000');
-    return `http://${host}:${port}/api/files`;
-  },
-  get SOCKET_URL() { 
-    const host = getEnvVar('API_HOST', 'localhost');
-    const port = getEnvVar('SOCKET_PORT', '3001');
-    return `ws://${host}:${port}`;
-  },
-  get GOOGLE_MAPS_API_KEY() { 
-    return getEnvVar('GOOGLE_MAPS_API_KEY', '');
-  },
+  BASE_URL: getBaseUrl(),
+  FILES_URL: getFilesUrl(),
+  SOCKET_URL: getSocketUrl(),
+  GOOGLE_MAPS_API_KEY: getGoogleMapsApiKey(),
 };
 
 export const getImageUrl = (imageUrl: string | null | undefined): string => {

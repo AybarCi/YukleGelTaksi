@@ -32,7 +32,8 @@ import {
   Error as ErrorIcon
 } from '@mui/icons-material';
 import { API_CONFIG } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 interface CancellationFee {
   id: number;
@@ -45,7 +46,7 @@ interface CancellationFee {
 }
 
 const CancellationSettingsPage: React.FC = () => {
-  const { token, user } = useAuth();
+  const { token, user } = useSelector((state: RootState) => state.auth);
   const [cancellationFees, setCancellationFees] = useState<CancellationFee[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

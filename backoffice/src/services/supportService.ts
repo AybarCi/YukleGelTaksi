@@ -85,10 +85,9 @@ export interface BulkUpdateResponse {
 }
 
 class SupportService {
-  private getAuthHeaders() {
-    const token = localStorage.getItem('supervisor_token');
+  // Authorization is now handled by axios interceptors setup in App.tsx
+  private getHeaders() {
     return {
-      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     };
   }
@@ -97,7 +96,7 @@ class SupportService {
   async getAllTickets(): Promise<SupportTicketsResponse> {
     try {
       const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/support-tickets`, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error: any) {
@@ -109,7 +108,7 @@ class SupportService {
   async getTicketById(ticketId: number): Promise<SingleTicketResponse> {
     try {
       const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error: any) {
@@ -122,10 +121,10 @@ class SupportService {
     try {
       console.log('🔥 supportService.updateTicket called with:', { ticketId, updateData });
       console.log('🔥 Full URL:', `${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`);
-      console.log('🔥 Headers:', this.getAuthHeaders());
+      console.log('🔥 Headers:', this.getHeaders());
       
       const response = await axios.put(`${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`, updateData, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       
       console.log('🔥 API Response:', response.data);
@@ -160,7 +159,7 @@ class SupportService {
   async bulkUpdate(bulkData: BulkUpdateRequest): Promise<BulkUpdateResponse> {
     try {
       const response = await axios.post(`${API_CONFIG.BASE_URL}/admin/support-tickets/bulk`, bulkData, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error: any) {
@@ -207,7 +206,7 @@ class SupportService {
   async deleteTicket(ticketId: number): Promise<{ success: boolean; message: string }> {
     try {
       const response = await axios.delete(`${API_CONFIG.BASE_URL}/admin/support-tickets/${ticketId}`, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error: any) {
@@ -221,7 +220,7 @@ class SupportService {
   async getAllCustomerTickets(): Promise<CustomerSupportTicketsResponse> {
     try {
       const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error: any) {
@@ -233,7 +232,7 @@ class SupportService {
   async getCustomerTicketById(ticketId: number): Promise<SingleCustomerTicketResponse> {
     try {
       const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error: any) {
@@ -246,10 +245,10 @@ class SupportService {
     try {
       console.log('🔥 supportService.updateCustomerTicket called with:', { ticketId, updateData });
       console.log('🔥 Full URL:', `${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`);
-      console.log('🔥 Headers:', this.getAuthHeaders());
+      console.log('🔥 Headers:', this.getHeaders());
       
       const response = await axios.put(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`, updateData, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       
       console.log('🔥 API Response:', response.data);
@@ -266,7 +265,7 @@ class SupportService {
   async deleteCustomerTicket(ticketId: number): Promise<{ success: boolean; message: string }> {
     try {
       const response = await axios.delete(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${ticketId}`, {
-        headers: this.getAuthHeaders()
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error: any) {

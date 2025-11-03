@@ -14,6 +14,7 @@ import {
   InputAdornment,
   IconButton
 } from '@mui/material';
+import { keyframes } from '@mui/system';
 import {
   Person as PersonIcon,
   Lock as LockIcon,
@@ -21,8 +22,31 @@ import {
   VisibilityOff,
   LocalShipping as TruckIcon
 } from '@mui/icons-material';
-import { useAuth } from '../contexts/AuthContext';
+import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { RootState, AppDispatch } from '../store';
+import { login } from '../store/reducers/authReducer';
+
+const fadeIn = keyframes`
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+`;
+
+const pulse = keyframes`
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+`;
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -30,7 +54,9 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { login, user } = useAuth();
+  const [isLoginSuccess, setIsLoginSuccess] = useState(false);
+  const dispatch = useDispatch<AppDispatch>();
+  const { user, isLoading: authLoading } = useSelector((state: RootState) => state.auth);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,22 +65,27 @@ const LoginPage: React.FC = () => {
     }
   }, [user, navigate]);
 
+  useEffect(() => {
+    setIsLoading(authLoading);
+  }, [authLoading]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
     try {
-      const success = await login(username, password);
-      if (success) {
-        navigate('/');
+      const result = await dispatch(login(username, password));
+      if (result && result.success) {
+        setIsLoginSuccess(true);
+        // Kısa bekleme süresi ekle, App.tsx'deki geçiş ekranı için
+        setTimeout(() => {
+          navigate('/');
+        }, 500);
       } else {
-        setError('Geçersiz kullanıcı adı veya şifre');
+        setError('Kullanıcı adı veya şifre hatalı');
       }
     } catch (err) {
-      setError('Giriş yapılırken bir hata oluştu');
-    } finally {
-      setIsLoading(false);
+      setError('Kullanıcı adı veya şifre hatalı');
     }
   };
 
@@ -173,8 +204,85 @@ const LoginPage: React.FC = () => {
             </Box>
           </Box>
           
-          <CardContent sx={{ p: 4 }}>
+          <CardContent sx={{ p: 4, position: 'relative' }}>
 
+            {/* Login Success Loading Overlay */}
+            {isLoginSuccess && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.95) 0%, rgba(255, 193, 7, 0.95) 100%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 9999,
+                  borderRadius: 4,
+                  animation: `${fadeIn} 0.3s ease-in-out`
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    border: '4px solid #000',
+                    borderRadius: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    mb: 3,
+                    background: 'rgba(255, 255, 255, 0.9)',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+                    animation: `${pulse} 1.5s ease-in-out infinite`
+                  }}
+                >
+                  <Box
+                    component="img"
+                    src="/logo2.jpeg"
+                    alt="Yükle Gel Taksi Logo"
+                    sx={{
+                      width: '85%',
+                      height: '85%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                </Box>
+                <CircularProgress 
+                  size={40} 
+                  sx={{ 
+                    color: '#000',
+                    mb: 2,
+                    '& .MuiCircularProgress-circle': {
+                      strokeWidth: 3
+                    }
+                  }} 
+                />
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: '#000',
+                    fontWeight: 700,
+                    mb: 1,
+                    textAlign: 'center'
+                  }}
+                >
+                  Giriş Başarılı!
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'rgba(0, 0, 0, 0.8)',
+                    textAlign: 'center'
+                  }}
+                >
+                  Yönetim panelinize yönlendiriliyorsunuz...
+                </Typography>
+              </Box>
+            )}
 
             {error && (
               <Alert 

@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { ThunkDispatch } from 'redux-thunk';
+import { Action } from 'redux';
 import {
   Box,
   Card,
@@ -47,17 +50,25 @@ import {
 } from '@mui/icons-material';
 import supportService, { SupportTicket, CustomerSupportTicket } from '../services/supportService';
 import { API_CONFIG } from '../config/api';
+import { fetchSupportTickets, updateSupportTicket, updatePagination } from '../store/actions';
+import { RootState } from '../store/types';
 
 
 
 const SupportTicketsPage: React.FC = () => {
-  const [driverTickets, setDriverTickets] = useState<SupportTicket[]>([]);
-  const [customerTickets, setCustomerTickets] = useState<CustomerSupportTicket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useDispatch<ThunkDispatch<RootState, unknown, Action>>();
+  
+  // Redux state'lerini kullan - pagination state'ini de dahil et
+  const { 
+    driverTickets, 
+    customerTickets, 
+    loading, 
+    error, 
+    page: reduxPage, 
+    rowsPerPage: reduxRowsPerPage 
+  } = useSelector((state: RootState) => state.supportTickets);
+  
   const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
   const [mainTab, setMainTab] = useState(0); // 0: Sürücü, 1: Müşteri
   const [statusTab, setStatusTab] = useState(0); // 0: Tümü, 1: Beklemede, 2: İşlemde, 3: Çözüldü
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
@@ -76,41 +87,34 @@ const SupportTicketsPage: React.FC = () => {
   const [ticketToResolve, setTicketToResolve] = useState<SupportTicket | CustomerSupportTicket | null>(null);
   const [ticketToReject, setTicketToReject] = useState<SupportTicket | CustomerSupportTicket | null>(null);
   const [ticketToReply, setTicketToReply] = useState<SupportTicket | CustomerSupportTicket | null>(null);
+  const [localError, setLocalError] = useState<string>('');
 
   const fetchDriverTickets = useCallback(async () => {
     try {
-      const response = await supportService.getAllTickets();
-      setDriverTickets(response.tickets || []);
+      await dispatch(fetchSupportTickets('driver'));
     } catch (err: any) {
       console.error('Sürücü destek talepleri yükleme hatası:', err);
       throw err;
     }
-  }, []);
+  }, [dispatch]);
 
   const fetchCustomerTickets = useCallback(async () => {
     try {
-      const response = await supportService.getAllCustomerTickets();
-      setCustomerTickets(response.tickets || []);
+      await dispatch(fetchSupportTickets('customer'));
     } catch (err: any) {
       console.error('Müşteri destek talepleri yükleme hatası:', err);
       throw err;
     }
-  }, []);
+  }, [dispatch]);
 
   const fetchAllTickets = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
       await Promise.all([
         fetchDriverTickets(),
         fetchCustomerTickets()
       ]);
     } catch (err: any) {
       console.error('Destek talepleri yükleme hatası:', err);
-      setError(err.message || 'Destek talepleri yüklenirken bir hata oluştu');
-    } finally {
-      setLoading(false);
     }
   }, [fetchDriverTickets, fetchCustomerTickets]);
 
@@ -226,15 +230,24 @@ const SupportTicketsPage: React.FC = () => {
   const handleMainTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setMainTab(newValue);
     setStatusTab(0); // Reset status tab
-    setPage(0); // Reset pagination
     setSearchTerm(''); // Reset search
     setPriorityFilter('all'); // Reset filters
     setIssueTypeFilter('all');
+    dispatch(updatePagination(0, reduxRowsPerPage));
   };
 
   const handleStatusTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setStatusTab(newValue);
-    setPage(0); // Reset pagination
+    dispatch(updatePagination(0, reduxRowsPerPage));
+  };
+
+  const handlePageChange = (event: unknown, newPage: number) => {
+    dispatch(updatePagination(newPage, reduxRowsPerPage));
+  };
+
+  const handleRowsPerPageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newRowsPerPage = parseInt(event.target.value, 10);
+    dispatch(updatePagination(0, newRowsPerPage));
   };
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, ticket: SupportTicket | CustomerSupportTicket) => {
@@ -258,7 +271,7 @@ const SupportTicketsPage: React.FC = () => {
     // Ensure we have a selected ticket before opening the modal
     const currentTicket = selectedDriverTicket || selectedCustomerTicket;
     if (!currentTicket) {
-      setError('Görüntülenecek destek talebi bulunamadı');
+      setLocalError('Görüntülenecek destek talebi bulunamadı');
       setAnchorEl(null);
       return;
     }
@@ -308,23 +321,15 @@ const SupportTicketsPage: React.FC = () => {
       
       console.log('🔍 Ticket type check:', { isDriverTicket, isCustomerTicket, ticketId: currentTicket.id });
       
+      // Redux action'ı ile güncelleme
+      const ticketType = isDriverTicket ? 'driver' : 'customer';
+      await dispatch(updateSupportTicket(currentTicket.id, updateData, ticketType));
+      
+      // Güncelleme sonrası verileri yenile
       if (isDriverTicket) {
-        console.log('🚗 Updating driver ticket via API call...');
-        console.log('🔗 API URL will be:', `${API_CONFIG.BASE_URL}/admin/support-tickets/${currentTicket.id}`);
-        const result = await supportService.updateTicket(currentTicket.id, updateData);
-        console.log('✅ Driver ticket update result:', result);
-        console.log('🔄 Fetching updated driver tickets...');
         await fetchDriverTickets();
       } else if (isCustomerTicket) {
-        console.log('👤 Updating customer ticket via API call...');
-        console.log('🔗 API URL will be:', `${API_CONFIG.BASE_URL}/admin/customer-support-tickets/${currentTicket.id}`);
-        const result = await supportService.updateCustomerTicket(currentTicket.id, updateData);
-        console.log('✅ Customer ticket update result:', result);
-        console.log('🔄 Fetching updated customer tickets...');
         await fetchCustomerTickets();
-      } else {
-        console.log('⚠️ Unknown ticket type, cannot determine API endpoint');
-        throw new Error('Bilet tipi belirlenemedi');
       }
       
       console.log('🎉 Update completed successfully');
@@ -336,7 +341,6 @@ const SupportTicketsPage: React.FC = () => {
       console.error('💥 Update error:', err);
       console.error('💥 Error details:', err.response?.data);
       console.error('💥 Error status:', err.response?.status);
-      setError(err.message || 'Durum güncellenirken bir hata oluştu');
     } finally {
       console.log('🏁 Setting updatingTicket to false');
       setUpdatingTicket(false);
@@ -386,7 +390,7 @@ const SupportTicketsPage: React.FC = () => {
       setTicketToResolve(null);
     } catch (err: any) {
       console.error('Resolve error:', err);
-      setError(err.message || 'Destek talebi çözüldü olarak işaretlenirken bir hata oluştu');
+      setLocalError(err.message || 'Destek talebi çözüldü olarak işaretlenirken bir hata oluştu');
     } finally {
       setUpdatingTicket(false);
     }
@@ -408,7 +412,7 @@ const SupportTicketsPage: React.FC = () => {
       setTicketToReject(null);
     } catch (err: any) {
       console.error('Reject error:', err);
-      setError(err.message || 'Destek talebi reddedilirken bir hata oluştu');
+      setLocalError(err.message || 'Destek talebi reddedilirken bir hata oluştu');
     } finally {
       setUpdatingTicket(false);
     }
@@ -428,17 +432,19 @@ const SupportTicketsPage: React.FC = () => {
       const isDriverTicket = 'driver_name' in ticketToReply;
       const isCustomerTicket = 'customer_name' in ticketToReply;
       
+      const updateData = {
+        admin_response: adminResponse,
+        status: 'in_progress'
+      };
+      
+      // Redux action'ı ile güncelleme
+      const ticketType = isDriverTicket ? 'driver' : 'customer';
+      await dispatch(updateSupportTicket(ticketToReply.id, updateData, ticketType));
+      
+      // Güncelleme sonrası verileri yenile
       if (isDriverTicket) {
-        await supportService.updateTicket(ticketToReply.id, {
-          admin_response: adminResponse,
-          status: 'in_progress'
-        });
         await fetchDriverTickets();
       } else if (isCustomerTicket) {
-        await supportService.updateCustomerTicket(ticketToReply.id, {
-          admin_response: adminResponse,
-          status: 'in_progress'
-        });
         await fetchCustomerTickets();
       }
       
@@ -446,14 +452,14 @@ const SupportTicketsPage: React.FC = () => {
       setAdminResponse('');
       setTicketToReply(null);
     } catch (err: any) {
-      setError(err.message || 'Yanıt gönderilirken bir hata oluştu');
+      console.error('Yanıt gönderme hatası:', err);
     } finally {
       setUpdatingTicket(false);
     }
   };
 
   const filteredTickets = getCurrentTickets();
-  const paginatedTickets = filteredTickets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const paginatedTickets = filteredTickets.slice(reduxPage * reduxRowsPerPage, reduxPage * reduxRowsPerPage + reduxRowsPerPage);
 
   if (loading) {
     return (
@@ -470,9 +476,15 @@ const SupportTicketsPage: React.FC = () => {
         Destek Talepleri
       </Typography>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-          {error}
+      {(error || localError) && (
+        <Alert 
+          severity="error" 
+          sx={{ mb: 2 }} 
+          onClose={() => {
+            if (localError) setLocalError('');
+          }}
+        >
+          {localError || error}
         </Alert>
       )}
 
@@ -634,13 +646,10 @@ const SupportTicketsPage: React.FC = () => {
           <TablePagination
             component="div"
             count={filteredTickets.length}
-            page={page}
-            onPageChange={(e, newPage) => setPage(newPage)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={(e) => {
-              setRowsPerPage(parseInt(e.target.value, 10));
-              setPage(0);
-            }}
+            page={reduxPage}
+            onPageChange={handlePageChange}
+            rowsPerPage={reduxRowsPerPage}
+            onRowsPerPageChange={handleRowsPerPageChange}
             labelRowsPerPage="Sayfa başına satır:"
             labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count}`}
           />

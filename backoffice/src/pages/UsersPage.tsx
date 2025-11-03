@@ -1,4 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { ThunkDispatch } from 'redux-thunk';
+import { Action } from 'redux';
+import { RootState, AppDispatch } from '../store';
 import {
   Box,
   Card,
@@ -33,71 +37,28 @@ import {
   Block as BlockIcon,
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
-import { API_CONFIG } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { fetchUsers, updateUserStatus } from '../store/reducers/usersReducer';
 
-interface User {
-  id: number;
-  phone_number: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  date_of_birth: string;
-  gender: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import { UserData } from '../store/types';
 
 const UsersPage: React.FC = () => {
-  const { token } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const dispatch = useDispatch<ThunkDispatch<RootState, unknown, Action>>();
+  const { users, loading, error } = useSelector((state: RootState) => state.users);
+  const { token } = useSelector((state: RootState) => state.auth);
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // Get auth token from useAuth hook
-      if (!token) {
-        setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
-        return;
-      }
-
-      // API call to get users
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/users`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      setUsers(response.data.data.users || []);
-    } catch (err: any) {
-      console.error('Users fetch error:', err);
-      if (err.response?.status === 401) {
-        setError('Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.');
-      } else {
-        setError('Kullanıcılar yüklenirken hata oluştu');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    if (token) {
+      dispatch(fetchUsers(token));
+    }
+  }, [dispatch, token]);
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, user: User) => {
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, user: UserData) => {
     setAnchorEl(event.currentTarget);
     setSelectedUser(user);
   };
@@ -118,52 +79,14 @@ const UsersPage: React.FC = () => {
   };
 
   const handleToggleStatus = async () => {
-    if (selectedUser) {
-      try {
-        setError('');
-        
-        // Get auth token from useAuth hook
-        if (!token) {
-          setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
-          return;
-        }
-
-        // TODO: Replace with actual API call when backend is ready
-        // const response = await fetch(`${API_CONFIG.BASE_URL}/users/${selectedUser.id}/toggle-status`, {
-        //   method: 'PATCH',
-        //   headers: {
-        //     'Authorization': `Bearer ${token}`,
-        //   },
-        // });
-        // 
-        // if (!response.ok) {
-        //   if (response.status === 401) {
-        //     setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
-        //     setTimeout(() => {
-        //       forceLogout();
-        //     }, 2000);
-        //     return;
-        //   }
-        //   throw new Error('Kullanıcı durumu güncellenirken hata oluştu');
-        // }
-        
-        // Mock API call - replace with actual implementation
-        const updatedUsers = users.map(user => 
-          user.id === selectedUser.id 
-            ? { ...user, is_active: !user.is_active }
-            : user
-        );
-        setUsers(updatedUsers);
-        handleMenuClose();
-      } catch (err) {
-        setError('Kullanıcı durumu güncellenirken hata oluştu');
-      }
+    if (selectedUser && token) {
+      dispatch(updateUserStatus(token, selectedUser.id, !selectedUser.is_active));
+      handleMenuClose();
     }
   };
 
   const filteredUsers = (users || []).filter(user => 
-    (user.first_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.last_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.phone_number || '').includes(searchTerm)
   );
@@ -242,7 +165,7 @@ const UsersPage: React.FC = () => {
                   <TableCell>Kullanıcı</TableCell>
                   <TableCell>Telefon</TableCell>
                   <TableCell>E-posta</TableCell>
-                  <TableCell>Cinsiyet</TableCell>
+
                   <TableCell>Durum</TableCell>
                   <TableCell>Kayıt Tarihi</TableCell>
                   <TableCell align="right">İşlemler</TableCell>
@@ -258,7 +181,7 @@ const UsersPage: React.FC = () => {
                         </Avatar>
                         <Box>
                           <Typography variant="body1" fontWeight="medium">
-                            {user.first_name} {user.last_name}
+                            {user.full_name}
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
                             ID: {user.id}
@@ -268,7 +191,7 @@ const UsersPage: React.FC = () => {
                     </TableCell>
                     <TableCell>{user.phone_number}</TableCell>
                     <TableCell>{user.email}</TableCell>
-                    <TableCell>{getGenderText(user.gender)}</TableCell>
+
                     <TableCell>
                       <Chip
                         label={user.is_active ? 'Aktif' : 'Pasif'}
@@ -331,7 +254,7 @@ const UsersPage: React.FC = () => {
           {selectedUser && (
             <Box sx={{ pt: 1 }}>
               <Typography variant="body1" gutterBottom>
-                <strong>Ad Soyad:</strong> {selectedUser.first_name} {selectedUser.last_name}
+                <strong>Ad Soyad:</strong> {selectedUser.full_name}
               </Typography>
               <Typography variant="body1" gutterBottom>
                 <strong>Telefon:</strong> {selectedUser.phone_number}
@@ -340,10 +263,10 @@ const UsersPage: React.FC = () => {
                 <strong>E-posta:</strong> {selectedUser.email}
               </Typography>
               <Typography variant="body1" gutterBottom>
-                <strong>Doğum Tarihi:</strong> {selectedUser.date_of_birth ? formatDate(selectedUser.date_of_birth) : 'Belirtilmemiş'}
+                <strong>Doğum Tarihi:</strong> Belirtilmemiş
               </Typography>
               <Typography variant="body1" gutterBottom>
-                <strong>Cinsiyet:</strong> {getGenderText(selectedUser.gender)}
+                <strong>Cinsiyet:</strong> Belirtilmemiş
               </Typography>
               <Typography variant="body1" gutterBottom>
                 <strong>Durum:</strong> 
@@ -358,7 +281,7 @@ const UsersPage: React.FC = () => {
                 <strong>Kayıt Tarihi:</strong> {formatDate(selectedUser.created_at)}
               </Typography>
               <Typography variant="body1" gutterBottom>
-                <strong>Son Güncelleme:</strong> {formatDate(selectedUser.updated_at)}
+                <strong>Son Güncelleme:</strong> {formatDate(selectedUser.created_at)}
               </Typography>
             </Box>
           )}

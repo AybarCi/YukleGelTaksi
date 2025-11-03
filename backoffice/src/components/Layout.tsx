@@ -15,27 +15,36 @@ import {
   Avatar,
   Menu,
   MenuItem,
+  Chip,
+  Badge
 } from '@mui/material';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   People as PeopleIcon,
-  DirectionsCar as DriversIcon,
-  DirectionsCar,
   LocalShipping as LocalShippingIcon,
   Settings as SettingsIcon,
-  Support as SupportIcon,
-  Assignment as AssignmentIcon,
-  MonetizationOn as MonetizationOnIcon,
-  AccountCircle,
-  Logout,
-  BarChart as MonitoringIcon,
+  Logout as LogoutIcon,
+  ExpandMore as ExpandMoreIcon,
+  DirectionsCar as DirectionsCarIcon,
+  AttachMoney as AttachMoneyIcon,
+  HelpOutline as HelpOutlineIcon,
+  Assessment as AssessmentIcon,
+  LocalOffer as LocalOfferIcon,
+  Cancel as CancelIcon,
   Inventory as InventoryIcon,
+  Assignment as AssignmentIcon,
+  Support as SupportIcon,
+  Monitor as MonitoringIcon,
   Calculate as CalculateIcon,
-  RadioButtonChecked as SteeringIcon,
+  MonetizationOn as MonetizationOnIcon,
+  AccountCircle as AccountCircleIcon,
+  DriveEta as DriveEtaIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useDispatch, useSelector } from 'react-redux';
+import { RootState, AppDispatch } from '../store';
+import { logout } from '../store/reducers/authReducer';
 
 const drawerWidth = 240;
 
@@ -48,7 +57,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const dispatch = useDispatch<AppDispatch>();
+  const { user } = useSelector((state: RootState) => state.auth);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -64,7 +74,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleLogout = async () => {
     try {
-      await logout();
+      await dispatch(logout());
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
@@ -88,7 +98,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     },
     {
       text: 'Sürücüler',
-      icon: <SteeringIcon />,
+      icon: <DriveEtaIcon />,
       path: '/drivers'
     },
     {
@@ -396,13 +406,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       >
         <MenuItem onClick={handleProfileMenuClose}>
           <ListItemIcon>
-            <AccountCircle fontSize="small" />
+            <AccountCircleIcon fontSize="small" />
           </ListItemIcon>
           Profil
         </MenuItem>
         <MenuItem onClick={handleLogout}>
           <ListItemIcon>
-            <Logout fontSize="small" />
+            <LogoutIcon fontSize="small" />
           </ListItemIcon>
           Çıkış Yap
         </MenuItem>

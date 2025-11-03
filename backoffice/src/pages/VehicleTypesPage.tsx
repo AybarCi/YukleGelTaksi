@@ -42,7 +42,8 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { API_CONFIG, getImageUrl } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 interface VehicleType {
   id: number;
@@ -79,9 +80,8 @@ const VehicleTypesPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
-  const { token, isLoading: authLoading } = useAuth();
-
-
+  const token = useSelector((state: RootState) => state.auth.token);
+  const authLoading = useSelector((state: RootState) => state.auth.isLoading);
 
   // Token kontrolü
   useEffect(() => {

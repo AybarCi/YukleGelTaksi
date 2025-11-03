@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { ThunkDispatch } from 'redux-thunk';
+import { Action } from 'redux';
 import {
   Box,
   Card,
@@ -46,7 +49,8 @@ import {
 } from 'recharts';
 import axios from 'axios';
 import { API_CONFIG } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { fetchMonitoringData, setConnectionStatus, setAutoRefresh, updateThresholds, updateMonitoringData } from '../store/reducers/monitoringReducer';
+import { RootState } from '../store/types';
 import io from 'socket.io-client';
 
 const API_BASE_URL = API_CONFIG.BASE_URL;
@@ -130,61 +134,27 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const MonitoringPage: React.FC = () => {
-  const { token } = useAuth();
-  const [monitoringData, setMonitoringData] = useState<MonitoringData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { token } = useSelector((state: RootState) => state.auth);
+  const dispatch = useDispatch<ThunkDispatch<RootState, unknown, Action>>();
+  const { data: monitoringData, loading, error, isConnected, autoRefresh, thresholds } = useSelector((state: RootState) => state.monitoring);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [tabValue, setTabValue] = useState(0);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(30000);
-  const [thresholds, setThresholds] = useState({
-    errorRate: 5,
-    responseTime: 1000,
-    eventFrequency: 100
-  });
+  const [localThresholds, setLocalThresholds] = useState(thresholds);
 
-  const fetchMonitoringData = useCallback(async (isManualRefresh = false) => {
-    try {
-      // Her durumda refreshing state'ini kullan (aynı indicator için)
-      setRefreshing(true);
-      
-      const response = await axios.get(`${API_BASE_URL}/monitoring`);
-      console.log('API Response:', response.data);
-      console.log('Connections data:', response.data?.data?.connections);
-      setMonitoringData(response.data);
-      setError(null);
-      
-      // Loading indicator'ı en az 2 saniye göster (hem manuel hem otomatik yenileme için)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    } catch (err) {
-      setError('Monitoring verileri alınamadı');
-      console.error('Monitoring fetch error:', err);
-      
-      // Hata durumunda da minimum süre bekle
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    } finally {
-      setRefreshing(false);
-      // İlk yükleme tamamlandıysa loading'i false yap
-      if (loading) {
-        setLoading(false);
-      }
-    }
-  }, [loading]);
+  const fetchMonitoringDataCallback = useCallback(async (isManualRefresh = false) => {
+    setRefreshing(true);
+    await dispatch(fetchMonitoringData() as any);
+    setRefreshing(false);
+  }, [dispatch]);
 
-  const updateThresholds = async () => {
-    try {
-      await axios.post(`${API_BASE_URL}/monitoring/thresholds`, thresholds);
-      await fetchMonitoringData();
-    } catch (err) {
-      console.error('Threshold update error:', err);
-    }
-  };
+  const updateThresholdsCallback = useCallback(async () => {
+    await dispatch(updateThresholds(localThresholds));
+  }, [dispatch, localThresholds]);
 
   useEffect(() => {
-    fetchMonitoringData();
-  }, [fetchMonitoringData]);
+    fetchMonitoringDataCallback();
+  }, [fetchMonitoringDataCallback]);
 
   // Socket.IO bağlantısı
   useEffect(() => {
@@ -209,49 +179,54 @@ const MonitoringPage: React.FC = () => {
 
     newSocket.on('connect', () => {
       console.log('Socket.IO connected');
-      setIsConnected(true);
+      dispatch(setConnectionStatus(true));
     });
 
     newSocket.on('disconnect', () => {
       console.log('Socket.IO disconnected');
-      setIsConnected(false);
+      dispatch(setConnectionStatus(false));
     });
 
     newSocket.on('monitoringData', (data) => {
       console.log('Real-time monitoring data received:', data);
-      setMonitoringData(data);
+      dispatch(updateMonitoringData(data));
     });
 
     newSocket.on('connection_update', (data) => {
       console.log('Connection update received:', data);
-      setMonitoringData(prevData => {
-        if (!prevData) return prevData;
-        return {
-          ...prevData,
+      if (monitoringData) {
+        const updatedData = {
+          ...monitoringData,
           connections: {
-            ...prevData.connections,
+            ...monitoringData.connections,
             ...data
           }
         };
-      });
+        dispatch(updateMonitoringData(updatedData));
+      }
     });
 
     newSocket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
-      setIsConnected(false);
+      dispatch(setConnectionStatus(false));
     });
 
     return () => {
       newSocket.close();
     };
-  }, [token]);
+  }, [token, monitoringData]);
 
   useEffect(() => {
     if (autoRefresh) {
-      const interval = setInterval(fetchMonitoringData, refreshInterval);
+      const interval = setInterval(fetchMonitoringDataCallback, refreshInterval);
       return () => clearInterval(interval);
     }
-  }, [autoRefresh, refreshInterval, fetchMonitoringData]);
+  }, [autoRefresh, refreshInterval, fetchMonitoringDataCallback]);
+
+  // Sync local thresholds with Redux thresholds
+  useEffect(() => {
+    setLocalThresholds(thresholds);
+  }, [thresholds]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -274,7 +249,7 @@ const MonitoringPage: React.FC = () => {
       <Box p={3}>
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-          <Button onClick={() => fetchMonitoringData()} sx={{ ml: 2 }}>
+          <Button onClick={() => fetchMonitoringDataCallback()} sx={{ ml: 2 }}>
             Tekrar Dene
           </Button>
         </Alert>
@@ -304,7 +279,7 @@ const MonitoringPage: React.FC = () => {
           />
           <Button
             variant="outlined"
-            onClick={() => fetchMonitoringData(true)}
+            onClick={() => fetchMonitoringDataCallback(true)}
             disabled={refreshing}
           >
             {refreshing ? <CircularProgress size={20} /> : 'Yenile'}
@@ -320,7 +295,7 @@ const MonitoringPage: React.FC = () => {
               control={
                 <Switch
                   checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  onChange={(e) => dispatch(setAutoRefresh(e.target.checked))}
                 />
               }
               label="Otomatik Yenileme"
@@ -336,7 +311,7 @@ const MonitoringPage: React.FC = () => {
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
-              onClick={() => fetchMonitoringData(true)}
+              onClick={() => fetchMonitoringDataCallback(true)}
             >
               Manuel Yenile
             </Button>
@@ -357,11 +332,11 @@ const MonitoringPage: React.FC = () => {
               <Typography variant="h6">Aktif Bağlantılar</Typography>
             </Box>
             <Typography variant="h3" color="primary">
-              {monitoringData?.data?.connections?.total || monitoringData?.connections?.total || 0}
+              {monitoringData?.connections?.total || 0}
             </Typography>
             <Typography variant="body2" color="textSecondary">
-              Sürücü: {monitoringData?.data?.connections?.drivers || 0} | 
-              Müşteri: {monitoringData?.data?.connections?.customers || 0}
+              Sürücü: {monitoringData?.connections?.drivers || 0} | 
+              Müşteri: {monitoringData?.connections?.customers || 0}
             </Typography>
           </CardContent>
         </Card>
@@ -742,9 +717,9 @@ const MonitoringPage: React.FC = () => {
                   fullWidth
                   label="Hata Oranı Threshold (%)"
                   type="number"
-                  value={thresholds.errorRate * 100}
-                  onChange={(e) => setThresholds({
-                    ...thresholds,
+                  value={localThresholds.errorRate * 100}
+                  onChange={(e) => setLocalThresholds({
+                    ...localThresholds,
                     errorRate: Number(e.target.value) / 100
                   })}
                   inputProps={{ min: 0, max: 100, step: 1 }}
@@ -753,9 +728,9 @@ const MonitoringPage: React.FC = () => {
                   fullWidth
                   label="Response Time Threshold (ms)"
                   type="number"
-                  value={thresholds.responseTime}
-                  onChange={(e) => setThresholds({
-                    ...thresholds,
+                  value={localThresholds.responseTime}
+                  onChange={(e) => setLocalThresholds({
+                    ...localThresholds,
                     responseTime: Number(e.target.value)
                   })}
                   inputProps={{ min: 100, step: 100 }}
@@ -764,16 +739,16 @@ const MonitoringPage: React.FC = () => {
                   fullWidth
                   label="Event Frequency Threshold (per minute)"
                   type="number"
-                  value={thresholds.eventFrequency}
-                  onChange={(e) => setThresholds({
-                    ...thresholds,
+                  value={localThresholds.eventFrequency}
+                  onChange={(e) => setLocalThresholds({
+                    ...localThresholds,
                     eventFrequency: Number(e.target.value)
                   })}
                   inputProps={{ min: 1, step: 10 }}
                 />
                 <Button
                   variant="contained"
-                  onClick={updateThresholds}
+                  onClick={updateThresholdsCallback}
                   fullWidth
                 >
                   Threshold'ları Güncelle
@@ -789,13 +764,13 @@ const MonitoringPage: React.FC = () => {
               </Typography>
               <Box>
                 <Typography variant="body2" gutterBottom>
-                  <strong>Hata Oranı:</strong> {((monitoringData?.thresholds?.errorRate || monitoringData?.data?.monitoring?.thresholds?.errorRate || 0) * 100).toFixed(1)}%
+                  <strong>Hata Oranı:</strong> {(thresholds.errorRate * 100).toFixed(1)}%
                 </Typography>
                 <Typography variant="body2" gutterBottom>
-                  <strong>Response Time:</strong> {monitoringData?.thresholds?.responseTime || monitoringData?.data?.monitoring?.thresholds?.responseTime || 0}ms
+                  <strong>Response Time:</strong> {thresholds.responseTime}ms
                 </Typography>
                 <Typography variant="body2" gutterBottom>
-                  <strong>Event Frequency:</strong> {monitoringData?.thresholds?.eventFrequency || monitoringData?.data?.monitoring?.thresholds?.eventFrequency || 0}/dakika
+                  <strong>Event Frequency:</strong> {thresholds.eventFrequency}/dakika
                 </Typography>
               </Box>
             </CardContent>

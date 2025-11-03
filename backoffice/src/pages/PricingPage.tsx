@@ -38,7 +38,8 @@ import {
   Edit as EditIcon
 } from '@mui/icons-material';
 import { API_CONFIG } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 // Türk Lirası formatlama fonksiyonu
 const formatTurkishLira = (amount: number): string => {
@@ -76,7 +77,7 @@ interface CargoType {
 }
 
 const PricingPage: React.FC = () => {
-  const { token } = useAuth();
+  const { token } = useSelector((state: RootState) => state.auth);
   const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([]);
   const [pricingData, setPricingData] = useState<VehicleTypePricing[]>([]);
   const [cargoTypes, setCargoTypes] = useState<CargoType[]>([]);

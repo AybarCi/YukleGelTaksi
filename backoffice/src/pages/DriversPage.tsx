@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
   Card,
@@ -25,7 +26,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-
   Paper,
 } from '@mui/material';
 import {
@@ -40,36 +40,37 @@ import {
   Upload as UploadIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import { RootState, AppDispatch } from '../store';
+import { fetchDrivers, updateDriverStatus, updateDriverAvailability } from '../store/reducers/driversReducer';
 import { API_CONFIG } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
 
 interface Driver {
   id: number;
-  user_id: number;
+  full_name: string;
+  phone_number: string;
+  email: string;
   license_number: string;
-  license_expiry_date: string;
   vehicle_type: string;
-  vehicle_plate: string;
   vehicle_model: string;
-  vehicle_color?: string;
-  vehicle_year: number;
+  vehicle_plate: string;
   is_verified: boolean;
   is_available: boolean;
   is_approved?: boolean;
   rating: number;
-  total_trips: number;
-  total_earnings: number;
+  created_at: string;
+  // Additional fields for compatibility with API response
+  license_expiry_date?: string;
+  vehicle_color?: string;
+  vehicle_year?: string | number;
+  total_trips?: number;
+  total_earnings?: number;
   last_location_lat?: number;
   last_location_lng?: number;
   last_location_update?: string;
-  created_at: string;
-  updated_at: string;
-  // User info
-  first_name: string;
-  last_name: string;
-  phone_number: string;
-  email: string;
+  updated_at?: string;
+  user_id?: number;
+  first_name?: string;
+  last_name?: string;
   user_first_name?: string;
   user_last_name?: string;
   user_email?: string;
@@ -77,14 +78,12 @@ interface Driver {
   user_type?: string;
   user_is_active?: boolean;
   user_created_at?: string;
-  // Additional driver info
   tc_number?: string;
   tax_number?: string;
   tax_office?: string;
   driver_photo?: string;
   license_photo?: string;
   eligibility_certificate?: string;
-  // Document status
   has_driver_photo?: boolean;
   has_license_photo?: boolean;
   has_eligibility_certificate?: boolean;
@@ -111,10 +110,9 @@ interface NewDriverForm {
 }
 
 const DriversPage: React.FC = () => {
-  const { token } = useAuth();
-  const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const dispatch = useDispatch<AppDispatch>();
+  const { drivers, loading, error, total, page: currentPage, limit } = useSelector((state: RootState) => state.drivers);
+  const { token } = useSelector((state: RootState) => state.auth);
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -129,6 +127,7 @@ const DriversPage: React.FC = () => {
   const [resultDialogOpen, setResultDialogOpen] = useState(false);
   const [resultMessage, setResultMessage] = useState('');
   const [resultType, setResultType] = useState<'success' | 'error'>('success');
+  const [addDriverError, setAddDriverError] = useState('');
   const [newDriverForm, setNewDriverForm] = useState<NewDriverForm>({
     tc_number: '',
     first_name: '',
@@ -149,81 +148,9 @@ const DriversPage: React.FC = () => {
     eligibility_certificate: null,
   });
 
-  const fetchDrivers = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // Get auth token from useAuth hook
-      if (!token) {
-        setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
-        return;
-      }
-
-      const response = await axios.get(`${API_CONFIG.BASE_URL}/drivers`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const driversData = response.data.data || [];
-      
-      // Map API response to match interface
-      const mappedDrivers: Driver[] = driversData.map((driver: any) => ({
-        id: driver.id,
-        user_id: driver.user_id || 0,
-        first_name: driver.user_first_name || driver.first_name || 'Bilinmiyor',
-        last_name: driver.user_last_name || driver.last_name || 'Bilinmiyor',
-        phone_number: driver.user_phone_number || driver.phone_number || 'Bilinmiyor',
-        email: driver.user_email || driver.email || 'Bilinmiyor',
-        user_first_name: driver.user_first_name,
-        user_last_name: driver.user_last_name,
-        user_email: driver.user_email,
-        user_phone_number: driver.user_phone_number,
-        user_type: driver.user_type,
-        user_is_active: driver.user_is_active,
-        user_created_at: driver.user_created_at,
-        tc_number: driver.tc_number,
-        tax_number: driver.tax_number,
-        tax_office: driver.tax_office,
-        license_number: driver.license_number || 'Bilinmiyor',
-        license_expiry_date: driver.license_expiry_date || 'Bilinmiyor',
-        vehicle_type: driver.vehicle_type || 'sedan',
-        vehicle_plate: driver.vehicle_plate || 'Bilinmiyor',
-        vehicle_model: driver.vehicle_model || 'Bilinmiyor',
-        vehicle_color: driver.vehicle_color || 'Bilinmiyor',
-        vehicle_year: driver.vehicle_year || 2020,
-        driver_photo: driver.driver_photo,
-        license_photo: driver.license_photo,
-        eligibility_certificate: driver.eligibility_certificate,
-        has_driver_photo: driver.has_driver_photo === 1,
-        has_license_photo: driver.has_license_photo === 1,
-        has_eligibility_certificate: driver.has_eligibility_certificate === 1,
-        is_verified: driver.is_active || false,
-        is_available: driver.is_available || false,
-        is_approved: driver.is_approved || false,
-        rating: driver.rating || 5.0,
-        total_trips: driver.total_trips || 0,
-        total_earnings: 0, // Not available in API response
-        last_location_lat: driver.current_latitude,
-        last_location_lng: driver.current_longitude,
-        last_location_update: driver.last_location_update,
-        created_at: driver.created_at,
-        updated_at: driver.updated_at
-      }));
-      
-      setDrivers(mappedDrivers);
-    } catch (err) {
-      setError('Sürücüler yüklenirken hata oluştu');
-       console.error('Drivers fetch error:', err);
-     } finally {
-       setLoading(false);
-     }
-   }, []);
-
   useEffect(() => {
-    fetchDrivers();
-  }, [fetchDrivers]);
+    dispatch(fetchDrivers(page + 1, rowsPerPage));
+  }, [dispatch, page, rowsPerPage]);
 
 
 
@@ -257,14 +184,14 @@ const DriversPage: React.FC = () => {
     setConfirmDialogOpen(false);
     
     try {
-      switch (confirmAction.type) {
-        case 'approve':
-          await executeApproveDriver(confirmAction.data.driverId, confirmAction.data.isApproved);
-          showResultDialog(
-            confirmAction.data.isApproved ? 'Sürücü başarıyla onaylandı.' : 'Sürücü onayı başarıyla kaldırıldı.',
-            'success'
-          );
-          break;
+        switch (confirmAction.type) {
+          case 'approve':
+            await executeApproveDriver(confirmAction.data.driverId, confirmAction.data.isVerified);
+            showResultDialog(
+              confirmAction.data.isVerified ? 'Sürücü başarıyla onaylandı.' : 'Sürücü onayı başarıyla kaldırıldı.',
+              'success'
+            );
+            break;
         case 'toggleAvailability':
           await executeToggleAvailability(confirmAction.data.driver);
           showResultDialog(
@@ -290,17 +217,11 @@ const DriversPage: React.FC = () => {
   };
 
   const executeToggleAvailability = async (driver: Driver) => {
-    // Mock API call - replace with actual implementation
-    const updatedDrivers = drivers.map(d => 
-      d.id === driver.id 
-        ? { ...d, is_available: !d.is_available }
-        : d
-    );
-    setDrivers(updatedDrivers);
+    await dispatch(updateDriverAvailability(driver.id, !driver.is_available));
   };
 
-  const handleApproveDriver = (driverId: number, isApproved: boolean) => {
-    showConfirmDialog('approve', { driverId, isApproved });
+  const handleApproveDriver = (driverId: number, isVerified: boolean) => {
+    showConfirmDialog('approve', { driverId, isVerified });
   };
 
   const handleToggleAvailability = (driver: Driver) => {
@@ -308,65 +229,24 @@ const DriversPage: React.FC = () => {
   };
 
   const executeApproveDriver = async (driverId: number, isApproved: boolean) => {
-    try {
-      setError('');
-      
-      // Get auth token from useAuth hook
-      if (!token) {
-        setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
-        return;
-      }
-
-      const response = await fetch(`${API_CONFIG.BASE_URL}/drivers/approve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          driverId,
-          isApproved
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
-          return;
-        }
-        throw new Error(result.error || 'Sürücü onay durumu güncellenirken hata oluştu');
-      }
-
-      // Update driver in list
-      const updatedDrivers = drivers.map(driver => 
-        driver.id === driverId 
-          ? { ...driver, is_approved: isApproved }
-          : driver
-      );
-      setDrivers(updatedDrivers);
-      
-    } catch (err: any) {
-      setError(err.message || 'Sürücü onay durumu güncellenirken hata oluştu');
-    }
+    await dispatch(updateDriverStatus(driverId, isApproved));
   };
 
   const handleAddDriver = async () => {
     try {
       setAddDriverLoading(true);
-      setError('');
+      setAddDriverError('');
 
       // Validate required fields
       if (!newDriverForm.tc_number || !newDriverForm.first_name || !newDriverForm.last_name || 
           !newDriverForm.phone_number || !newDriverForm.license_number || !newDriverForm.vehicle_plate || !newDriverForm.vehicle_model) {
-        setError('Lütfen zorunlu alanları doldurun.');
+        setAddDriverError('Lütfen zorunlu alanları doldurun.');
         return;
       }
 
       // Get auth token from useAuth hook
       if (!token) {
-        setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
+        setAddDriverError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
         return;
       }
 
@@ -400,7 +280,7 @@ const DriversPage: React.FC = () => {
           throw new Error(uploadResult.error || 'Dosya yükleme başarısız');
         }
 
-        uploadedFiles = uploadResult.data.files;
+        uploadedFiles = uploadResult.data.files || {};
       }
 
       // Prepare data for API call
@@ -435,48 +315,19 @@ const DriversPage: React.FC = () => {
 
       if (!response.ok) {
         if (response.status === 401) {
-          setError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
+          setAddDriverError('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
 
           return;
         }
         throw new Error(result.error || 'Sürücü kaydı başarısız');
       }
 
-      // Add new driver to list
-      const newDriver: Driver = {
-        id: result.data.driverId,
-        user_id: result.data.userId,
-        tc_number: newDriverForm.tc_number,
-        first_name: newDriverForm.first_name,
-        last_name: newDriverForm.last_name,
-        phone_number: newDriverForm.phone_number,
-        email: newDriverForm.email,
-        tax_number: newDriverForm.tax_number,
-        tax_office: newDriverForm.tax_office,
-        license_number: newDriverForm.license_number,
-        license_expiry_date: newDriverForm.license_expiry_date,
-        vehicle_type: newDriverForm.vehicle_type,
-        vehicle_plate: newDriverForm.vehicle_plate,
-        vehicle_model: newDriverForm.vehicle_model,
-        vehicle_year: newDriverForm.vehicle_year,
-        vehicle_color: newDriverForm.vehicle_color,
-        driver_photo: uploadedFiles.driver_photo || '',
-        license_photo: uploadedFiles.license_photo || '',
-        eligibility_certificate: uploadedFiles.eligibility_certificate || '',
-        is_verified: false,
-        is_available: false,
-        rating: 5.0,
-        total_trips: 0,
-        total_earnings: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      setDrivers([...drivers, newDriver]);
+      // Add new driver to list - refresh the drivers list instead of local update
+      dispatch(fetchDrivers(page + 1, rowsPerPage));
       setAddDriverOpen(false);
       resetForm();
-    } catch (err: any) {
-      setError(err.message || 'Sürücü eklenirken bir hata oluştu.');
+    } catch (error: any) {
+      setAddDriverError(error.message || 'Sürücü eklenirken bir hata oluştu.');
     } finally {
       setAddDriverLoading(false);
     }
@@ -523,18 +374,18 @@ const DriversPage: React.FC = () => {
     setViewDocumentsOpen(true);
   };
 
-  const filteredDrivers = drivers.filter(driver => 
-    driver.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    driver.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const filteredDrivers = drivers.map(driver => ({
+    ...driver,
+    // Ensure full_name is always available for display
+    full_name: driver.full_name || `${driver.first_name || ''} ${driver.last_name || ''}`.trim() || 'Bilinmeyen Sürücü',
+    // Map vehicle_year to vehicle_type if needed for compatibility
+    vehicle_type: driver.vehicle_type || (driver as any).vehicle_year?.toString() || 'pickup'
+  })).filter(driver => 
+    driver.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     driver.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     driver.phone_number.includes(searchTerm) ||
     driver.vehicle_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     driver.license_number.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const paginatedDrivers = filteredDrivers.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
   );
 
   const handleChangePage = (event: unknown, newPage: number) => {
@@ -647,19 +498,18 @@ const DriversPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedDrivers.map((driver) => (
+                {filteredDrivers.map((driver) => (
                   <TableRow key={driver.id} hover>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Avatar 
                           sx={{ bgcolor: '#FFD700', color: '#000000', width: 40, height: 40 }}
-                          src={driver.driver_photo ? `${API_CONFIG.FILES_URL}/${driver.driver_photo}` : undefined}
                         >
                           <DirectionsCarIcon />
                         </Avatar>
                         <Box>
                           <Typography variant="body1" fontWeight="medium">
-                            {driver.first_name} {driver.last_name}
+                            {driver.full_name}
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
                             {driver.phone_number}
@@ -672,9 +522,12 @@ const DriversPage: React.FC = () => {
                         <Typography variant="body2" fontWeight="medium">
                           {driver.vehicle_plate}
                         </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          {driver.vehicle_model} ({driver.vehicle_year})
-                        </Typography>
+                        {driver.vehicle_model && (
+                          <Typography variant="caption" color="textSecondary">
+                            {driver.vehicle_model}
+                            {driver.vehicle_year && ` (${driver.vehicle_year})`}
+                          </Typography>
+                        )}
                         <Typography variant="caption" display="block" color="textSecondary">
                           {getVehicleTypeText(driver.vehicle_type)}
                         </Typography>
@@ -685,9 +538,16 @@ const DriversPage: React.FC = () => {
                         <Typography variant="body2">
                           {driver.license_number}
                         </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          Bitiş: {formatDate(driver.license_expiry_date)}
-                        </Typography>
+                        {driver.license_expiry_date && (
+                          <Typography variant="caption" color="textSecondary">
+                            Bitiş: {formatDate(driver.license_expiry_date)}
+                          </Typography>
+                        )}
+                        {!driver.license_expiry_date && (
+                          <Typography variant="caption" color="textSecondary">
+                            Bitiş tarihi yok
+                          </Typography>
+                        )}
                       </Box>
                     </TableCell>
                     <TableCell>
@@ -714,10 +574,10 @@ const DriversPage: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={driver.is_approved ? 'Onaylandı' : 'Beklemede'}
-                        color={driver.is_approved ? 'success' : 'warning'}
+                        label={driver.is_verified ? 'Onaylandı' : 'Beklemede'}
+                        color={driver.is_verified ? 'success' : 'warning'}
                         size="small"
-                        icon={driver.is_approved ? <CheckCircleIcon /> : <BlockIcon />}
+                        icon={driver.is_verified ? <CheckCircleIcon /> : <BlockIcon />}
                       />
                     </TableCell>
                     <TableCell>
@@ -746,7 +606,7 @@ const DriversPage: React.FC = () => {
           <TablePagination
             rowsPerPageOptions={[5, 10, 25]}
             component="div"
-            count={filteredDrivers.length}
+            count={total}
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={handleChangePage}
@@ -777,7 +637,7 @@ const DriversPage: React.FC = () => {
         }}>
           Belgeleri Görüntüle
         </MenuItem>
-        {!selectedDriver?.is_approved && (
+        {!selectedDriver?.is_verified && selectedDriver && (
           <MenuItem 
             onClick={() => {
               if (selectedDriver) {
@@ -789,7 +649,7 @@ const DriversPage: React.FC = () => {
             Onayla
           </MenuItem>
         )}
-        {selectedDriver?.is_approved && (
+        {selectedDriver?.is_verified && selectedDriver && (
           <MenuItem 
             onClick={() => {
               if (selectedDriver) {
@@ -811,7 +671,7 @@ const DriversPage: React.FC = () => {
       </Menu>
 
       {/* Add Driver Dialog */}
-      <Dialog open={addDriverOpen} onClose={() => { setAddDriverOpen(false); setError(''); }} maxWidth="md" fullWidth>
+      <Dialog open={addDriverOpen} onClose={() => { setAddDriverOpen(false); setAddDriverError(''); }} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <PersonIcon />
@@ -819,9 +679,9 @@ const DriversPage: React.FC = () => {
           </Box>
         </DialogTitle>
         <DialogContent>
-          {error && (
+          {addDriverError && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
+              {addDriverError}
             </Alert>
           )}
           <Box sx={{ pt: 2, display: 'grid', gap: 3 }}>
@@ -1020,7 +880,7 @@ const DriversPage: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setAddDriverOpen(false); resetForm(); setError(''); }}>
+          <Button onClick={() => { setAddDriverOpen(false); resetForm(); setAddDriverError(''); }}>
             İptal
           </Button>
           <Button
@@ -1053,7 +913,7 @@ const DriversPage: React.FC = () => {
                   Kişisel Bilgiler
                 </Typography>
                 <Typography variant="body1" gutterBottom>
-                  <strong>Ad Soyad:</strong> {selectedDriver.first_name} {selectedDriver.last_name}
+                  <strong>Ad Soyad:</strong> {selectedDriver.full_name}
                 </Typography>
                 <Typography variant="body1" gutterBottom>
                   <strong>Telefon:</strong> {selectedDriver.phone_number}
@@ -1083,7 +943,7 @@ const DriversPage: React.FC = () => {
                   <strong>Ehliyet No:</strong> {selectedDriver.license_number}
                 </Typography>
                 <Typography variant="body1" gutterBottom>
-                  <strong>Ehliyet Bitiş:</strong> {formatDate(selectedDriver.license_expiry_date)}
+                  <strong>Ehliyet Bitiş:</strong> {selectedDriver.license_expiry_date ? formatDate(selectedDriver.license_expiry_date) : 'Belirtilmemiş'}
                 </Typography>
               </Paper>
               
@@ -1092,10 +952,10 @@ const DriversPage: React.FC = () => {
                   İstatistikler
                 </Typography>
                 <Typography variant="body1" gutterBottom>
-                  <strong>Toplam Sefer:</strong> {selectedDriver.total_trips}
+                  <strong>Toplam Sefer:</strong> {selectedDriver.total_trips || 0}
                 </Typography>
                 <Typography variant="body1" gutterBottom>
-                  <strong>Toplam Kazanç:</strong> {formatCurrency(selectedDriver.total_earnings)}
+                  <strong>Toplam Kazanç:</strong> {formatCurrency(selectedDriver.total_earnings || 0)}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <Typography variant="body1" component="span">
@@ -1127,6 +987,12 @@ const DriversPage: React.FC = () => {
                     Son konum güncellemesi: {formatDate(selectedDriver.last_location_update)}
                   </Typography>
                 )}
+                {!selectedDriver.last_location_update && (
+                  <Typography variant="body2" sx={{ mt: 2 }} color="textSecondary">
+                    <LocationOnIcon sx={{ fontSize: 16, mr: 0.5 }} />
+                    Konum bilgisi yok
+                  </Typography>
+                )}
               </Paper>
             </Box>
           )}
@@ -1144,7 +1010,7 @@ const DriversPage: React.FC = () => {
           fullWidth
         >
           <DialogTitle>
-            Sürücü Belgeleri - {selectedDriver?.first_name} {selectedDriver?.last_name}
+            Sürücü Belgeleri - {selectedDriver?.full_name}
           </DialogTitle>
           <DialogContent>
             <Box sx={{ display: 'grid', gap: 3, mt: 2 }}>
