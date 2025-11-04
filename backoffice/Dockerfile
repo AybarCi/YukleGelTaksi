@@ -1,13 +1,13 @@
 # Build aşaması
-FROM node:18-alpine AS build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
 # package.json ve package-lock.json'ı kopyala
 COPY package*.json ./
 
-# Tüm bağımlılıkları yükle (dev dependencies dahil)
-RUN npm ci
+# npm cache'ini temizle ve npm install'yi çalıştır
+RUN npm cache clean --force && npm install
 
 # Uygulama dosyalarını kopyala
 COPY . .
