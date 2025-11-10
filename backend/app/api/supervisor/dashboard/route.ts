@@ -8,10 +8,17 @@ export async function GET(request: NextRequest) {
     const authResult = await authenticateSupervisorToken(request);
     
     if (!authResult.success) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: authResult.message },
         { status: 401 }
       );
+      
+      // Add CORS headers
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return response;
     }
 
     const dbInstance = DatabaseConnection.getInstance();
@@ -118,16 +125,42 @@ export async function GET(request: NextRequest) {
       monthlyRevenue: stats[11].recordset
     };
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: dashboardData
     });
+    
+    // Add CORS headers
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return response;
 
   } catch (error) {
     console.error('Dashboard API error:', error);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     );
+    
+    // Add CORS headers
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return response;
   }
+}
+
+// OPTIONS method for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }
