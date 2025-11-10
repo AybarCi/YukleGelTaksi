@@ -33,19 +33,11 @@ export const cargoTypesService = {
         }
       }
       
-      // Cache yoksa veya süresi geçmişse API'den yükle
-      const token = await AsyncStorage.getItem('auth_token');
-      
-      if (!token) {
-        console.error('No token found for cargo types fetch');
-        throw new Error('Authentication required');
-      }
-
+      // Cache yoksa veya süresi geçmişse API'den yükle (public endpoint)
       const response = await fetch(`${API_CONFIG.BASE_URL}/api/cargo-types`, {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         }
       });
 

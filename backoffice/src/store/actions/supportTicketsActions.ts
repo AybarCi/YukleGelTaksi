@@ -75,6 +75,7 @@ export const fetchSupportTickets = (ticketType?: 'driver' | 'customer' | 'all') 
         const driverResponse = await fetch(`${API_CONFIG.BASE_URL}/admin/support-tickets`, {
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
         });
 
@@ -94,6 +95,7 @@ export const fetchSupportTickets = (ticketType?: 'driver' | 'customer' | 'all') 
         const customerResponse = await fetch(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`, {
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
         });
 
@@ -115,11 +117,13 @@ export const fetchSupportTickets = (ticketType?: 'driver' | 'customer' | 'all') 
           fetch(`${API_CONFIG.BASE_URL}/admin/support-tickets`, {
             headers: {
               'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
             },
           }),
           fetch(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`, {
             headers: {
               'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
             },
           }),
         ]);
@@ -158,6 +162,7 @@ export const updateSupportTicket = (ticketId: number, updateData: any, ticketTyp
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify(updateData),
       });
