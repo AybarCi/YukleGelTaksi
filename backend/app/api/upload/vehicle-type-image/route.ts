@@ -8,7 +8,9 @@ import { authenticateSupervisorToken } from '../../../../middleware/supervisorAu
 export async function POST(request: NextRequest) {
   try {
     // Admin yetkisi kontrolü
+    console.log('Upload Debug - Starting authentication check');
     const authResult = await authenticateSupervisorToken(request);
+    console.log('Upload Debug - Auth result:', authResult);
     if (!authResult.success) {
       return NextResponse.json(
         { success: false, error: 'Yetkisiz erişim' },

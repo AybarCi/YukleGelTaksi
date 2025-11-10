@@ -18,6 +18,9 @@ export async function authenticateSupervisorToken(request: NextRequest): Promise
     const authHeader = request.headers.get('authorization');
     const token = authHeader && authHeader.split(' ')[1];
 
+    console.log('Supervisor Auth Debug - Auth Header:', authHeader);
+    console.log('Supervisor Auth Debug - Token:', token ? 'Token var' : 'Token yok');
+
     if (!token) {
       return {
         success: false,
@@ -25,18 +28,22 @@ export async function authenticateSupervisorToken(request: NextRequest): Promise
       };
     }
 
+    console.log('Supervisor Auth Debug - JWT_SECRET:', process.env.JWT_SECRET ? 'Secret var' : 'Secret yok');
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    console.log('Supervisor Auth Debug - Decoded:', decoded);
     
     // Veritabanından supervisor bilgilerini al
     const dbInstance = DatabaseConnection.getInstance();
     const pool = await dbInstance.connect();
     
     // Check if supervisor exists and is active
+    console.log('Supervisor Auth Debug - Looking for supervisorId:', decoded.supervisorId);
     const supervisorResult = await pool.request()
       .input('supervisorId', decoded.supervisorId)
       .query('SELECT * FROM supervisors WHERE id = @supervisorId AND is_active = 1');
     
     const supervisor = supervisorResult.recordset[0];
+    console.log('Supervisor Auth Debug - Supervisor found:', supervisor ? 'Evet' : 'Hayır');
 
     if (!supervisor) {
       return {
@@ -50,6 +57,7 @@ export async function authenticateSupervisorToken(request: NextRequest): Promise
       .input('supervisorId', decoded.supervisorId)
       .query('SELECT * FROM supervisor_sessions WHERE supervisor_id = @supervisorId AND expires_at > GETDATE() ORDER BY created_at DESC');
     
+    console.log('Supervisor Auth Debug - Active sessions found:', sessionResult.recordset.length);
     if (sessionResult.recordset.length === 0) {
       return {
         success: false,
