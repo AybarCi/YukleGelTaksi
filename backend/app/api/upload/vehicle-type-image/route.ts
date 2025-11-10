@@ -47,9 +47,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload klasörünü oluştur - /tmp dizinini kullan (geçici ve yazılabilir)
-    const uploadDir = path.join('/tmp', 'vehicle-type-photos');
+    const uploadDir = '/tmp/vehicle-type-photos';
+    console.log('Upload Debug - Creating directory:', uploadDir);
     if (!existsSync(uploadDir)) {
       await mkdir(uploadDir, { recursive: true });
+      console.log('Upload Debug - Directory created');
+    } else {
+      console.log('Upload Debug - Directory already exists');
     }
 
     // Dosya adını oluştur (timestamp + original name)
