@@ -42,6 +42,10 @@ COPY --from=builder --chown=backend:nodejs /app/migrations ./migrations
 COPY --from=builder --chown=backend:nodejs /app/database ./database
 COPY --from=builder --chown=backend:nodejs /app/lib ./lib
 
+# Uploads klasörü için izin ver
+RUN mkdir -p /app/public/uploads/vehicle-types && \
+    chown -R backend:nodejs /app/public/uploads
+
 # Switch to non-root user
 USER backend
 
