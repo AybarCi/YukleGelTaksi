@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import { authenticateSupervisorToken } from '@/middleware/supervisorAuth';
+import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 
 export async function POST(request: NextRequest) {
   try {
