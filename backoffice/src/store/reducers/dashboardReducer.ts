@@ -69,14 +69,25 @@ export const dashboardClearError = () => ({
 });
 
 // Thunk Actions
-export const fetchDashboardData = () => async (dispatch: any) => {
+export const fetchDashboardData = () => async (dispatch: any, getState: any) => {
   dispatch(dashboardDataRequest());
   try {
+    // Get token from state
+    const { auth: { token } } = getState();
+    
+    // Check if we have a token
+    if (!token) {
+      throw new Error('Oturum açmanız gerekiyor');
+    }
+    
+    // Headers with authorization
+    const headers = { Authorization: `Bearer ${token}` };
+    
     // Fetch all data in parallel
     const [usersResponse, driversResponse, ordersResponse] = await Promise.all([
-      axios.get(`${API_BASE_URL}/users`),
-      axios.get(`${API_BASE_URL}/drivers`),
-      axios.get(`${API_BASE_URL}/orders`)
+      axios.get(`${API_BASE_URL}/users`, { headers }),
+      axios.get(`${API_BASE_URL}/drivers`, { headers }),
+      axios.get(`${API_BASE_URL}/orders`, { headers })
     ]);
 
     // Process the data
