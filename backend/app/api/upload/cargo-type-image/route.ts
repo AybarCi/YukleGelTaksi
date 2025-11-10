@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { authenticateToken } from '../../../../middleware/auth';
+import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 
 // POST - Upload cargo type image
 export async function POST(request: NextRequest) {
   try {
     // Admin yetkisi kontrolü
-    const authResult = await authenticateToken(request);
+    const authResult = await authenticateSupervisorToken(request);
     if (!authResult.success) {
       return NextResponse.json(
         { success: false, error: 'Yetkisiz erişim' },
