@@ -251,7 +251,7 @@ const VehicleTypesPage: React.FC = () => {
       );
 
       if (response.data.success) {
-        return response.data.data.imageUrl;
+        return response.data.imageUrl;
       } else {
         setError(response.data.error || 'Fotoğraf yüklenirken hata oluştu');
         return null;
