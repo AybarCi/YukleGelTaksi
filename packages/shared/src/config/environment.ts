@@ -129,7 +129,7 @@ const rawApiHost = getEnvVar('API_HOST', '');
 const autoDetectedHost = detectDevHost();
 
 // Manuel IP adresi ayarı - development ortamı için
-const MANUAL_DEV_HOST = '192.168.1.134';
+const MANUAL_DEV_HOST = '192.168.1.13';
 
 export const ENV_CONFIG: EnvironmentConfig = {
   // API_HOST: Eğer 'auto' veya boş ise otomatik tespit edilen host'u kullan, aksi halde verilen değeri kullan
@@ -145,14 +145,14 @@ export const ENV_CONFIG: EnvironmentConfig = {
   // Dinamik URL'ler
   get BASE_URL() {
     if (this.NODE_ENV === 'production') {
-      return getEnvVar('PROD_API_URL', 'https://api.yuklegeltaksi.com');
+      return getEnvVar('PROD_API_URL', 'https://yuklegeltaksiapi.istekbilisim.com');
     }
     return `http://${this.API_HOST}:${this.API_PORT}`;
   },
   
   get SOCKET_URL() {
     if (this.NODE_ENV === 'production') {
-      return getEnvVar('PROD_SOCKET_URL', 'https://socket.yuklegeltaksi.com');
+      return getEnvVar('PROD_SOCKET_URL', 'https://yuklegeltaksiapi.istekbilisim.com');
     }
     // Development ortamında SOCKET_PORT kullanılmalı
     return `http://${this.API_HOST}:${this.SOCKET_PORT}`;

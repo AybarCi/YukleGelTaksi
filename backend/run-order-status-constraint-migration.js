@@ -5,7 +5,7 @@ const path = require('path');
 const config = {
     user: 'sa',
     password: 'Ca090353--',
-    server: '192.168.1.21',
+    server: '192.168.1.13',
     database: 'yuklegeltaksidb',
     options: {
         encrypt: false,

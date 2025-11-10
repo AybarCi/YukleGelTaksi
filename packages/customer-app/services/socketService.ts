@@ -43,6 +43,8 @@ class SocketService {
   private maxReconnectAttempts: number = 10;
   private reconnectDelay: number = 1000;
   private hasShownConnectionError: boolean = false;
+  private refreshInProgress: boolean = false;
+  private refreshAttempts: number = 0;
 
   // Event listeners
   private eventListeners: Map<string, Function[]> = new Map();
@@ -152,6 +154,23 @@ class SocketService {
       console.error('Socket connection error:', error);
       this.isConnected = false;
       this.emit('connection_error', { error: error.message });
+
+      const msg = (error && (error.message || (error as any).description || '')) as string;
+      const isAuthExpired = msg.toLowerCase().includes('jwt expired') || msg.toLowerCase().includes('token') || msg.toLowerCase().includes('auth');
+      if (isAuthExpired) {
+        this.refreshTokenAndReconnect();
+      } else {
+        // Non-auth errors: try a simple reconnect with backoff
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.reconnectAttempts++;
+          const delay = Math.min(2000 * this.reconnectAttempts, 10000);
+          setTimeout(() => {
+            if (!this.isConnected && this.socket) {
+              this.socket.connect();
+            }
+          }, delay);
+        }
+      }
     });
 
     // Order related events
@@ -301,6 +320,57 @@ class SocketService {
       // Driver location updates for customer
       this.emit('driver_location_update_for_customer', data);
     });
+  }
+
+  private async refreshTokenAndReconnect() {
+    if (this.refreshInProgress) return;
+    this.refreshInProgress = true;
+    try {
+      const refreshToken = await AsyncStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        console.warn('No refresh_token found for socket refresh');
+        this.refreshInProgress = false;
+        return;
+      }
+      const baseUrl = API_CONFIG.BASE_URL;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const resp = await fetch(`${baseUrl}/api/auth/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      if (data && data.success && data.data && typeof data.data.token === 'string') {
+        const newToken = data.data.token as string;
+        await AsyncStorage.setItem('auth_token', newToken);
+        // Reinitialize socket with new token
+        this.cleanup();
+        await this.initializeSocket(newToken);
+        this.refreshAttempts = 0;
+      } else {
+        throw new Error('Invalid refresh response');
+      }
+    } catch (err) {
+      console.error('Socket token refresh failed:', err);
+      this.refreshAttempts++;
+      if (this.refreshAttempts <= 3) {
+        const delay = Math.min(1000 * Math.pow(2, this.refreshAttempts - 1), 8000);
+        setTimeout(() => {
+          this.refreshInProgress = false;
+          this.refreshTokenAndReconnect();
+        }, delay);
+      } else {
+        this.refreshInProgress = false;
+      }
+    } finally {
+      this.refreshInProgress = false;
+    }
   }
 
   private handleReconnection() {

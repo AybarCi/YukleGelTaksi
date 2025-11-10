@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import socketService from '../../services/socketService';
 
 // showModal fonksiyonu kaldırıldı - projede alert kullanılmıyor
@@ -32,6 +32,11 @@ export const useSocketEvents = (
   setPriceConfirmationData?: (data: any) => void,
   showModal?: (title: string, message: string, type: 'success' | 'warning' | 'error' | 'info', buttons?: any[]) => void
 ) => {
+  // Modal görünürlük durumunu hook seviyesinde takip et
+  const priceModalVisibleRef = useRef(false);
+  // Kabul bilgisini tek seferlik göstermek için guard
+  const acceptanceNotifiedRef = useRef(false);
+
   useEffect(() => {
     if (!token) {
       console.log('❌ Token yok, socket event listener kurulmuyor');
@@ -213,6 +218,25 @@ export const useSocketEvents = (
           const message = data.message || statusMessages[status] || `Sipariş durumu: ${status}`;
           
           console.log(`📦 Sipariş durumu güncellendi: ${message} - bildirim gösterilmedi (alert yasak)`);
+
+          // Fallback: Kabul sonrası fiyat onayı eventi gelmediyse bağlantıyı tazele
+          if (data.status === 'driver_accepted_awaiting_customer') {
+            // Müşteriye kabul bilgisini ANINDA bildir (tek seferlik)
+            if (!acceptanceNotifiedRef.current && typeof showModal === 'function') {
+              acceptanceNotifiedRef.current = true;
+              showModal('Kabul', 'Sürücü kabul etti, fiyat onayı bekleniyor.', 'info');
+            }
+            setTimeout(() => {
+              if (!priceModalVisibleRef.current) {
+                console.warn('⚠️ Fiyat onayı modalı henüz açılmadı, socket yeniden bağlanıyor');
+                // Bilgilendirici modal opsiyonel
+                if (typeof showModal === 'function') {
+                  showModal('Bağlantı', 'Sürücü kabul etti, fiyat onayı bekleniyor. Bağlantı yenileniyor…', 'info');
+                }
+                socketService.reconnect();
+              }
+            }, 800);
+          }
         } else if (data.order && data.order.status) {
           // Eski format desteği
           if (typeof setCurrentOrder === 'function') {
@@ -240,6 +264,18 @@ export const useSocketEvents = (
           const message = statusMessages[status] || `Sipariş durumu: ${status}`;
           
           console.log(`📦 Sipariş durumu güncellendi: ${message} - bildirim gösterilmedi (alert yasak)`);
+
+          if (data.order.status === 'driver_accepted_awaiting_customer') {
+            setTimeout(() => {
+              if (!priceModalVisibleRef.current) {
+                console.warn('⚠️ Fiyat onayı modalı henüz açılmadı (eski format), socket yeniden bağlanıyor');
+                if (typeof showModal === 'function') {
+                  showModal('Bağlantı', 'Sürücü kabul etti, fiyat onayı bekleniyor. Bağlantı yenileniyor…', 'info');
+                }
+                socketService.reconnect();
+              }
+            }, 800);
+          }
         } else {
           console.error('❌ order_status_update: order veya status bilgisi eksik', data);
         }
@@ -357,22 +393,29 @@ export const useSocketEvents = (
           console.error('❌ price_confirmation_requested: data boş');
           return;
         }
+        // 0 değerlerini (ör. laborCount=0) doğru şekilde kabul etmek için nullish/typeof kontrolleri kullan
+        const hasOrderId = data.orderId !== null && data.orderId !== undefined;
+        const hasFinalPrice = typeof data.finalPrice === 'number';
+        const hasLaborCount = typeof data.laborCount === 'number';
         
-        if (data.orderId && data.finalPrice && data.laborCount) {
+        if (hasOrderId && hasFinalPrice && hasLaborCount) {
           // Price confirmation modal'ını göster
           if (setPriceConfirmationModalVisible && setPriceConfirmationData) {
             setPriceConfirmationData({
               orderId: data.orderId,
               finalPrice: data.finalPrice,
               laborCount: data.laborCount,
-              estimatedPrice: data.estimatedPrice || 0,
-              priceDifference: data.priceDifference || 0,
-              timeout: data.timeout || 60000 // Varsayılan 60 saniye
+              estimatedPrice: typeof data.estimatedPrice === 'number' ? data.estimatedPrice : 0,
+              priceDifference: typeof data.priceDifference === 'number' ? data.priceDifference : 0,
+              timeout: typeof data.timeout === 'number' ? data.timeout : 60000 // Varsayılan 60 saniye
             });
             setPriceConfirmationModalVisible(true);
+            priceModalVisibleRef.current = true;
+            // Kabul bildirimi guard'ını sıfırla (modal açıldı)
+            acceptanceNotifiedRef.current = false;
           }
           
-          console.log(`💰 Fiyat onayı istendi - Modal gösteriliyor: Sipariş ${data.orderId}, Fiyat: ${data.finalPrice}, Timeout: ${data.timeout || 60000}ms`);
+          console.log(`💰 Fiyat onayı istendi - Modal gösteriliyor: Sipariş ${data.orderId}, Fiyat: ${data.finalPrice}, Timeout: ${typeof data.timeout === 'number' ? data.timeout : 60000}ms`);
         } else {
           console.error('❌ price_confirmation_requested: Eksik veri', data);
         }
@@ -397,12 +440,16 @@ export const useSocketEvents = (
             // Modal'ı kapat
             if (setPriceConfirmationModalVisible) {
               setPriceConfirmationModalVisible(false);
+              priceModalVisibleRef.current = false;
+              acceptanceNotifiedRef.current = false;
             }
           } else {
             console.log(`💰 Fiyat onayı reddedildi: Sipariş ${data.orderId}`);
             // Modal'ı kapat
             if (setPriceConfirmationModalVisible) {
               setPriceConfirmationModalVisible(false);
+              priceModalVisibleRef.current = false;
+              acceptanceNotifiedRef.current = false;
             }
           }
         } else {

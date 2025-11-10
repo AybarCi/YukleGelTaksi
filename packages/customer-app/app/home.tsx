@@ -20,7 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import MapView, { Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
+import { MapViewComponent } from '../components/MapViewComponent';
 
 // Lazy loaded map component for better performance
 
@@ -173,6 +173,8 @@ function HomeScreen() {
   const [distance, setDistance] = useState<number | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
   const [activeOrderRouteCoordinates, setActiveOrderRouteCoordinates] = useState<{latitude: number, longitude: number}[]>([]);
+  const [activeOrderPickupCoords, setActiveOrderPickupCoords] = useState<{latitude: number, longitude: number} | null>(null);
+  const [activeOrderDestinationCoords, setActiveOrderDestinationCoords] = useState<{latitude: number, longitude: number} | null>(null);
   const [routeDuration, setRouteDuration] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -407,6 +409,189 @@ function HomeScreen() {
       }
     }
   }, [activeOrderRouteCoordinates, reduxCurrentOrder, animateToShowBothPoints, userInteractedWithMap]);
+
+  // Rota koordinatlarını AsyncStorage'a kaydet (aktif sipariş için)
+  useEffect(() => {
+    const saveRouteCoordinates = async () => {
+      if (activeOrderRouteCoordinates.length > 0 && reduxCurrentOrder) {
+        try {
+          const routeData = {
+            coordinates: activeOrderRouteCoordinates,
+            orderId: reduxCurrentOrder.id,
+            pickupCoords: activeOrderPickupCoords,
+            destinationCoords: activeOrderDestinationCoords,
+            timestamp: Date.now(),
+            type: 'activeOrder'
+          };
+          await AsyncStorage.setItem('savedRouteCoordinates', JSON.stringify(routeData));
+          console.log('📍 Aktif sipariş rota koordinatları kaydedildi');
+        } catch (error) {
+          console.error('Rota kaydetme hatası:', error);
+        }
+      }
+    };
+    
+    saveRouteCoordinates();
+  }, [activeOrderRouteCoordinates, reduxCurrentOrder, activeOrderPickupCoords, activeOrderDestinationCoords]);
+
+  // Yeni sipariş rota koordinatlarını AsyncStorage'a kaydet
+  useEffect(() => {
+    const saveNewOrderRouteCoordinates = async () => {
+      if (routeCoordinates.length > 0 && !reduxCurrentOrder && pickupCoords && destinationCoords) {
+        try {
+          const routeData = {
+            coordinates: routeCoordinates,
+            pickupCoords: pickupCoords,
+            destinationCoords: destinationCoords,
+            pickupAddress: pickupLocation,
+            destinationAddress: destinationLocation,
+            timestamp: Date.now(),
+            type: 'newOrder'
+          };
+          await AsyncStorage.setItem('savedNewOrderRouteCoordinates', JSON.stringify(routeData));
+          console.log('📍 Yeni sipariş rota koordinatları kaydedildi');
+        } catch (error) {
+          console.error('Yeni sipariş rota kaydetme hatası:', error);
+        }
+      }
+    };
+    
+    saveNewOrderRouteCoordinates();
+  }, [routeCoordinates, pickupCoords, destinationCoords, pickupLocation, destinationLocation, reduxCurrentOrder]);
+
+  // State güncellemelerini optimize etmek için yardımcı fonksiyon
+  const shouldUpdateState = (currentValue: any, newValue: any) => {
+    if (JSON.stringify(currentValue) !== JSON.stringify(newValue)) {
+      return true;
+    }
+    return false;
+  };
+
+  // Ekran tekrar focus olduğunda rota koordinatlarını geri yükle - OPTIMIZE EDİLDİ
+  useFocusEffect(
+    useCallback(() => {
+      const restoreRouteCoordinates = async () => {
+        try {
+          // Sadece gerçekten ihtiyaç varsa restore et
+          const currentTime = Date.now();
+          const lastRestoreTime = await AsyncStorage.getItem('lastRouteRestoreTime');
+          const RESTORE_COOLDOWN = 2000; // 2 saniye cooldown
+          
+          // Eğer çok yakın zamanda restore edildiyse, tekrar etme
+          if (lastRestoreTime && (currentTime - parseInt(lastRestoreTime)) < RESTORE_COOLDOWN) {
+            console.log('⏭️ Rota restore atlandı - çok yakın zamanda restore edilmiş');
+            return;
+          }
+          
+          // Önce aktif sipariş rotasını dene
+          const savedActiveOrderRouteData = await AsyncStorage.getItem('savedRouteCoordinates');
+          if (savedActiveOrderRouteData) {
+            const routeData = JSON.parse(savedActiveOrderRouteData);
+            
+            // Eğer kayıtlı rota varsa ve aktif sipariş varsa
+            if (routeData.coordinates && routeData.coordinates.length > 0 && reduxCurrentOrder) {
+              // Sipariş ID'si eşleşiyorsa rota koordinatlarını geri yükle
+              if (routeData.orderId === reduxCurrentOrder.id) {
+                // Eğer state'ler zaten doluysa, tekrar yükleme
+                if (!activeOrderRouteCoordinates || activeOrderRouteCoordinates.length === 0) {
+                  setActiveOrderRouteCoordinates(routeData.coordinates);
+                  setActiveOrderPickupCoords(routeData.pickupCoords);
+                  setActiveOrderDestinationCoords(routeData.destinationCoords);
+                  console.log('📍 Aktif sipariş rota koordinatları geri yüklendi');
+                  
+                  // Haritayı rotaya odakla (kısa gecikmeyle)
+                  setTimeout(() => {
+                    if (routeData.pickupCoords && routeData.destinationCoords) {
+                      animateToShowBothPoints(mapRef, bottomSheetHeight, routeData.pickupCoords, routeData.destinationCoords);
+                    }
+                  }, 500);
+                }
+              } else {
+                // Farklı sipariş ID'si varsa eski veriyi temizle
+                await AsyncStorage.removeItem('savedRouteCoordinates');
+              }
+            }
+          }
+          
+          // Aktif sipariş yoksa yeni sipariş rotasını kontrol et
+          if (!reduxCurrentOrder) {
+            const savedNewOrderRouteData = await AsyncStorage.getItem('savedNewOrderRouteCoordinates');
+            if (savedNewOrderRouteData) {
+              const routeData = JSON.parse(savedNewOrderRouteData);
+              
+              // Eğer kayıtlı yeni sipariş rota varsa ve state'ler boşsa
+              if (routeData.coordinates && routeData.coordinates.length > 0 && 
+                  routeData.pickupCoords && routeData.destinationCoords) {
+                
+                // Sadece state'ler boşsa geri yükle
+                if (!routeCoordinates || routeCoordinates.length === 0) {
+                  // State'leri geri yükle
+                  setRouteCoordinates(routeData.coordinates);
+                  setPickupCoords(routeData.pickupCoords);
+                  setDestinationCoords(routeData.destinationCoords);
+                  
+                  // Form adreslerini de geri yükle
+                  if (routeData.pickupAddress) {
+                    setPickupLocation(routeData.pickupAddress);
+                  }
+                  if (routeData.destinationAddress) {
+                    setDestinationLocation(routeData.destinationAddress);
+                  }
+                  
+                  console.log('📍 Yeni sipariş rota koordinatları geri yüklendi');
+                  
+                  // Haritayı rotaya odakla (kısa gecikmeyle)
+                  setTimeout(() => {
+                    if (routeData.pickupCoords && routeData.destinationCoords) {
+                      animateToShowBothPoints(mapRef, bottomSheetHeight, routeData.pickupCoords, routeData.destinationCoords);
+                    }
+                  }, 500);
+                }
+              }
+            }
+          }
+          
+          // Başarılı restore sonrası zaman damgasını kaydet
+          await AsyncStorage.setItem('lastRouteRestoreTime', currentTime.toString());
+          
+        } catch (error) {
+          console.error('Rota geri yükleme hatası:', error);
+        }
+      };
+      
+      restoreRouteCoordinates();
+    }, [reduxCurrentOrder, mapRef, bottomSheetHeight, activeOrderRouteCoordinates, routeCoordinates])
+  );
+
+  // Sipariş tamamlandığında veya iptal edildiğinde rota verisini temizle
+  useEffect(() => {
+    if (reduxCurrentOrder && reduxCurrentOrder.status && ['completed', 'cancelled'].includes(reduxCurrentOrder.status)) {
+      // Sipariş tamamlandı veya iptal edildi, rota verisini temizle
+      AsyncStorage.removeItem('savedRouteCoordinates').catch(error => {
+        console.error('Rota verisi temizleme hatası:', error);
+      });
+    }
+  }, [reduxCurrentOrder?.status]);
+
+  // Yeni sipariş oluşturulduğunda rota verisini temizle
+  useEffect(() => {
+    if (reduxCurrentOrder && reduxCurrentOrder.id) {
+      // Yeni sipariş oluşturuldu, eski yeni sipariş rotasını temizle
+      AsyncStorage.removeItem('savedNewOrderRouteCoordinates').catch(error => {
+        console.error('Yeni sipariş rota verisi temizleme hatası:', error);
+      });
+    }
+  }, [reduxCurrentOrder?.id]);
+
+  // Form sıfırlandığında yeni sipariş rotasını temizle
+  useEffect(() => {
+    if (!pickupCoords && !destinationCoords && !reduxCurrentOrder) {
+      // Form tamamen sıfırlandı, yeni sipariş rotasını temizle
+      AsyncStorage.removeItem('savedNewOrderRouteCoordinates').catch(error => {
+        console.error('Yeni sipariş rota verisi temizleme hatası:', error);
+      });
+    }
+  }, [pickupCoords, destinationCoords, reduxCurrentOrder]);
 
   // Modal state değişikliklerini takip et
   useEffect(() => {
@@ -1823,18 +2008,24 @@ function HomeScreen() {
         const coordinates = decodePolyline(route.overview_polyline.points);
 
         setActiveOrderRouteCoordinates(coordinates);
+        setActiveOrderPickupCoords(origin);
+        setActiveOrderDestinationCoords(destination);
         
         return coordinates;
       } else {
         // Active Order Directions API error
         // Hata durumunda kuş bakışı rotaya geri dön
         setActiveOrderRouteCoordinates([origin, destination]);
+        setActiveOrderPickupCoords(origin);
+        setActiveOrderDestinationCoords(destination);
         return [origin, destination];
       }
     } catch (error) {
       // Active Order Directions API fetch error
       // Hata durumunda kuş bakışı rotaya geri dön
       setActiveOrderRouteCoordinates([origin, destination]);
+      setActiveOrderPickupCoords(origin);
+      setActiveOrderDestinationCoords(destination);
       return [origin, destination];
     }
   }, []);
@@ -1866,8 +2057,8 @@ function HomeScreen() {
       }
     } else {
       // Aktif sipariş pending veya inspecting durumundaysa rotayı temizleme
-      const hasActiveOrderWithRoute = reduxCurrentOrder && 
-        ['pending', 'inspecting'].includes(reduxCurrentOrder.status || '');
+      const hasActiveOrderWithRoute = reduxCurrentOrder && reduxCurrentOrder.status &&
+        ['pending', 'inspecting'].includes(reduxCurrentOrder.status);
       
       if (!hasActiveOrderWithRoute) {
         setDistance(null);
@@ -1908,6 +2099,13 @@ function HomeScreen() {
     } else if (!reduxCurrentOrder) {
       // Aktif sipariş yoksa aktif sipariş rotasını temizle
       setActiveOrderRouteCoordinates([]);
+      setActiveOrderPickupCoords(null);
+      setActiveOrderDestinationCoords(null);
+      
+      // AsyncStorage'daki rota verisini de temizle
+      AsyncStorage.removeItem('savedRouteCoordinates').catch(error => {
+        console.error('Rota verisi temizleme hatası:', error);
+      });
     }
   }, [reduxCurrentOrder, getActiveOrderDirectionsRoute, animateToShowBothPoints, userInteractedWithMap]);
   
@@ -2107,21 +2305,36 @@ function HomeScreen() {
     console.log('🔍 DEBUG: mapRef.current exists:', !!mapRef.current);
     console.log('🔍 DEBUG: destinationCoords exists:', !!destinationCoords);
     
-    if (mapRef.current) {
-      // Eğer destination da varsa, her iki noktayı göster
-      if (destinationCoords) {
-        console.log('🔍 DEBUG: Animating to show both points');
-        animateToShowBothPoints(mapRef, bottomSheetHeight, coords, destinationCoords);
+    // Harita odaklamasını geciktirerek yap - mapRef ve bottomSheet'in hazır olmasını bekle
+    setTimeout(() => {
+      console.log('🔍 DEBUG: setTimeout triggered for pickup location');
+      console.log('🔍 DEBUG: mapRef.current:', !!mapRef.current);
+      console.log('🔍 DEBUG: userInteractedWithMap:', userInteractedWithMap);
+      console.log('🔍 DEBUG: bottomSheetHeight type:', typeof bottomSheetHeight);
+      console.log('🔍 DEBUG: bottomSheetHeight value:', bottomSheetHeight);
+      
+      if (mapRef.current) {
+        // Kullanıcı etkileşim bayrağını sıfırla ki otomatik odaklama çalışsın
+        setUserInteractedWithMap(false);
+        
+        // BottomSheet height değerini güvenli şekilde al
+        const safeBottomSheetHeight = bottomSheetHeight?._value || bottomSheetHeight || 400;
+        console.log('🔍 DEBUG: safeBottomSheetHeight:', safeBottomSheetHeight);
+        
+        // Eğer destination da varsa, her iki noktayı göster
+        if (destinationCoords) {
+          console.log('🔍 DEBUG: Animating to show both points');
+          animateToShowBothPoints(mapRef, safeBottomSheetHeight, coords, destinationCoords);
+        } else {
+          // Sadece pickup noktasını göster
+          console.log('🔍 DEBUG: Animating to pickup location only');
+          animateToRegionWithOffset(mapRef, safeBottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+        }
       } else {
-        // Sadece pickup noktasını göster
-        console.log('🔍 DEBUG: Animating to pickup location only');
-        console.log('🔍 DEBUG: bottomSheetHeight value:', (bottomSheetHeight as any)._value);
-        animateToRegionWithOffset(mapRef, bottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+        console.error('🚨 ERROR: mapRef.current is null, cannot animate to region');
       }
-    } else {
-      console.error('🚨 ERROR: mapRef.current is null, cannot animate to region');
-    }
-  }, [destinationCoords, animateToShowBothPoints, animateToRegionWithOffset]);
+    }, 300); // 300ms gecikme ile çalıştır
+   }, [destinationCoords, animateToShowBothPoints, animateToRegionWithOffset, bottomSheetHeight, setUserInteractedWithMap]);
 
   const handleDestinationLocationSelect = useCallback((location: any) => {
     const coords = {
@@ -2143,16 +2356,36 @@ function HomeScreen() {
     
     setLocationModalVisible(true);
     
-    if (mapRef.current) {
-      // Eğer pickup da varsa, her iki noktayı göster
-      if (pickupCoords) {
-        animateToShowBothPoints(mapRef, bottomSheetHeight, pickupCoords, coords);
+    // Harita odaklamasını geciktirerek yap - mapRef ve bottomSheet'in hazır olmasını bekle
+    setTimeout(() => {
+      console.log('🔍 DEBUG: setTimeout triggered for destination location');
+      console.log('🔍 DEBUG: mapRef.current:', !!mapRef.current);
+      console.log('🔍 DEBUG: userInteractedWithMap:', userInteractedWithMap);
+      console.log('🔍 DEBUG: bottomSheetHeight type:', typeof bottomSheetHeight);
+      console.log('🔍 DEBUG: bottomSheetHeight value:', bottomSheetHeight);
+      
+      if (mapRef.current) {
+        // Kullanıcı etkileşim bayrağını sıfırla ki otomatik odaklama çalışsın
+        setUserInteractedWithMap(false);
+        
+        // BottomSheet height değerini güvenli şekilde al
+        const safeBottomSheetHeight = bottomSheetHeight?._value || bottomSheetHeight || 400;
+        console.log('🔍 DEBUG: safeBottomSheetHeight:', safeBottomSheetHeight);
+        
+        // Eğer pickup da varsa, her iki noktayı göster
+        if (pickupCoords) {
+          console.log('🔍 DEBUG: Animating to show both points');
+          animateToShowBothPoints(mapRef, safeBottomSheetHeight, pickupCoords, coords);
+        } else {
+          // Sadece destination noktasını göster
+          console.log('🔍 DEBUG: Animating to destination location only');
+          animateToRegionWithOffset(mapRef, safeBottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+        }
       } else {
-        // Sadece destination noktasını göster
-        animateToRegionWithOffset(mapRef, bottomSheetHeight, location.coordinates.latitude, location.coordinates.longitude, 0.008, 0.006);
+        console.error('🚨 ERROR: mapRef.current is null, cannot animate to region');
       }
-    }
-  }, [pickupCoords, animateToShowBothPoints, animateToRegionWithOffset]);
+    }, 300); // 300ms gecikme ile çalıştır
+  }, [pickupCoords, animateToShowBothPoints, animateToRegionWithOffset, bottomSheetHeight, setUserInteractedWithMap, userInteractedWithMap]);
 
   const [showImagePickerModal, setShowImagePickerModal] = useState(false);
 
@@ -2175,144 +2408,61 @@ function HomeScreen() {
     }
   }, [distance, selectedVehicleType, selectedCargoType, calculatePrice]);
 
-  // Koordinat objelerini optimize et
-  const activeOrderPickupCoords = useMemo(() => {
-    if (!reduxCurrentOrder?.pickupLatitude || !reduxCurrentOrder?.pickupLongitude) return null;
-    return {
-      latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
-      longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
-    };
-  }, [reduxCurrentOrder?.pickupLatitude, reduxCurrentOrder?.pickupLongitude]);
+  // Koordinat objelerini optimize et - State olarak kullanıldığı için useMemo kaldırıldı
 
-  const activeOrderDestinationCoords = useMemo(() => {
-    if (!reduxCurrentOrder?.destinationLatitude || !reduxCurrentOrder?.destinationLongitude) return null;
-    return {
-      latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
-      longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
-    };
-  }, [reduxCurrentOrder?.destinationLatitude, reduxCurrentOrder?.destinationLongitude]);
+  // Redux'tan gelen koordinatları state'e senkronize et
+  useEffect(() => {
+    if (reduxCurrentOrder?.pickupLatitude && reduxCurrentOrder?.pickupLongitude) {
+      setActiveOrderPickupCoords({
+        latitude: typeof reduxCurrentOrder.pickupLatitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLatitude) : reduxCurrentOrder.pickupLatitude,
+        longitude: typeof reduxCurrentOrder.pickupLongitude === 'string' ? parseFloat(reduxCurrentOrder.pickupLongitude) : reduxCurrentOrder.pickupLongitude
+      });
+    } else {
+      setActiveOrderPickupCoords(null);
+    }
+
+    if (reduxCurrentOrder?.destinationLatitude && reduxCurrentOrder?.destinationLongitude) {
+      setActiveOrderDestinationCoords({
+        latitude: typeof reduxCurrentOrder.destinationLatitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLatitude) : reduxCurrentOrder.destinationLatitude,
+        longitude: typeof reduxCurrentOrder.destinationLongitude === 'string' ? parseFloat(reduxCurrentOrder.destinationLongitude) : reduxCurrentOrder.destinationLongitude
+      });
+    } else {
+      setActiveOrderDestinationCoords(null);
+    }
+  }, [reduxCurrentOrder?.pickupLatitude, reduxCurrentOrder?.pickupLongitude, reduxCurrentOrder?.destinationLatitude, reduxCurrentOrder?.destinationLongitude]);
+
+  // Harita componenti için memoized render - performans için optimize edildi
+   const renderMapView = useCallback(() => {
+     return (
+       <MapViewComponent
+         mapRef={mapRef}
+         isLocationLoading={isLocationLoading}
+         userLocation={userLocation}
+         bottomSheetHeight={bottomSheetHeight}
+         screenHeight={screenHeight}
+         safeDrivers={safeDrivers}
+         reduxCurrentOrder={reduxCurrentOrder}
+         activeOrderPickupCoords={activeOrderPickupCoords}
+         activeOrderDestinationCoords={activeOrderDestinationCoords}
+         pickupCoords={pickupCoords}
+         destinationCoords={destinationCoords}
+         activeOrderRouteCoordinates={activeOrderRouteCoordinates}
+         routeCoordinates={routeCoordinates}
+         keyboardVisible={keyboardVisible}
+         lastRouteUpdate={lastRouteUpdate}
+         setUserInteractedWithMap={setUserInteractedWithMap}
+       />
+     );
+   }, [isLocationLoading, userLocation, bottomSheetHeight, screenHeight, safeDrivers, reduxCurrentOrder, 
+        activeOrderPickupCoords, activeOrderDestinationCoords, pickupCoords, destinationCoords, 
+        activeOrderRouteCoordinates, routeCoordinates, keyboardVisible, lastRouteUpdate]);
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
       
       <View style={styles.fullMapContainer}>
-          {(() => {
-             if (isLocationLoading) {
-               return (
-                 <View style={styles.loadingContainer}>
-                   <ActivityIndicator size="large" color="#FFD700" />
-                   <Text style={styles.loadingText}>Konum alınıyor...</Text>
-                 </View>
-               );
-             } else {
-               return (
-                 <MapView
-                    ref={mapRef}
-                    provider={Platform.OS === 'ios' ? PROVIDER_DEFAULT : PROVIDER_GOOGLE}
-                    style={[styles.fullMap, { marginBottom: screenHeight - (bottomSheetHeight as any)._value }]}
-                   initialRegion={{
-                     latitude: (userLocation?.coords.latitude || 41.0082) - 0.002,
-                     longitude: userLocation?.coords.longitude || 28.9784,
-                     latitudeDelta: 0.008,
-                     longitudeDelta: 0.006,
-                   }}
-                 showsUserLocation={true}
-                 showsMyLocationButton={true}
-                 followsUserLocation={false}
-                 userLocationPriority="high"
-                 userLocationUpdateInterval={5000}
-                 userLocationAnnotationTitle="Konumunuz"
-                 showsTraffic={true}
-                 zoomEnabled={true}
-                 scrollEnabled={true}
-                 pitchEnabled={true}
-                 rotateEnabled={true}
-                 onPress={() => {
-                   if (keyboardVisible) {
-                     Keyboard.dismiss();
-                   }
-                 }}
-                 onMapReady={() => {
-                     // Harita hazır
-                   }}
-                 onRegionChangeComplete={() => {
-                   // Kullanıcı haritayı manuel olarak hareket ettirdi
-                   const timeSinceLastUpdate = Date.now() - lastRouteUpdate;
-                   if (timeSinceLastUpdate > 200) { // Otomatik animasyonlardan ayırt etmek için
-                     setUserInteractedWithMap(true);
-                   }
-                 }}
-               >
-                 {safeDrivers.map((driver) => (
-                   <DriverMarker key={driver.id} driver={driver} />
-                 ))}
-                 
-                 {/* Aktif sipariş marker'ları - inspecting durumunda da göster */}
-                 {reduxCurrentOrder && (
-                   <>
-                     {/* Pickup marker - reduxCurrentOrder veya pickupCoords'dan al */}
-                     {((activeOrderPickupCoords) || 
-                       (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && pickupCoords)) && (
-                       <PickupMarker 
-                         coords={activeOrderPickupCoords || pickupCoords!}
-                         estimatedPrice={reduxCurrentOrder.estimatedPrice}
-                         distance={reduxCurrentOrder.distance}
-                       />
-                     )}
-                     
-                     {/* Destination marker - reduxCurrentOrder veya destinationCoords'dan al */}
-                     {((activeOrderDestinationCoords) || 
-                       (['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && destinationCoords)) && (
-                       <DestinationMarker 
-                         coords={activeOrderDestinationCoords || destinationCoords!}
-                         estimatedPrice={reduxCurrentOrder.estimatedPrice}
-                         distance={reduxCurrentOrder.distance}
-                       />
-                     )}
-                   </>
-                 )}
-                 
-                 {/* Yeni sipariş oluştururken marker'lar - sadece aktif sipariş yoksa göster */}
-                 {!reduxCurrentOrder && pickupCoords && (
-                   <PickupMarker 
-                       coords={pickupCoords} 
-                       estimatedPrice={estimatedPrice || undefined}
-                       distance={distance || undefined}
-                     />
-                 )}
-                 
-                 {!reduxCurrentOrder && destinationCoords && (
-                   <DestinationMarker 
-                       coords={destinationCoords} 
-                       estimatedPrice={estimatedPrice || undefined}
-                       distance={distance || undefined}
-                     />
-                 )}
-                 
-                 {/* Aktif sipariş rotası - Google Directions API ile gerçek yol rotası */}
-                 {reduxCurrentOrder && activeOrderRouteCoordinates.length > 0 && (
-                   <Polyline
-                     coordinates={activeOrderRouteCoordinates}
-                     strokeColor="#10B981"
-                     strokeWidth={6}
-                   />
-                 )}
-                 
-                 {/* Yeni sipariş rotası veya inspecting durumunda rota */}
-                 {((reduxCurrentOrder && ['pending', 'inspecting'].includes(reduxCurrentOrder.status || '') && routeCoordinates.length > 0) || 
-                   (!reduxCurrentOrder && routeCoordinates.length > 0)) && (
-                   <Polyline
-                     coordinates={routeCoordinates}
-                     strokeColor="#FFD700"
-                     strokeWidth={8}
-                   />
-                 )}
-               </MapView>
-               );
-             }
-           })()
-          }
+        {renderMapView()}
       </View>
 
       <TouchableOpacity
@@ -2777,12 +2927,12 @@ function HomeScreen() {
           setPriceConfirmationModalVisible(false);
           setPriceConfirmationData(null);
         }}
-        orderId={priceConfirmationData?.orderId || 0}
-        finalPrice={priceConfirmationData?.finalPrice || 0}
-        laborCount={priceConfirmationData?.laborCount || 1}
-        estimatedPrice={priceConfirmationData?.estimatedPrice || 0}
-        priceDifference={priceConfirmationData?.priceDifference || 0}
-        timeout={priceConfirmationData?.timeout || 60000}
+        orderId={priceConfirmationData?.orderId ?? 0}
+        finalPrice={priceConfirmationData?.finalPrice ?? 0}
+        laborCount={priceConfirmationData?.laborCount ?? 1}
+        estimatedPrice={priceConfirmationData?.estimatedPrice ?? 0}
+        priceDifference={priceConfirmationData?.priceDifference ?? 0}
+        timeout={priceConfirmationData?.timeout ?? 60000}
         onAccept={() => {
           // Fiyat onayını socket üzerinden gönder
           if (priceConfirmationData?.orderId) {

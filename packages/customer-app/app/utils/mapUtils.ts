@@ -41,7 +41,7 @@ export const animateToRegionWithOffset = (
     latitudeDelta,
     longitudeDelta,
     mapRefExists: !!mapRef.current,
-    bottomSheetHeight: (bottomSheetHeight as any)._value
+    bottomSheetHeight: bottomSheetHeight
   });
   
   if (!mapRef.current) {
@@ -49,7 +49,8 @@ export const animateToRegionWithOffset = (
     return;
   }
   
-  const currentBottomSheetHeight = (bottomSheetHeight as any)._value;
+  // BottomSheet height değerini güvenli şekilde al
+  const currentBottomSheetHeight = bottomSheetHeight?._value || bottomSheetHeight || 400;
   const screenHeight = Dimensions.get('window').height;
   const offsetRatio = (currentBottomSheetHeight / 2) / screenHeight;
   const latitudeOffset = latitudeDelta * offsetRatio * 0.8;
@@ -109,7 +110,8 @@ export const animateToShowBothPoints = (
   const centerLat = (minLat + maxLat) / 2;
   const centerLng = (minLng + maxLng) / 2;
   
-  const currentBottomSheetHeight = (bottomSheetHeight as any)._value;
+  // BottomSheet height değerini güvenli şekilde al
+  const currentBottomSheetHeight = bottomSheetHeight?._value || bottomSheetHeight || 400;
   const screenHeight = Dimensions.get('window').height;
   const offsetRatio = (currentBottomSheetHeight / 2) / screenHeight;
   
