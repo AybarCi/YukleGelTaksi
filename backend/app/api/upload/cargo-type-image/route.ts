@@ -44,11 +44,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Upload klasörünü oluştur - public klasörü değil, app/api/files altında
-    const uploadDir = path.join(process.cwd(), 'app', 'api', 'files', 'cargo-type-photos');
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
-    }
+    // Upload klasörünü oluştur - public klasörü kullan
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'cargo-types');
+    await mkdir(uploadDir, { recursive: true });
 
     // Dosya adını oluştur (timestamp + original name)
     const timestamp = Date.now();
@@ -62,17 +60,14 @@ export async function POST(request: NextRequest) {
     await writeFile(filePath, buffer);
 
     // URL path'i oluştur - yeni yapıya göre
-    const imageUrl = `/api/files/cargo-type-photos/${fileName}`;
+    const imageUrl = `/uploads/cargo-types/${fileName}`;
 
     return NextResponse.json({
       success: true,
-      message: 'Fotoğraf başarıyla yüklendi',
-      data: {
-        imageUrl,
-        fileName,
-        fileSize: file.size,
-        fileType: file.type
-      }
+      imageUrl,
+      fileName,
+      fileSize: file.size,
+      fileType: file.type
     });
 
   } catch (error) {
