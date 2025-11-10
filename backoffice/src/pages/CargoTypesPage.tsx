@@ -208,66 +208,61 @@ const CargoTypesPage: React.FC = () => {
       sort_order: 0,
       labor_count: 0
     });
-    setImagePreview('');
-    setError('');
+    setImagePreview(null);
+    setSelectedFile(null);
+    setError(null);
+  };
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const uploadImage = async (): Promise<string | null> => {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/*';
+    if (!selectedFile || !token) {
+      setError('Lütfen bir resim seçin ve oturumunuzun açık olduğundan emin olun.');
+      return null;
+    }
+
+    setUploadingImage(true);
     
-    return new Promise((resolve) => {
-      fileInput.onchange = async (event) => {
-        const file = (event.target as HTMLInputElement).files?.[0];
-        if (!file) {
-          resolve(null);
-          return;
-        }
+    try {
+      const formData = new FormData();
+      formData.append('image', selectedFile);
 
-        if (!token) {
-          setError('Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.');
-          resolve(null);
-          return;
-        }
-
-        setUploadingImage(true);
-        
-        try {
-          const formData = new FormData();
-          formData.append('image', file);
-
-          const response = await axios.post(
-            `${API_CONFIG.BASE_URL}/upload/cargo-type-image`,
-            formData,
-            { 
-              headers: { 
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'multipart/form-data'
-              } 
-            }
-          );
-
-          if (response.data.success) {
-            const imageUrl = response.data.data.imageUrl;
-            setFormData(prev => ({ ...prev, image_url: imageUrl }));
-            setImagePreview(getImageUrl(imageUrl));
-            resolve(imageUrl);
-          } else {
-            setError(response.data.error || 'Fotoğraf yüklenirken hata oluştu');
-            resolve(null);
+      const response = await axios.post(
+        `${API_CONFIG.BASE_URL}/upload/cargo-type-image`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
           }
-        } catch (error: any) {
-          console.error('Image upload error:', error);
-          setError(error.response?.data?.error || 'Fotoğraf yüklenirken hata oluştu');
-          resolve(null);
-        } finally {
-          setUploadingImage(false);
         }
-      };
-      
-      fileInput.click();
-    });
+      );
+
+      if (response.data.success) {
+        return response.data.imageUrl;
+      } else {
+        setError(response.data.error || 'Fotoğraf yüklenirken hata oluştu');
+        return null;
+      }
+    } catch (error: any) {
+      console.error('Image upload error:', error);
+      setError(error.response?.data?.error || 'Fotoğraf yüklenirken hata oluştu');
+      return null;
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -282,23 +277,28 @@ const CargoTypesPage: React.FC = () => {
     }
 
     try {
-      setLoading(true);
+      setSubmitting(true);
       setError(null);
 
-      // image_url'yi temizle (base64 veri varsa)
-      const cleanImageUrl = formData.image_url && formData.image_url.startsWith('data:') ? '' : formData.image_url;
+      let imageUrl = formData.image_url;
+      
+      // Yeni dosya seçildiyse önce upload et
+      if (selectedFile) {
+        const uploadedUrl = await uploadImage();
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+        } else {
+          return; // Upload başarısızsa işlemi durdur
+        }
+      }
 
-      const payload = {
-        name: formData.name,
-        description: formData.description,
-        image_url: cleanImageUrl,
-        is_active: formData.is_active,
-        sort_order: formData.sort_order,
-        labor_count: formData.labor_count
+      const submitData = {
+        ...formData,
+        image_url: imageUrl
       };
 
       if (dialogMode === 'edit') {
-        (payload as any).id = formData.id;
+        (submitData as any).id = formData.id;
       }
 
       const url = dialogMode === 'create' 
@@ -313,7 +313,7 @@ const CargoTypesPage: React.FC = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(submitData)
       });
 
       if (!response.ok) {
@@ -327,7 +327,7 @@ const CargoTypesPage: React.FC = () => {
       console.error('İşlem hatası:', error);
       setError(error.response?.data?.error || 'İşlem sırasında bir hata oluştu');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -557,40 +557,7 @@ const CargoTypesPage: React.FC = () => {
                 style={{ display: 'none' }}
                 id="icon-button-file"
                 type="file"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file && token) {
-                    setUploadingImage(true);
-                    try {
-                      const formData = new FormData();
-                      formData.append('image', file);
-
-                      const response = await axios.post(
-                        `${API_CONFIG.BASE_URL}/upload/cargo-type-image`,
-                        formData,
-                        { 
-                          headers: { 
-                            Authorization: `Bearer ${token}`,
-                            'Content-Type': 'multipart/form-data'
-                          } 
-                        }
-                      );
-
-                      if (response.data.success) {
-                        const imageUrl = response.data.data.imageUrl;
-                        setFormData(prev => ({ ...prev, image_url: imageUrl }));
-                        setImagePreview(getImageUrl(imageUrl));
-                      } else {
-                        setError(response.data.error || 'Fotoğraf yüklenirken hata oluştu');
-                      }
-                    } catch (error: any) {
-                      console.error('Image upload error:', error);
-                      setError(error.response?.data?.error || 'Fotoğraf yüklenirken hata oluştu');
-                    } finally {
-                      setUploadingImage(false);
-                    }
-                  }
-                }}
+                onChange={handleImageSelect}
               />
               <label htmlFor="icon-button-file">
                 <Button
@@ -600,7 +567,7 @@ const CargoTypesPage: React.FC = () => {
                   disabled={uploadingImage}
                   fullWidth
                 >
-                  {uploadingImage ? 'Fotoğraf Yükleniyor...' : 'Fotoğraf Yükle'}
+                  {uploadingImage ? 'Fotoğraf Yükleniyor...' : 'Fotoğraf Seç'}
                 </Button>
               </label>
               
