@@ -107,6 +107,7 @@ const VehicleTypesPage: React.FC = () => {
       });
       
       if (response.data.success) {
+        console.log('Vehicle types data:', response.data.data);
         setVehicleTypes(response.data.data);
         setFilteredVehicleTypes(response.data.data);
       } else {
@@ -454,6 +455,11 @@ const VehicleTypesPage: React.FC = () => {
                               objectFit: 'cover',
                               borderRadius: '8px',
                               border: '1px solid #ddd'
+                            }}
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              console.log('Image failed to load:', vehicleType.image_url, 'Final URL:', getImageUrl(vehicleType.image_url));
+                              target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMiAyMEMzNi40MTgzIDMwIDE2IDM2IDE2IDQ0QzE2IDQ4IDQ4IDQ4IDQ4IDQ0QzQ4IDM2IDI3LjU4MTcgMzAgMzIgMjBaIiBmaWxsPSIjOUI5QjlCIi8+CjxwYXRoIGQ9Ik0zMiAyMEMzMiAxNiAzNiAxMiA0MCAxMkM0NCAxMiA0OCAxNiA0OCAyMEM0OCAyNCA0NCAyOCA0MCAyOEMzNiAyOCAzMiAyNCAzMiAyMFoiIGZpbGw9IiM5QjlCOUIiLz4KPC9zdmc+Cg==';
                             }}
                           />
                         ) : (
