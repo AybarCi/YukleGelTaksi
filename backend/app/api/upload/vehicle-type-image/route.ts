@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Upload klasörünü oluştur
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'vehicle-type-photos');
+    // Upload klasörünü oluştur - public klasörü değil, app/api/files altında
+    const uploadDir = path.join(process.cwd(), 'app', 'api', 'files', 'vehicle-type-photos');
     if (!existsSync(uploadDir)) {
       await mkdir(uploadDir, { recursive: true });
     }
@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
 
-    // URL path'i oluştur
-    const imageUrl = `/uploads/vehicle-type-photos/${fileName}`;
+    // URL path'i oluştur - yeni yapıya göre
+    const imageUrl = `/api/files/vehicle-type-photos/${fileName}`;
 
     return NextResponse.json({
       success: true,

@@ -37,11 +37,13 @@ export const getImageUrl = (imageUrl: string | null | undefined): string => {
     return imageUrl;
   }
   
-  // /uploads/ ile başlayan yollar için doğrudan backend URL'sine ekle
+  // /uploads/ ile başlayan yollar için yeni yapıya göre çevir
   if (imageUrl.startsWith('/uploads/')) {
+    // /uploads/vehicle-type-photos/... -> /api/files/vehicle-type-photos/...
+    // /uploads/cargo-type-photos/... -> /api/files/cargo-type-photos/...
+    const newPath = imageUrl.replace('/uploads/', '/api/files/');
     const url = new URL(API_CONFIG.FILES_URL);
-    // Production'da dosyalar doğrudan /public/uploads/ altında sunuluyor
-    return `${url.origin}${imageUrl}`;
+    return `${url.origin}${newPath}`;
   }
   
   // For driver photos and other files served via /api/files/

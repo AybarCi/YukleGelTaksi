@@ -174,4 +174,25 @@ export const API_CONFIG = {
   TIMEOUT: 10000,
 };
 
+// Image URL helper fonksiyonu
+export const getImageUrl = (imageUrl: string | null | undefined): string => {
+  if (!imageUrl) return '';
+  
+  // If it's already a full URL, return as is
+  if (imageUrl.startsWith('http')) {
+    return imageUrl;
+  }
+  
+  // /uploads/ ile başlayan yollar için yeni yapıya göre çevir
+  if (imageUrl.startsWith('/uploads/')) {
+    // /uploads/vehicle-type-photos/... -> /api/files/vehicle-type-photos/...
+    // /uploads/cargo-type-photos/... -> /api/files/cargo-type-photos/...
+    const newPath = imageUrl.replace('/uploads/', '/api/files/');
+    return `${ENV_CONFIG.BASE_URL}${newPath}`;
+  }
+  
+  // For other files served via /api/files/
+  return `${ENV_CONFIG.FILES_URL}/${imageUrl}`;
+};
+
 export default ENV_CONFIG;
