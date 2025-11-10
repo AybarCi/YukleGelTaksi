@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { authenticateToken } from '../../../../middleware/auth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { filename: string } }
+  { params }: { params: { filename: string[] } }
 ) {
   try {
-    let { filename } = params;
+    let filename = params.filename.join('/');
     
     // Eğer filename uploads/ ile başlıyorsa, klasör yapısını koru
     if (filename.startsWith('uploads/')) {
@@ -23,38 +24,38 @@ export async function GET(
       );
     }
 
-    // Eğer filename klasör yapısı içeriyorsa (örn: vehicle-type-photos/image.png)
-    let filePath = join(process.cwd(), 'public', 'uploads', filename);
-    
-    // Dosya public/uploads altında yoksa, ana uploads klasöründe dene
-    if (!existsSync(filePath)) {
-      filePath = join(process.cwd(), 'uploads', filename);
-    }
+    // Yeni yapı: app/api/files altında doğrudan klasörler
+    let filePath = join(process.cwd(), 'app', 'api', 'files', filename);
     
     // Hala bulunamadıysa, sadece dosya adıyla klasik klasörlerde dene
     if (!existsSync(filePath)) {
       // Sadece dosya adını al
       const fileNameOnly = filename.split('/').pop() || filename;
       
-      // cargo-type-photos klasöründe dene
-      const cargoTypePath = join(process.cwd(), 'public', 'uploads', 'cargo-type-photos', fileNameOnly);
-      if (existsSync(cargoTypePath)) {
-        filePath = cargoTypePath;
+      // vehicle-type-photos klasöründe dene (yeni yapı)
+      const vehicleTypePath = join(process.cwd(), 'app', 'api', 'files', 'vehicle-type-photos', fileNameOnly);
+      if (existsSync(vehicleTypePath)) {
+        filePath = vehicleTypePath;
       } else {
-        // vehicle-type-photos klasöründe dene
-        const vehicleTypePath = join(process.cwd(), 'public', 'uploads', 'vehicle-type-photos', fileNameOnly);
-        if (existsSync(vehicleTypePath)) {
-          filePath = vehicleTypePath;
+        // cargo-type-photos klasöründe dene (yeni yapı)
+        const cargoTypePath = join(process.cwd(), 'app', 'api', 'files', 'cargo-type-photos', fileNameOnly);
+        if (existsSync(cargoTypePath)) {
+          filePath = cargoTypePath;
         } else {
-          // cargo-photos klasöründe dene (eski dosyalar için)
-          const cargoPath = join(process.cwd(), 'public', 'uploads', 'cargo-photos', fileNameOnly);
-          if (existsSync(cargoPath)) {
-            filePath = cargoPath;
+          // Eski yapı için geriye dönük uyumluluk
+          const oldPublicPath = join(process.cwd(), 'public', 'uploads', filename);
+          if (existsSync(oldPublicPath)) {
+            filePath = oldPublicPath;
           } else {
-            // Ana uploads klasöründe dene
-            const mainUploadsPath = join(process.cwd(), 'uploads', fileNameOnly);
-            if (existsSync(mainUploadsPath)) {
-              filePath = mainUploadsPath;
+            // Eski klasik klasörlerde dene
+            const oldVehicleTypePath = join(process.cwd(), 'public', 'uploads', 'vehicle-type-photos', fileNameOnly);
+            if (existsSync(oldVehicleTypePath)) {
+              filePath = oldVehicleTypePath;
+            } else {
+              const oldCargoTypePath = join(process.cwd(), 'public', 'uploads', 'cargo-type-photos', fileNameOnly);
+              if (existsSync(oldCargoTypePath)) {
+                filePath = oldCargoTypePath;
+              }
             }
           }
         }
