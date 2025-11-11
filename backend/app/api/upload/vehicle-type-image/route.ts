@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.formData();
-    const file = data.get('image') as File | null;
+    const file = data.get('image') as File;
     
     if (!file) {
       return NextResponse.json({ error: 'Resim dosyası gerekli' }, { status: 400 });
