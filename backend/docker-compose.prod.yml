@@ -6,10 +6,10 @@ services:
     container_name: yuklegeltaksi-backend
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3001:3000"
     environment:
       - NODE_ENV=production
-      - PORT=3001
+      - PORT=3000
       - DB_SERVER=172.17.0.5
       - DB_DATABASE=yuklegeltaksidb
       - DB_USER=sa
@@ -41,7 +41,7 @@ services:
     networks:
       - yuklegeltaksi-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
