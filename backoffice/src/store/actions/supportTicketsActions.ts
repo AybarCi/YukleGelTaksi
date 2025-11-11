@@ -1,4 +1,5 @@
 import { API_CONFIG } from '../../config/api';
+import axios from 'axios';
 import {
   SUPPORT_TICKETS_FETCH_REQUEST,
   SUPPORT_TICKETS_FETCH_SUCCESS,
@@ -72,18 +73,8 @@ export const fetchSupportTickets = (ticketType?: 'driver' | 'customer' | 'all') 
       // Authorization is handled by axios interceptors, no need for manual token handling
       // Eğer belirli bir ticket tipi isteniyorsa, sadece onu getir
       if (ticketType === 'driver') {
-        const driverResponse = await fetch(`${API_CONFIG.BASE_URL}/admin/support-tickets`, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-
-        if (!driverResponse.ok) {
-          throw new Error('Sürücü destek talepleri alınamadı');
-        }
-
-        const driverData = await driverResponse.json();
+        const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/support-tickets`);
+        const driverData = response.data;
 
         dispatch(supportTicketsFetchSuccess(
           driverData.tickets || [],
@@ -92,18 +83,8 @@ export const fetchSupportTickets = (ticketType?: 'driver' | 'customer' | 'all') 
           0
         ));
       } else if (ticketType === 'customer') {
-        const customerResponse = await fetch(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-
-        if (!customerResponse.ok) {
-          throw new Error('Müşteri destek talepleri alınamadı');
-        }
-
-        const customerData = await customerResponse.json();
+        const response = await axios.get(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`);
+        const customerData = response.data;
 
         dispatch(supportTicketsFetchSuccess(
           [],
@@ -114,26 +95,12 @@ export const fetchSupportTickets = (ticketType?: 'driver' | 'customer' | 'all') 
       } else {
         // Hepsi isteniyorsa (varsayılan)
         const [driverResponse, customerResponse] = await Promise.all([
-          fetch(`${API_CONFIG.BASE_URL}/admin/support-tickets`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-          }),
-          fetch(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            },
-          }),
+          axios.get(`${API_CONFIG.BASE_URL}/admin/support-tickets`),
+          axios.get(`${API_CONFIG.BASE_URL}/admin/customer-support-tickets`),
         ]);
 
-        if (!driverResponse.ok || !customerResponse.ok) {
-          throw new Error('Destek talepleri alınamadı');
-        }
-
-        const driverData = await driverResponse.json();
-        const customerData = await customerResponse.json();
+        const driverData = driverResponse.data;
+        const customerData = customerResponse.data;
 
         dispatch(supportTicketsFetchSuccess(
           driverData.tickets || [],
@@ -143,7 +110,8 @@ export const fetchSupportTickets = (ticketType?: 'driver' | 'customer' | 'all') 
         ));
       }
     } catch (error: any) {
-      dispatch(supportTicketsFetchFailure(error.message || 'Destek talepleri alınırken bir hata oluştu'));
+      const errorMessage = error.response?.data?.error || error.message || 'Destek talepleri alınırken bir hata oluştu';
+      dispatch(supportTicketsFetchFailure(errorMessage));
     }
   };
 };
@@ -158,20 +126,8 @@ export const updateSupportTicket = (ticketId: number, updateData: any, ticketTyp
         ? `/admin/support-tickets/${ticketId}`
         : `/admin/customer-support-tickets/${ticketId}`;
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Destek talebi güncellenemedi');
-      }
-
-      const result = await response.json();
+      const response = await axios.put(`${API_CONFIG.BASE_URL}${endpoint}`, updateData);
+      const result = response.data;
       
       // Refresh tickets after update
       dispatch(fetchSupportTickets());
@@ -180,7 +136,8 @@ export const updateSupportTicket = (ticketId: number, updateData: any, ticketTyp
 
       return result;
     } catch (error: any) {
-      dispatch(supportTicketsUpdateFailure(error.message || 'Destek talebi güncellenirken bir hata oluştu'));
+      const errorMessage = error.response?.data?.error || error.message || 'Destek talebi güncellenirken bir hata oluştu';
+      dispatch(supportTicketsUpdateFailure(errorMessage));
       throw error;
     }
   };
