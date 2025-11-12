@@ -2358,12 +2358,6 @@ function HomeScreen() {
     
     // Harita odaklamasını geciktirerek yap - mapRef ve bottomSheet'in hazır olmasını bekle
     setTimeout(() => {
-      console.log('🔍 DEBUG: setTimeout triggered for destination location');
-      console.log('🔍 DEBUG: mapRef.current:', !!mapRef.current);
-      console.log('🔍 DEBUG: userInteractedWithMap:', userInteractedWithMap);
-      console.log('🔍 DEBUG: bottomSheetHeight type:', typeof bottomSheetHeight);
-      console.log('🔍 DEBUG: bottomSheetHeight value:', bottomSheetHeight);
-      
       if (mapRef.current) {
         // Kullanıcı etkileşim bayrağını sıfırla ki otomatik odaklama çalışsın
         setUserInteractedWithMap(false);
