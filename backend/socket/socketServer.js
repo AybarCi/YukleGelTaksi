@@ -17,14 +17,23 @@ class SocketServer extends EventEmitter {
     
     this.io = new SocketIOServer(server, {
       cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
+        origin: function(origin, callback) {
+          console.log('🌐 CORS origin check:', origin);
+          // Tüm origin'leri kabul et (geçici olarak)
+          callback(null, true);
+        },
+        methods: ["GET", "POST"],
+        credentials: true,
+        allowedHeaders: ["*"]
       },
       pingTimeout: 60000, // 60 saniye
       pingInterval: 25000, // 25 saniye
       transports: ['websocket', 'polling'],
       allowEIO3: true,
-      connectTimeout: 45000 // 45 saniye
+      connectTimeout: 45000, // 45 saniye
+      serveClient: false, // Client serving'i devre dışı bırak
+      path: '/socket.io/', // Path'i açıkça belirt
+      upgradeTimeout: 30000 // WebSocket upgrade timeout'u artır
     });
     
     this.connectedDrivers = new Map(); // driverId -> { socketId, location, isAvailable }
@@ -316,11 +325,35 @@ class SocketServer extends EventEmitter {
   setupSocketHandlers() {
     this.io.use(this.authenticateSocket.bind(this));
 
+    // Connection error handler
+    this.io.on('connect_error', (error) => {
+      console.error('❌ Socket.IO connection error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        type: error.type,
+        description: error.description,
+        context: error.context
+      });
+    });
+
+    // Engine error handler
+    this.io.engine.on('connection_error', (error) => {
+      console.error('❌ Socket.IO engine connection error:', error);
+      console.error('Engine error details:', {
+        code: error.code,
+        message: error.message,
+        context: error.context
+      });
+    });
+
     this.io.on('connection', async (socket) => {
       const startTime = Date.now();
       
-      console.log(`Socket connected: ${socket.id}`);
+      console.log(`✅ Socket connected successfully: ${socket.id}`);
       console.log(`User type: ${socket.userType}, User ID: ${socket.userId}`);
+      console.log(`Connection headers:`, socket.handshake.headers);
+      console.log(`Connection query:`, socket.handshake.query);
+      console.log(`Connection auth:`, socket.handshake.auth ? 'present' : 'missing');
       
       // Connection event tracking
       this.eventMonitor.trackEvent('socket_connection', {
@@ -371,18 +404,30 @@ class SocketServer extends EventEmitter {
       const token = socket.handshake.auth.token;
       const refreshToken = socket.handshake.auth.refreshToken;
       
+      console.log('🔐 Socket authentication attempt - Token:', token ? 'present' : 'missing');
+      console.log('🔐 Socket authentication attempt - Refresh token:', refreshToken ? 'present' : 'missing');
+      console.log('🔐 JWT_SECRET status:', process.env.JWT_SECRET ? 'configured' : 'missing');
+      console.log('🔐 JWT_SECRET value preview:', process.env.JWT_SECRET ? process.env.JWT_SECRET.substring(0, 10) + '...' : 'missing');
+      
       if (!token) {
+        console.log('❌ Authentication failed: No token provided');
         return next(new Error('Authentication error: No token provided'));
       }
 
       try {
         // İlk olarak mevcut token'ı doğrula
+        console.log('🔐 Attempting JWT verification...');
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        console.log('✅ JWT verification successful, user type:', decoded.supervisorId ? 'supervisor' : 'other');
+        console.log('✅ Decoded payload:', decoded);
         
         // Supervisor token için özel handling
         if (decoded.supervisorId) {
           socket.userId = decoded.supervisorId;
           socket.userType = 'supervisor';
+          // Supervisor kullanıcısını monitoring room'a ekle
+          socket.join('supervisor_monitoring');
+          console.log(`👔 Supervisor ${socket.userId} joined monitoring room`);
         } else {
           socket.userId = decoded.userId;
           socket.userType = decoded.userType || 'customer';
@@ -404,6 +449,7 @@ class SocketServer extends EventEmitter {
         next();
       } catch (tokenError) {
         // Token süresi dolmuşsa refresh token ile yenile
+        console.log('JWT verification failed:', tokenError.name, tokenError.message);
         if (tokenError.name === 'TokenExpiredError' && refreshToken) {
           console.log('Token expired, attempting refresh for socket connection');
           

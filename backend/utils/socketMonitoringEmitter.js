@@ -14,20 +14,20 @@ class SocketMonitoringEmitter {
 
     this.lastEmitTime = now;
 
-    // Tüm admin/backoffice kullanıcılarına gönder
-    this.socketServer.io.emit('monitoring_update', {
+    // Sadece supervisor kullanıcılarına gönder
+    this.socketServer.io.to('supervisor_monitoring').emit('monitoring_update', {
       timestamp: new Date().toISOString(),
       ...data
     });
 
-    console.log('📊 Monitoring update emitted:', Object.keys(data));
+    console.log('📊 Monitoring update emitted to supervisor_monitoring room:', Object.keys(data));
   }
 
   // Error alert emit et
   emitErrorAlert(error, context = {}) {
     if (!this.socketServer || !this.socketServer.io) return;
 
-    this.socketServer.io.emit('error_alert', {
+    this.socketServer.io.to('supervisor_monitoring').emit('error_alert', {
       timestamp: new Date().toISOString(),
       message: error.message || error,
       type: 'error',
@@ -35,7 +35,7 @@ class SocketMonitoringEmitter {
       severity: 'high'
     });
 
-    console.log('🚨 Error alert emitted:', error.message || error);
+    console.log('🚨 Error alert emitted to supervisor_monitoring room:', error.message || error);
   }
 
   // Performance alert emit et
@@ -60,7 +60,7 @@ class SocketMonitoringEmitter {
   emitConnectionUpdate(type, count, change = 0) {
     if (!this.socketServer || !this.socketServer.io) return;
 
-    this.socketServer.io.emit('connection_update', {
+    this.socketServer.io.to('supervisor_monitoring').emit('connection_update', {
       timestamp: new Date().toISOString(),
       type, // 'drivers' or 'customers'
       count,
@@ -68,7 +68,7 @@ class SocketMonitoringEmitter {
       message: `${type} connection count: ${count} (${change >= 0 ? '+' : ''}${change})`
     });
 
-    console.log('🔗 Connection update emitted:', type, count, change);
+    console.log('🔗 Connection update emitted to supervisor_monitoring room:', type, count, change);
   }
 
   // Event frequency alert emit et
