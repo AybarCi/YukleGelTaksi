@@ -17,7 +17,8 @@ class RedisConnection {
     }
 
     // Redis connection configuration
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    const redisUrl = process.env.REDIS_URL || 
+      `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}`;
 
     this.client = createClient({
       url: redisUrl,

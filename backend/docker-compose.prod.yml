@@ -6,10 +6,10 @@ services:
     container_name: yuklegeltaksi-backend
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "3003:3003"
     environment:
       - NODE_ENV=production
-      - PORT=3000
+      - PORT=3003
       - DB_SERVER=172.17.0.5
       - DB_DATABASE=yuklegeltaksidb
       - DB_USER=sa
@@ -25,7 +25,7 @@ services:
       - DB_POOL_ACQUIRE_TIMEOUT=60000
       - JWT_SECRET=YukleGelTaksi2024SecretKey!@#$%^&*()_+{}|:<>?[]\\;'\",./-=`~
       - REDIS_HOST=yuklegeltaksi-redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6380
       - REDIS_PASSWORD=
       - VATAN_SMS_API_ID=e922a5b11aae40dd84928621
       - VATAN_SMS_API_KEY=bcc4701b87c2490ea4bf1a80
@@ -41,24 +41,25 @@ services:
     networks:
       - yuklegeltaksi-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  redis:
+  yuklegeltaksi-redis:
     image: redis:7-alpine
     container_name: yuklegeltaksi-redis
     restart: unless-stopped
+    command: redis-server --port 6380
     ports:
-      - "6380:6379"
+      - "6380:6380"
     volumes:
       - redis-data:/data
     networks:
       - yuklegeltaksi-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3

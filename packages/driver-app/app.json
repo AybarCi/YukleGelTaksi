@@ -43,8 +43,8 @@
     },
     "extra": {
       "API_HOST": "192.168.1.13",
-      "API_PORT": 3000,
-      "SOCKET_PORT": 3000,
+      "API_PORT": 3001,
+      "SOCKET_PORT": 3001,
       "NODE_ENV": "development",
       "PROD_SOCKET_URL": "https://yuklegeltaksiapi.istekbilisim.com",
         "PROD_API_URL": "https://yuklegeltaksiapi.istekbilisim.com"
