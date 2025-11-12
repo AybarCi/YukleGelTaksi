@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 import DatabaseConnection from '../../../../config/database';
 
+// CORS headers for supervisor endpoints
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Credentials': 'true',
+};
+
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Authenticate supervisor
@@ -121,13 +136,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: dashboardData
+    }, {
+      headers: corsHeaders
     });
 
   } catch (error) {
     console.error('Dashboard API error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: corsHeaders
+      }
     );
   }
 }
