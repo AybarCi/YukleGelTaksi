@@ -176,34 +176,50 @@ const MonitoringPage: React.FC = () => {
     // Socket URL'sini düzelt - /api kısmını çıkar
     const socketUrl = API_CONFIG.SOCKET_URL;
     console.log('Connecting to socket:', socketUrl);
-    console.log('Using supervisor token for socket connection');
+    console.log('Using supervisor token for socket connection:', token ? 'Token mevcut' : 'Token yok');
+    console.log('Token preview:', token ? token.substring(0, 20) + '...' : 'No token');
     
-    const newSocket = io(socketUrl, {
+    console.log('🔄 Socket connection attempt with URL:', socketUrl);
+    console.log('🔄 Socket auth data:', { 
+      token: token ? 'present' : 'missing', 
+      refreshToken: localStorage.getItem('supervisor_token') ? 'present' : 'missing' 
+    });
+    console.log('🔄 Full connection config:', {
+      url: socketUrl,
       transports: ['websocket', 'polling'],
+      withCredentials: true,
+      timeout: 20000,
+      forceNew: true
+    });
+
+    const newSocket = io(socketUrl, {
+      transports: ['websocket', 'polling'], // WebSocket'e düşerse polling'e geçsin
       timeout: 20000,
       forceNew: true,
+      withCredentials: true, // CORS için credentials
       auth: {
-        token: token
+        token: token,
+        refreshToken: localStorage.getItem('supervisor_token') // refresh token'ı da gönder
       }
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket.IO connected');
+      console.log('✅ Socket.IO connected successfully');
       dispatch(setConnectionStatus(true));
     });
 
     newSocket.on('disconnect', () => {
-      console.log('Socket.IO disconnected');
+      console.log('❌ Socket.IO disconnected');
       dispatch(setConnectionStatus(false));
     });
 
-    newSocket.on('monitoringData', (data) => {
-      console.log('Real-time monitoring data received:', data);
+    newSocket.on('monitoring_update', (data) => {
+      console.log('📊 Real-time monitoring update received:', data);
       dispatch(updateMonitoringData(data));
     });
 
     newSocket.on('connection_update', (data) => {
-      console.log('Connection update received:', data);
+      console.log('🔗 Connection update received:', data);
       if (monitoringData) {
         const updatedData = {
           ...monitoringData,
@@ -217,12 +233,18 @@ const MonitoringPage: React.FC = () => {
     });
 
     newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      console.error('❌ Socket connection error:', error);
+      console.error('Error details:', error.message);
       dispatch(setConnectionStatus(false));
     });
 
     newSocket.on('error', (error) => {
-      console.error('Socket error:', error);
+      console.error('❌ Socket error:', error);
+    });
+
+    // Debug için tüm event'leri dinle
+    newSocket.onAny((eventName, ...args) => {
+      console.log(`📡 Socket event received: ${eventName}`, args);
     });
 
     return () => {
