@@ -232,7 +232,7 @@ const MonitoringPage: React.FC = () => {
   }, [token, dispatch, monitoringData]);
 
   useEffect(() => {
-    let interval: number | undefined;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (autoRefresh) {
       interval = setInterval(() => {
         fetchMonitoringDataCallback();
