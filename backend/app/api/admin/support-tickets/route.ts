@@ -15,6 +15,18 @@ interface ApiResponse {
   tickets?: any[];
 }
 
+// OPTIONS - CORS preflight istekleri için
+export async function OPTIONS() {
+  return new Response(null, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400'
+    }
+  });
+}
+
 // GET - Get all support tickets for admin
 export async function GET(request: Request): Promise<Response> {
   try {
@@ -25,7 +37,12 @@ export async function GET(request: Request): Promise<Response> {
       const response: ApiResponse = { error: authResult.message || 'Admin yetkilendirmesi gerekli' };
       return new Response(JSON.stringify(response), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
       });
     }
 
@@ -63,7 +80,12 @@ export async function GET(request: Request): Promise<Response> {
 
       return new Response(JSON.stringify(response), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
       });
 
     } catch (dbError: any) {
@@ -71,7 +93,12 @@ export async function GET(request: Request): Promise<Response> {
       const response: ApiResponse = { error: 'Veritabanı hatası' };
       return new Response(JSON.stringify(response), {
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
       });
     }
 
@@ -95,7 +122,12 @@ export async function PUT(request: Request): Promise<Response> {
       const response: ApiResponse = { error: authResult.message || 'Admin yetkilendirmesi gerekli' };
       return new Response(JSON.stringify(response), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
       });
     }
 

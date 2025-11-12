@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import DatabaseConnection from '../../../../../config/database';
 import { authenticateSupervisorToken } from '../../../../../middleware/supervisorAuth';
 
+// OPTIONS - Handle CORS preflight requests
+export async function OPTIONS() {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+}
+
 interface UpdateSupportTicketRequest {
   status?: string;
   admin_response?: string;
@@ -24,7 +35,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     if (!authResult.success || !authResult.supervisor) {
       return NextResponse.json(
         { error: authResult.message || 'Admin yetkilendirmesi gerekli' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -33,7 +51,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     if (!ticketId || isNaN(Number(ticketId))) {
       return NextResponse.json(
         { error: 'Geçersiz destek talebi ID' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -69,20 +94,40 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       if (result.recordset.length === 0) {
         return NextResponse.json(
           { error: 'Destek talebi bulunamadı' },
-          { status: 404 }
+          { 
+            status: 404,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            }
+          }
         );
       }
 
       return NextResponse.json({
         success: true,
         ticket: result.recordset[0]
+      }, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
       });
 
     } catch (dbError: any) {
       console.error('Database error:', dbError);
       return NextResponse.json(
         { error: 'Veritabanı hatası' },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -90,7 +135,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     console.error('Admin support ticket GET error:', error);
     return NextResponse.json(
       { error: 'Sunucu hatası' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
+      }
     );
   }
 }
@@ -104,7 +156,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (!authResult.success || !authResult.supervisor) {
       return NextResponse.json(
         { error: authResult.message || 'Admin yetkilendirmesi gerekli' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -113,7 +172,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (!ticketId || isNaN(Number(ticketId))) {
       return NextResponse.json(
         { error: 'Geçersiz destek talebi ID' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -123,7 +189,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (!status && !admin_response && !priority) {
       return NextResponse.json(
         { error: 'Güncellenecek alan belirtilmedi' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -139,7 +212,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       if (checkResult.recordset.length === 0) {
         return NextResponse.json(
           { error: 'Destek talebi bulunamadı' },
-          { status: 404 }
+          { 
+            status: 404,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            }
+          }
         );
       }
 
@@ -202,13 +282,26 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         success: true,
         message: 'Destek talebi başarıyla güncellendi',
         ticket: updatedResult.recordset[0]
+      }, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
       });
 
     } catch (dbError: any) {
       console.error('Database error:', dbError);
       return NextResponse.json(
         { error: 'Veritabanı hatası' },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -216,7 +309,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     console.error('Admin support ticket PUT error:', error);
     return NextResponse.json(
       { error: 'Sunucu hatası' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
+      }
     );
   }
 }
@@ -230,7 +330,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     if (!authResult.success || !authResult.supervisor) {
       return NextResponse.json(
         { error: authResult.message || 'Admin yetkilendirmesi gerekli' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -239,7 +346,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     if (!ticketId || isNaN(Number(ticketId))) {
       return NextResponse.json(
         { error: 'Geçersiz destek talebi ID' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -255,7 +369,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       if (checkResult.recordset.length === 0) {
         return NextResponse.json(
           { error: 'Destek talebi bulunamadı' },
-          { status: 404 }
+          { 
+            status: 404,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            }
+          }
         );
       }
 
@@ -267,13 +388,26 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({
         success: true,
         message: 'Destek talebi başarıyla silindi'
+      }, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
       });
 
     } catch (dbError: any) {
       console.error('Database error:', dbError);
       return NextResponse.json(
         { error: 'Veritabanı hatası' },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       );
     }
 
@@ -281,7 +415,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     console.error('Admin support ticket DELETE error:', error);
     return NextResponse.json(
       { error: 'Sunucu hatası' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
+      }
     );
   }
 }

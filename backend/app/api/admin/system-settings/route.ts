@@ -6,6 +6,18 @@ import { authenticateSupervisorToken } from '../../../../middleware/supervisorAu
 import { validateRequest } from '../../../../middleware/validation';
 import SystemSettingsService from '../../../../services/systemSettingsService';
 
+// OPTIONS - CORS preflight istekleri için
+export async function OPTIONS() {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400'
+    }
+  });
+}
+
 // GET - Tüm sistem ayarlarını getir
 export async function GET(request: NextRequest) {
   try {

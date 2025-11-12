@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import DatabaseConnection from '../../../../config/database';
 import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 
+// OPTIONS - CORS preflight istekleri için
+export async function OPTIONS() {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400'
+    }
+  });
+}
+
 interface CustomerSupportTicket {
   id: number;
   user_id: number;
@@ -25,10 +37,17 @@ export async function GET(request: NextRequest) {
     // Token doğrulama
     const authResult = await authenticateSupervisorToken(request);
     if (!authResult.success) {
-      return NextResponse.json(
+      const authErrorResponse = NextResponse.json(
         { success: false, error: authResult.message },
         { status: 401 }
       );
+      
+      // CORS headers ekle
+      authErrorResponse.headers.set('Access-Control-Allow-Origin', '*');
+      authErrorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+      authErrorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return authErrorResponse;
     }
 
     const db = DatabaseConnection.getInstance();
@@ -50,18 +69,32 @@ export async function GET(request: NextRequest) {
     const result = await pool.request().query(query);
     const tickets = result.recordset;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       tickets: tickets,
       total: tickets.length
     });
+    
+    // CORS headers ekle
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return response;
 
   } catch (error: any) {
     console.error('Müşteri destek talepleri getirme hatası:', error);
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       { success: false, error: 'Müşteri destek talepleri alınamadı' },
       { status: 500 }
     );
+    
+    // CORS headers ekle
+    errorResponse.headers.set('Access-Control-Allow-Origin', '*');
+    errorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+    errorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    return errorResponse;
   }
 }
 
@@ -71,20 +104,34 @@ export async function PUT(request: NextRequest) {
     // Token doğrulama
     const authResult = await authenticateSupervisorToken(request);
     if (!authResult.success) {
-      return NextResponse.json(
+      const authErrorResponse = NextResponse.json(
         { success: false, error: authResult.message },
         { status: 401 }
       );
+      
+      // CORS headers ekle
+      authErrorResponse.headers.set('Access-Control-Allow-Origin', '*');
+      authErrorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+      authErrorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return authErrorResponse;
     }
 
     const body = await request.json();
     const { ticket_ids, action, data } = body;
 
     if (!ticket_ids || !Array.isArray(ticket_ids) || ticket_ids.length === 0) {
-      return NextResponse.json(
+      const validationErrorResponse = NextResponse.json(
         { success: false, error: 'Geçerli ticket ID\'leri gerekli' },
         { status: 400 }
       );
+      
+      // CORS headers ekle
+      validationErrorResponse.headers.set('Access-Control-Allow-Origin', '*');
+      validationErrorResponse.headers.set('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+      validationErrorResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      return validationErrorResponse;
     }
 
     if (!action) {

@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import DatabaseConnection from '../../../../config/database';
 import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 
+// OPTIONS - CORS preflight istekleri için
+export async function OPTIONS() {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    }
+  });
+}
+
 // GET - Tüm yük tiplerini getir (Admin için)
 export async function GET(request: NextRequest) {
   // Supervisor token doğrulaması
@@ -9,7 +20,14 @@ export async function GET(request: NextRequest) {
   if (!authResult.success) {
     return NextResponse.json(
       { success: false, error: authResult.message },
-      { status: 401 }
+      { 
+        status: 401,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
+      }
     );
   }
 
@@ -27,6 +45,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: result.recordset
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
     });
   } catch (error) {
     console.error('Cargo types fetch error:', error);
@@ -45,7 +69,14 @@ export async function POST(request: NextRequest) {
     if (!authResult.success) {
       return NextResponse.json(
         { success: false, error: 'Yetkisiz erişim' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          }
+        }
       );
     }
 

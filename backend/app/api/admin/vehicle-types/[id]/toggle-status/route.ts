@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import DatabaseConnection from '../../../../../../config/database';
 import { authenticateSupervisorToken } from '../../../../../../middleware/supervisorAuth';
 
+// OPTIONS - CORS preflight istekleri için
+export async function OPTIONS() {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400'
+    }
+  });
+}
+
 // PUT - Araç tipi aktif/pasif durumunu değiştir (Admin için)
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {

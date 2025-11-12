@@ -3,6 +3,18 @@ import sql, { Transaction } from 'mssql';
 import DatabaseConnection from '../../../../config/database';
 import { authenticateSupervisorToken } from '../../../../middleware/supervisorAuth';
 
+// OPTIONS - CORS preflight istekleri için
+export async function OPTIONS() {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400'
+    }
+  });
+}
+
 interface CancellationFee {
   id: number;
   order_status: string;
