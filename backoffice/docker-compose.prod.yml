@@ -17,6 +17,7 @@ services:
       - ./logs:/var/log/nginx
     networks:
       - yuklegeltaksi-backoffice-network
+      - yuklegeltaksi-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -37,5 +38,7 @@ services:
 networks:
   yuklegeltaksi-backoffice-network:
     driver: bridge
+  yuklegeltaksi-network:
+    external: false
 
 # No volumes needed for backoffice-only setup
