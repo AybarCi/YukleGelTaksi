@@ -11,12 +11,12 @@ services:
       - NODE_ENV=production
       - REACT_APP_API_URL=https://yuklegeltaksiapi.istekbilisim.com
       - REACT_APP_BACKEND_URL=https://yuklegeltaksiapi.istekbilisim.com
-      - REACT_APP_SOCKET_URL=https://yuklegeltaksiapi.istekbilisim.com
+      - REACT_APP_SOCKET_URL=wss://yuklegeltaksiapi.istekbilisim.com
       - REACT_APP_ENVIRONMENT=production
     volumes:
       - ./logs:/var/log/nginx
     networks:
-      - yuklegeltaksi-backoffice-network      
+      - yuklegeltaksi-backoffice-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -37,7 +37,5 @@ services:
 networks:
   yuklegeltaksi-backoffice-network:
     driver: bridge
-  yuklegeltaksi-network:
-    external: false
 
 # No volumes needed for backoffice-only setup
