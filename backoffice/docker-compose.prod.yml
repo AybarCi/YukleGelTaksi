@@ -9,15 +9,14 @@ services:
       - "3004:80"
     environment:
       - NODE_ENV=production
-      - REACT_APP_API_URL=http://yuklegeltaksi-backend:3003
-      - REACT_APP_BACKEND_URL=http://yuklegeltaksi-backend:3003
-      - REACT_APP_SOCKET_URL=ws://yuklegeltaksi-backend:3003
+      - REACT_APP_API_URL=https://yuklegeltaksiapi.istekbilisim.com
+      - REACT_APP_BACKEND_URL=https://yuklegeltaksiapi.istekbilisim.com
+      - REACT_APP_SOCKET_URL=https://yuklegeltaksiapi.istekbilisim.com
       - REACT_APP_ENVIRONMENT=production
     volumes:
       - ./logs:/var/log/nginx
     networks:
-      - yuklegeltaksi-backoffice-network
-      - yuklegeltaksi-network
+      - yuklegeltaksi-backoffice-network      
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
