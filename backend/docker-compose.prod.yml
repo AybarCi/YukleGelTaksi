@@ -67,6 +67,7 @@ services:
 networks:
   yuklegeltaksi-network:
     driver: bridge
+    # Network configuration updated for container communication
 
 volumes:
   redis-data:
