@@ -19,38 +19,21 @@ class SocketServer extends EventEmitter {
       cors: {
         origin: function(origin, callback) {
           console.log('🌐 CORS origin check:', origin);
-          // Production ortamında güvenli CORS konfigürasyonu
-          const allowedOrigins = [
-            'https://yuklegeltaksiapi.istekbilisim.com',
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'http://localhost:3002',
-            'http://localhost:3003',
-            'http://localhost:3004'
-          ];
-          
-          if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-          } else {
-            console.log('❌ CORS rejected for origin:', origin);
-            callback(new Error('CORS policy violation'));
-          }
+          // Tüm origin'leri kabul et (geçici olarak)
+          callback(null, true);
         },
         methods: ["GET", "POST"],
         credentials: true,
-        allowedHeaders: ["Authorization", "Content-Type", "X-Requested-With"]
+        allowedHeaders: ["*"]
       },
-      pingTimeout: 20000, // 20 saniye - container için optimize
-      pingInterval: 10000, // 10 saniye - daha sık ping
+      pingTimeout: 60000, // 60 saniye
+      pingInterval: 25000, // 25 saniye
       transports: ['websocket', 'polling'],
       allowEIO3: true,
-      connectTimeout: 15000, // 15 saniye - daha agresif timeout
+      connectTimeout: 45000, // 45 saniye
       serveClient: false, // Client serving'i devre dışı bırak
       path: '/socket.io/', // Path'i açıkça belirt
-      upgradeTimeout: 10000, // WebSocket upgrade timeout - 10 saniye
-      // Container ortamı için ek ayarlar
-      perMessageDeflate: false, // Sıkıştırmayı devre dışı bırak - performans için
-      httpCompression: false // HTTP sıkıştırmasını devre dışı bırak
+      upgradeTimeout: 30000 // WebSocket upgrade timeout'u artır
     });
     
     this.connectedDrivers = new Map(); // driverId -> { socketId, location, isAvailable }
@@ -60,27 +43,27 @@ class SocketServer extends EventEmitter {
     this.orderCountdownTimers = new Map(); // orderId -> timeout timer
     this.orderCountdownIntervals = new Map(); // orderId -> countdown interval
 
-    // Memory management - container için optimize edilmiş
+    // Memory management
     this.memoryManager = new MemoryManager();
     
-    // Event monitoring - container için optimize edilmiş
+    // Event monitoring
     this.eventMonitor = new EventMonitor();
     
-    // Monitoring emitter - container için optimize edilmiş
+    // Monitoring emitter
     this.monitoringEmitter = new SocketMonitoringEmitter(this);
 
     this.setupSocketHandlers();
     
-    // Memory cleanup - daha uzun interval (10 dakika)
-    this.memoryManager.startMemoryCleanup(this, 600000); // 10 dakika
+    // Memory cleanup başlat
+    this.memoryManager.startMemoryCleanup(this, 300000); // 5 dakika
     
-    // Event monitoring - daha düşük frequency
+    // Event monitoring başlat
     this.eventMonitor.startMonitoring();
     
-    // Real-time monitoring data emission - optimize edilmiş
+    // Real-time monitoring data emission başlat
     this.startMonitoringEmission();
     
-    // Periyodik oda temizliği - daha uzun interval (15 dakika)
+    // 🚀 OPTIMIZASYON: Periyodik oda temizliği başlat (her 5 dakikada bir)
     this.startPeriodicRoomValidation();
     
     console.log('🚀 Socket.IO server initialized with memory management and event monitoring');
