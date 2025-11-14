@@ -70,7 +70,7 @@ services:
     networks:
       - yuklegeltaksi-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
       interval: 60s  # Daha uzun interval - container stabilizasyonu için
       timeout: 15s  # Daha uzun timeout - socket bağlantıları için
       retries: 5   # Daha fazla retry - container başlangıcı için
