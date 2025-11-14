@@ -66,10 +66,13 @@ RUN addgroup -g 1001 -S nodejs \
 COPY package*.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci && npm cache clean --force
 
 # Copy application code
 COPY . .
+
+# Build the Next.js application
+RUN npm run build
 
 # Database configuration is handled by environment variables in config/database.js
 
