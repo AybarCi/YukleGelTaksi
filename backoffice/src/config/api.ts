@@ -4,19 +4,27 @@ const getEnvVar = (key: string, defaultValue: string = ''): string => {
 };
 
 const getBaseUrl = (): string => {
-  // Environment değişkeninden al, yoksa default olarak internal IP kullan
-  return getEnvVar('API_URL', 'http://172.17.0.13:3003/api');
+  // Environment değişkeninden al, yoksa hata ver
+  const apiUrl = getEnvVar('API_URL');
+  if (!apiUrl) {
+    throw new Error('REACT_APP_API_URL environment değişkeni tanımlı değil! Docker Compose dosyasında REACT_APP_API_URL=... şeklinde tanımlanmalı.');
+  }
+  return apiUrl;
 };
 
 const getFilesUrl = (): string => {
-  // Environment değişkeninden al, yoksa default olarak internal IP kullan
-  const baseUrl = getEnvVar('API_URL', 'http://172.17.0.13:3003/api');
+  // Environment değişkeninden al, BASE_URL ile aynı base'i kullan
+  const baseUrl = getBaseUrl();
   return `${baseUrl}/files`;
 };
 
 const getSocketUrl = (): string => {
-  // Environment değişkeninden al, yoksa default olarak internal IP kullan
-  return getEnvVar('SOCKET_URL', 'ws://172.17.0.13:3003');
+  // Environment değişkeninden al, yoksa hata ver
+  const socketUrl = getEnvVar('SOCKET_URL');
+  if (!socketUrl) {
+    throw new Error('REACT_APP_SOCKET_URL environment değişkeni tanımlı değil!');
+  }
+  return socketUrl;
 };
 
 const getGoogleMapsApiKey = (): string => {

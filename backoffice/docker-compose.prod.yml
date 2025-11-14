@@ -9,9 +9,9 @@ services:
       - "3004:80"
     environment:
       - NODE_ENV=production
-      - REACT_APP_API_URL=http://172.17.0.13:3003
-      - REACT_APP_BACKEND_URL=http://172.17.0.13:3003
-      - REACT_APP_SOCKET_URL=ws://172.17.0.13:3003
+      - REACT_APP_API_URL=https://yuklegeltaksiapi.istekbilisim.com/api
+      - REACT_APP_BACKEND_URL=https://yuklegeltaksiapi.istekbilisim.com
+      - REACT_APP_SOCKET_URL=wss://yuklegeltaksiapi.istekbilisim.com
       - REACT_APP_ENVIRONMENT=production
     volumes:
       - ./logs:/var/log/nginx
