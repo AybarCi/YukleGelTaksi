@@ -7,6 +7,7 @@ const PRODUCTION_ORIGINS = [
   'https://www.yuklegeltaksi.com',
   'https://yuklegeltaksiapi.istekbilisim.com',
   'https://deneme.istekbilisim.com',
+  'https://yuklegeltaksi.istekbilisim.com',
 ];
 
 const DEVELOPMENT_ORIGINS = [

@@ -35,6 +35,7 @@ export function middleware(request: NextRequest) {
       'https://www.yuklegeltaksi.com',
       'https://yuklegeltaksiapi.istekbilisim.com',
       'https://deneme.istekbilisim.com',
+      'https://yuklegeltaksi.istekbilisim.com',
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
