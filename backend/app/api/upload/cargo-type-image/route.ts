@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
-    const file = (formData as any).get('image') as File;
+    const file = formData.get('image') as File | null;
     
     if (!file) {
       return NextResponse.json(
