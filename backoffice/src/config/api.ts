@@ -4,18 +4,19 @@ const getEnvVar = (key: string, defaultValue: string = ''): string => {
 };
 
 const getBaseUrl = (): string => {
-  // Her iki ortamda da yuklegeltaksiapi.istekbilisim.com kullan
-  return 'https://yuklegeltaksiapi.istekbilisim.com/api';
+  // Environment değişkeninden al, yoksa default olarak internal IP kullan
+  return getEnvVar('API_URL', 'http://172.17.0.13:3003/api');
 };
 
 const getFilesUrl = (): string => {
-  // Her iki ortamda da yuklegeltaksiapi.istekbilisim.com kullan
-  return 'https://yuklegeltaksiapi.istekbilisim.com/api/files';
+  // Environment değişkeninden al, yoksa default olarak internal IP kullan
+  const baseUrl = getEnvVar('API_URL', 'http://172.17.0.13:3003/api');
+  return `${baseUrl}/files`;
 };
 
 const getSocketUrl = (): string => {
-  // Her iki ortamda da yuklegeltaksiapi.istekbilisim.com kullan (wss protokolü ile)
-  return 'wss://yuklegeltaksiapi.istekbilisim.com';
+  // Environment değişkeninden al, yoksa default olarak internal IP kullan
+  return getEnvVar('SOCKET_URL', 'ws://172.17.0.13:3003');
 };
 
 const getGoogleMapsApiKey = (): string => {
