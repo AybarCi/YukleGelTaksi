@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import DatabaseConnection from '../../../../../config/database';
+import { setCorsHeaders } from '../../../../../middleware/cors';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 export async function POST(request: NextRequest) {
   try {
+    const origin = request.headers.get('origin');
     const { username, password } = await request.json();
 
     if (!username || !password) {
@@ -103,12 +105,8 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    // Add CORS headers
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    
-    return response;
+    // Add CORS headers using the new function
+    return setCorsHeaders(response, origin);
 
   } catch (error) {
     console.error('Supervisor login error:', error);
@@ -127,13 +125,8 @@ export async function POST(request: NextRequest) {
 }
 
 // OPTIONS method for CORS
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const response = new NextResponse(null, { status: 200 });
+  return setCorsHeaders(response, origin);
 }

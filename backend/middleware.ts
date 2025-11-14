@@ -33,6 +33,8 @@ export function middleware(request: NextRequest) {
       'https://backoffice.yuklegeltaksi.com',
       'https://yuklegeltaksi.com',
       'https://www.yuklegeltaksi.com',
+      'https://yuklegeltaksiapi.istekbilisim.com',
+      'https://deneme.istekbilisim.com',
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
@@ -54,5 +56,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/api/supervisor/:path*',
+    '/api/supervisor/auth/login',
+    '/api/supervisor/auth/verify',
   ],
 };
