@@ -1,4 +1,29 @@
 # Production Dockerfile for YukleGelTaksi Backend
+FROM node:18-alpine AS builder
+
+# Install system dependencies for building
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/cache/apk/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json package-lock.json ./
+
+# Install dependencies
+RUN npm ci && npm cache clean --force
+
+# Copy application code
+COPY . .
+
+# Build the Next.js application
+RUN npm run build
+
+# Production stage
 FROM node:18-alpine
 
 # Database Configuration Arguments
@@ -47,34 +72,36 @@ ENV SMS_HOURLY_LIMIT=$SMS_HOURLY_LIMIT
 ENV SMS_RATE_LIMIT_ENABLED=$SMS_RATE_LIMIT_ENABLED
 ENV PHONE_ENCRYPTION_KEY=$PHONE_ENCRYPTION_KEY
 
-# Install system dependencies
+# Install runtime dependencies
 RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
     curl \
     && rm -rf /var/cache/apk/*
-
-# Set working directory
-WORKDIR /app
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs \
     && adduser -S nodejs -u 1001
 
-# Copy package files
+# Set working directory
+WORKDIR /app
+
+# Copy package files and install production dependencies
 COPY package*.json package-lock.json ./
+RUN npm ci --only=production && npm cache clean --force
 
-# Install dependencies
-RUN npm ci && npm cache clean --force
-
-# Copy application code
-COPY . .
-
-# Build the Next.js application
-RUN npm run build
-
-# Database configuration is handled by environment variables in config/database.js
+# Copy built application from builder stage
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/app ./app
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/server.js ./server.js
+COPY --from=builder /app/next.config.js ./next.config.js
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/config ./config
+COPY --from=builder /app/middleware ./middleware
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/services ./services
+COPY --from=builder /app/socket ./socket
+COPY --from=builder /app/types ./types
+COPY --from=builder /app/utils ./utils
 
 # Create necessary directories
 RUN mkdir -p logs uploads temp \
