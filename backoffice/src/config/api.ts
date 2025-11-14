@@ -4,27 +4,19 @@ const getEnvVar = (key: string, defaultValue: string = ''): string => {
 };
 
 const getBaseUrl = (): string => {
-  // Environment değişkeninden al, yoksa hata ver
-  const apiUrl = getEnvVar('API_URL');
-  if (!apiUrl) {
-    throw new Error('REACT_APP_API_URL environment değişkeni tanımlı değil! Docker Compose dosyasında REACT_APP_API_URL=... şeklinde tanımlanmalı.');
-  }
-  return apiUrl;
+  // Environment değişkeninden al, yoksa default olarak internal IP kullan
+  return getEnvVar('API_URL', 'https://yuklegeltaksiapi.istekbilisim.com/api');
 };
 
 const getFilesUrl = (): string => {
-  // Environment değişkeninden al, BASE_URL ile aynı base'i kullan
-  const baseUrl = getBaseUrl();
+  // Environment değişkeninden al, yoksa default olarak https://yuklegeltaksiapi.istekbilisim.com kullan
+  const baseUrl = getEnvVar('API_URL', 'https://yuklegeltaksiapi.istekbilisim.com/api');
   return `${baseUrl}/files`;
 };
 
 const getSocketUrl = (): string => {
-  // Environment değişkeninden al, yoksa hata ver
-  const socketUrl = getEnvVar('SOCKET_URL');
-  if (!socketUrl) {
-    throw new Error('REACT_APP_SOCKET_URL environment değişkeni tanımlı değil!');
-  }
-  return socketUrl;
+  // Environment değişkeninden al, yoksa default olarak internal IP kullan
+  return getEnvVar('SOCKET_URL', 'ws://yuklegeltaksiapi.istekbilisim.com');
 };
 
 const getGoogleMapsApiKey = (): string => {
