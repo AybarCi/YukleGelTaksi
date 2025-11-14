@@ -71,8 +71,7 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy application code
 COPY . .
 
-# Copy production db config
-COPY deployment/db-config.production.js ./db-config.js
+# Database configuration is handled by environment variables in config/database.js
 
 # Create necessary directories
 RUN mkdir -p logs uploads temp \
@@ -86,7 +85,7 @@ EXPOSE 3003
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:3003/health || exit 1
+    CMD curl -f http://localhost:3003/api/health || exit 1
 
 # Start command
 CMD ["node", "server.js"]
