@@ -7,35 +7,6 @@ services:
     restart: unless-stopped
     ports:
       - "3003:3003"
-    # Container optimizasyonları
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    # DNS ve network optimizasyonu
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    dns_search:
-      - yuklegeltaksi-network
-    # Container için özel ayarlar
-    sysctls:
-      - net.core.somaxconn=1024
-      - net.ipv4.tcp_keepalive_time=600
-      - net.ipv4.tcp_keepalive_intvl=30
-      - net.ipv4.tcp_keepalive_probes=3
-    # Logging optimizasyonu
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        labels: "production_status"
-        env: "LOG_LEVEL"
     environment:
       - NODE_ENV=production
       - PORT=3003
@@ -70,17 +41,16 @@ services:
     networks:
       - yuklegeltaksi-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
-      interval: 60s  # Daha uzun interval - container stabilizasyonu için
-      timeout: 15s  # Daha uzun timeout - socket bağlantıları için
-      retries: 5   # Daha fazla retry - container başlangıcı için
-      start_period: 120s # Daha uzun start period - tüm servislerin başlaması için
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   yuklegeltaksi-redis:
     image: redis:7-alpine
     container_name: yuklegeltaksi-redis
     restart: unless-stopped
-    command: redis-server --port 6380
     ports:
       - "6380:6380"
     volumes:
@@ -96,7 +66,6 @@ services:
 networks:
   yuklegeltaksi-network:
     driver: bridge
-    # Network configuration updated for container communication
 
 volumes:
   redis-data:
