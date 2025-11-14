@@ -26,6 +26,9 @@ RUN npm run build
 # Production stage
 FROM node:18-alpine
 
+# Install curl for health checks
+RUN apk add --no-cache curl
+
 # Database Configuration Arguments
 ARG DB_SERVER
 ARG DB_USER
@@ -72,12 +75,7 @@ ENV SMS_HOURLY_LIMIT=$SMS_HOURLY_LIMIT
 ENV SMS_RATE_LIMIT_ENABLED=$SMS_RATE_LIMIT_ENABLED
 ENV PHONE_ENCRYPTION_KEY=$PHONE_ENCRYPTION_KEY
 
-# Install runtime dependencies
-RUN apk add --no-cache \
-    curl \
-    && rm -rf /var/cache/apk/*
-
-# Create non-root user
+# Create non-root user and necessary directories
 RUN addgroup -g 1001 -S nodejs \
     && adduser -S nodejs -u 1001
 
