@@ -50,6 +50,26 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            DB_SERVER=${{ secrets.DB_SERVER }}
+            DB_USER=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            DB_DATABASE=${{ secrets.DB_DATABASE }}
+            DB_PORT=${{ secrets.DB_PORT }}
+            DB_ENCRYPT=${{ secrets.DB_ENCRYPT }}
+            DB_TRUST_SERVER_CERTIFICATE=${{ secrets.DB_TRUST_SERVER_CERTIFICATE }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            VATAN_SMS_API_ID=${{ secrets.VATAN_SMS_API_ID }}
+            VATAN_SMS_API_KEY=${{ secrets.VATAN_SMS_API_KEY }}
+            VATAN_SMS_SENDER=${{ secrets.VATAN_SMS_SENDER }}
+            SMS_TEST_MODE=${{ secrets.SMS_TEST_MODE }}
+            SMS_TIMEOUT=${{ secrets.SMS_TIMEOUT }}
+            SMS_RETRY_COUNT=${{ secrets.SMS_RETRY_COUNT }}
+            SMS_COOLDOWN_MS=${{ secrets.SMS_COOLDOWN_MS }}
+            SMS_DAILY_LIMIT=${{ secrets.SMS_DAILY_LIMIT }}
+            SMS_HOURLY_LIMIT=${{ secrets.SMS_HOURLY_LIMIT }}
+            SMS_RATE_LIMIT_ENABLED=${{ secrets.SMS_RATE_LIMIT_ENABLED }}
+            PHONE_ENCRYPTION_KEY=${{ secrets.PHONE_ENCRYPTION_KEY }}
 
       - name: Output image info
         run: |
