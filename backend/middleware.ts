@@ -43,12 +43,13 @@ export function middleware(request: NextRequest) {
 
     if (allowedOrigins.includes(origin)) {
       response.headers.set('Access-Control-Allow-Origin', origin);
-    } else {
+    } else if (process.env.NODE_ENV !== 'production') {
       // Development için daha geniş izin
-      if (process.env.NODE_ENV !== 'production') {
-        response.headers.set('Access-Control-Allow-Origin', origin);
-      }
+      response.headers.set('Access-Control-Allow-Origin', origin);
     }
+  } else {
+    // No origin header, don't set Access-Control-Allow-Origin
+    // This prevents the double header issue
   }
 
   return response;
@@ -57,7 +58,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/api/supervisor/:path*',
-    '/api/supervisor/auth/login',
-    '/api/supervisor/auth/verify',
+    '/api/admin/:path*',
+    '/api/vehicle-types/:path*',
   ],
 };

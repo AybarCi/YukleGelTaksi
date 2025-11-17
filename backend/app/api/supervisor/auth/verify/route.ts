@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateSupervisorToken } from '../../../../../middleware/supervisorAuth';
 
-// CORS headers for supervisor endpoints
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Credentials': 'true',
-};
-
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, {
     status: 200,
-    headers: corsHeaders,
   });
 }
 
@@ -28,8 +19,7 @@ export async function GET(request: NextRequest) {
           error: authResult.message 
         },
         { 
-          status: 401,
-          headers: corsHeaders
+          status: 401
         }
       );
     }
@@ -37,8 +27,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       valid: true,
       supervisor: authResult.supervisor
-    }, {
-      headers: corsHeaders
     });
 
   } catch (error) {
@@ -49,8 +37,7 @@ export async function GET(request: NextRequest) {
         error: 'Token doğrulama hatası' 
       },
       { 
-        status: 500,
-        headers: corsHeaders
+        status: 500
       }
     );
   }

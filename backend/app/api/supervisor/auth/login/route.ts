@@ -2,27 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import DatabaseConnection from '../../../../../config/database';
-import { setCorsHeaders } from '../../../../../middleware/cors';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 export async function POST(request: NextRequest) {
   try {
-    const origin = request.headers.get('origin');
     const { username, password } = await request.json();
 
     if (!username || !password) {
-      const response = NextResponse.json(
+      return NextResponse.json(
         { error: 'Username and password are required' },
         { status: 400 }
       );
-      
-      // Add CORS headers
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      
-      return response;
     }
 
     const dbInstance = DatabaseConnection.getInstance();
@@ -36,34 +27,20 @@ export async function POST(request: NextRequest) {
     const supervisor = result.recordset[0];
 
     if (!supervisor) {
-      const response = NextResponse.json(
+      return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
-      
-      // Add CORS headers
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      
-      return response;
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, supervisor.password_hash);
     
     if (!isValidPassword) {
-      const response = NextResponse.json(
+      return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
-      
-      // Add CORS headers
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      
-      return response;
     }
 
     // Generate JWT token (10 hours)
@@ -92,7 +69,7 @@ export async function POST(request: NextRequest) {
       .input('expiresAt', expiresAt)
       .query('INSERT INTO supervisor_sessions (supervisor_id, token_hash, expires_at) VALUES (@supervisorId, @tokenHash, @expiresAt)');
 
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
       token,
       supervisor: {
@@ -104,29 +81,17 @@ export async function POST(request: NextRequest) {
         role: supervisor.role
       }
     });
-    
-    // Add CORS headers using the new function
-    return setCorsHeaders(response, origin);
 
   } catch (error) {
     console.error('Supervisor login error:', error);
-    const response = NextResponse.json(
+    return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     );
-    
-    // Add CORS headers
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    
-    return response;
   }
 }
 
 // OPTIONS method for CORS
 export async function OPTIONS(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  const response = new NextResponse(null, { status: 200 });
-  return setCorsHeaders(response, origin);
+  return new NextResponse(null, { status: 200 });
 }
