@@ -27,30 +27,17 @@ export function middleware(request: NextRequest) {
 
   // Set Access-Control-Allow-Origin based on origin
   const origin = request.headers.get('origin');
-  if (origin) {
-    // Allow specific origins (production)
-    const allowedOrigins = [
-      'https://backoffice.yuklegeltaksi.com',
-      'https://yuklegeltaksi.com',
-      'https://www.yuklegeltaksi.com',
-      'https://yuklegeltaksiapi.istekbilisim.com',
-      'https://deneme.istekbilisim.com',
-      'https://yuklegeltaksi.istekbilisim.com',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-    ];
-
-    if (allowedOrigins.includes(origin)) {
-      response.headers.set('Access-Control-Allow-Origin', origin);
-    } else if (process.env.NODE_ENV !== 'production') {
-      // Development için daha geniş izin
+  if (origin === 'https://yuklegeltaksi.istekbilisim.com') {
+    // Sadece backoffice uygulamasına izin ver
+    response.headers.set('Access-Control-Allow-Origin', 'https://yuklegeltaksi.istekbilisim.com');
+  } else if (process.env.NODE_ENV !== 'production' && origin) {
+    // Development için localhost originlerine izin ver
+    const devOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'];
+    if (devOrigins.includes(origin)) {
       response.headers.set('Access-Control-Allow-Origin', origin);
     }
-  } else {
-    // No origin header, don't set Access-Control-Allow-Origin
-    // This prevents the double header issue
   }
+  // Diğer tüm originler için header set etme - bu çift header sorununu önler
 
   return response;
 }
