@@ -44,8 +44,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/api/supervisor/:path*',
-    '/api/admin/:path*',
-    '/api/vehicle-types/:path*',
+    '/api/:path*',
   ],
 };
